@@ -29,7 +29,14 @@ pnpm dev
 
 The web app runs at http://127.0.0.1:5173 and calls the API at http://127.0.0.1:3000 through the Vite proxy.
 
-The local database listens on `127.0.0.1:55432`. Set `DB_PORT` before `docker compose up` to use another port, and change `DATABASE_URL` and `TEST_DATABASE_URL` to match. It accepts local connections without a password; never use these settings for a shared database.
+The local database listens on `127.0.0.1:55432`. Set `DB_PORT` before `docker compose up` to use another port, and set the same `DB_PORT` when you run the tests. It accepts local connections without a password; never use these settings for a shared database.
+
+## Parallel worktrees
+
+Two git worktrees of this repo can run their tests at the same time:
+
+- The API tests use the database `app_test_<folder>`, where `<folder>` is the name of the checkout folder. The tests create it when it does not exist. Set `TEST_DATABASE_URL` to use a different database.
+- `pnpm test:e2e` starts the dev servers on free ports. Set `E2E_WEB_PORT` and `E2E_API_PORT` to choose the ports.
 
 ## Check
 

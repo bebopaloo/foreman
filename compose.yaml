@@ -12,7 +12,6 @@ services:
       - "127.0.0.1:${DB_PORT:-55432}:5432"
     volumes:
       - db-data:/var/lib/postgresql
-      - ./compose/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 2s

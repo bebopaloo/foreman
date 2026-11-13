@@ -1,4 +1,4 @@
-<!-- stack-ts 0.5.1: from Rule template testing-ts. The team owns this file. -->
+<!-- stack-ts 0.7.0: from Rule template testing-ts. The team owns this file. -->
 # Testing in TypeScript
 
 The core testing rule says what to test. This rule names the tools for each layer. For the test skeleton and helpers of a layer, load the `stack-ts:test-recipes` skill.

@@ -1,4 +1,4 @@
-<!-- stack-ts 0.5.1: from Rule template typescript. The team owns this file. -->
+<!-- stack-ts 0.7.0: from Rule template typescript. The team owns this file. -->
 # TypeScript
 
 ## Compiler
