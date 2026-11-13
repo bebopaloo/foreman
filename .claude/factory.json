@@ -20,6 +20,6 @@
     "name": "stack-ts",
     "version": "0.7.0"
   },
-  "identity": "operator",
+  "identity": "app",
   "operator": "mskai23"
 }
