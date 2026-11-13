@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createDatabase } from "@foreman/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { openTestDatabase, TEST_DATABASE_URL, testConfig } from "./database.ts";
+
+const ROOT_PACKAGE = path.resolve(import.meta.dirname, "..", "..", "..", "package.json");
+const { version } = JSON.parse(readFileSync(ROOT_PACKAGE, "utf8")) as { version: string };
 
 describe("GET /api/health", () => {
   let database: Awaited<ReturnType<typeof openTestDatabase>>;
@@ -18,7 +23,7 @@ describe("GET /api/health", () => {
     const app = await buildApp({ config: testConfig, db: database.db, logger: false });
     const response = await app.inject({ method: "GET", url: "/api/health" });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: "ok" });
+    expect(response.json()).toEqual({ status: "ok", version });
     await app.close();
   });
 
@@ -28,7 +33,7 @@ describe("GET /api/health", () => {
     const app = await buildApp({ config: testConfig, db: closed.db, logger: false });
     const response = await app.inject({ method: "GET", url: "/api/health" });
     expect(response.statusCode).toBe(503);
-    expect(response.json()).toEqual({ status: "unavailable" });
+    expect(response.json()).toEqual({ status: "unavailable", version });
     await app.close();
   });
 

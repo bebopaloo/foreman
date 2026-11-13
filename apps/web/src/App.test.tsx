@@ -16,10 +16,20 @@ function renderApp() {
 
 describe("App", () => {
   it("shows the API status", async () => {
-    server.use(http.get("*/api/health", () => HttpResponse.json({ status: "ok" })));
+    server.use(
+      http.get("*/api/health", () => HttpResponse.json({ status: "ok", version: "1.2.3" })),
+    );
     renderApp();
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("API status: ok")).toBeInTheDocument();
+  });
+
+  it("shows the Foreman version in the footer", async () => {
+    server.use(
+      http.get("*/api/health", () => HttpResponse.json({ status: "ok", version: "1.2.3" })),
+    );
+    renderApp();
+    expect(await screen.findByRole("contentinfo")).toHaveTextContent("Foreman 1.2.3");
   });
 
   it("tells the user what to do when the API cannot be reached", async () => {
@@ -30,7 +40,11 @@ describe("App", () => {
   });
 
   it("rejects a response that breaks the contract", async () => {
-    server.use(http.get("*/api/health", () => HttpResponse.json({ status: "ok", extra: 1 })));
+    server.use(
+      http.get("*/api/health", () =>
+        HttpResponse.json({ status: "ok", version: "1.2.3", extra: 1 }),
+      ),
+    );
     renderApp();
     expect(await screen.findByText(/cannot be reached/)).toBeInTheDocument();
   });
