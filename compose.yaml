@@ -1,0 +1,22 @@
+# Local development and test database only. It accepts connections without a
+# password (trust), so its port binds to 127.0.0.1 and nothing outside this
+# machine can reach it. Never use these settings for a shared or hosted database.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: app
+    ports:
+      - "127.0.0.1:${DB_PORT:-55432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
