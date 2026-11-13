@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Install only versions published at least 7 days ago (in minutes).
+minimumReleaseAge: 10080
+saveExact: true
+engineStrict: true
+
+# Dependency install scripts run only when listed here as true. esbuild and msw
+# work without theirs.
+allowBuilds:
+  esbuild: false
+  msw: false

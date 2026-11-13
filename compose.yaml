@@ -1,0 +1,23 @@
+# Local development and test database only. The password is a fixed local
+# value, and the port binds to 127.0.0.1, so nothing outside this machine can
+# reach it. Never use these settings for a shared or hosted database.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "127.0.0.1:${DB_PORT:-55432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./compose/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
