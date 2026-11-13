@@ -7,7 +7,12 @@ describe("loadConfig", () => {
   it("uses safe defaults for a local run", () => {
     const config = loadConfig({ DATABASE_URL });
     expect(config.HOST).toBe("127.0.0.1");
-    expect(config.PORT).toBe(3000);
+    expect(config.PORT).toBe(47_130);
+  });
+
+  it("allows the dev web origin by default", () => {
+    const config = loadConfig({ DATABASE_URL });
+    expect(config.CORS_ORIGINS).toEqual(["http://127.0.0.1:47173"]);
   });
 
   it("splits the CORS allow-list", () => {

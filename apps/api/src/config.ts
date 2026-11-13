@@ -5,10 +5,10 @@ const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"
 const ConfigSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   HOST: z.string().min(1).default("127.0.0.1"),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(47_130),
   CORS_ORIGINS: z
     .string()
-    .default("http://127.0.0.1:5173")
+    .default("http://127.0.0.1:47173")
     .transform((value) =>
       value
         .split(",")
