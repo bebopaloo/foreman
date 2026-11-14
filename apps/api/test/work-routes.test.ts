@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { runFetch } from "../src/work/fetch.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
-import { entry, makeClaudeDir } from "./repo-list-fixtures.ts";
+import { entry, entryWithoutRepo, makeClaudeDir } from "./repo-list-fixtures.ts";
 
 let database: Awaited<ReturnType<typeof openTestDatabase>>;
 
@@ -79,6 +79,22 @@ describe("GET /api/work/repos", () => {
     });
     expect(body.repos[0]?.id).toMatch(/^[0-9a-f]{12}$/);
     expect(body.repos[2]?.client).toBeNull();
+    await app.close();
+  });
+});
+
+describe("an entry with no repo field", () => {
+  it("shows in the repos and the client counts as not connected", async () => {
+    const { app } = await appFor({ repos: [entryWithoutRepo("acme")] });
+    const repos = await app.inject({ method: "GET", url: "/api/work/repos" });
+    expect(repos.json()).toMatchObject({
+      repos: [{ client: "acme", state: "not connected: no forge name" }],
+    });
+    const clients = await app.inject({ method: "GET", url: "/api/work/clients" });
+    expect(clients.json()).toEqual({
+      clients: [{ name: "acme", repoCount: 1 }],
+      unassignedCount: 0,
+    });
     await app.close();
   });
 });

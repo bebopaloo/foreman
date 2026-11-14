@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { runFetch } from "../src/work/fetch.ts";
 import { repoId } from "../src/work/repo-list.ts";
 import { openTestDatabase } from "./database.ts";
-import { entry, makeClaudeDir } from "./repo-list-fixtures.ts";
+import { entry, entryWithoutRepo, makeClaudeDir } from "./repo-list-fixtures.ts";
 
 let database: Awaited<ReturnType<typeof openTestDatabase>>;
 
@@ -110,6 +110,21 @@ describe("runFetch: the repo list", () => {
       claudeDir: await makeClaudeDir({ repos: [entry("acme/app", "acme")] }),
     });
     expect(await cachedNames()).toEqual(["acme/app"]);
+  });
+
+  it("deletes every cached row when a valid list names no repo", async () => {
+    await seedCached("acme/app", "acme/old");
+    const claudeDir = await makeClaudeDir({ repos: [] });
+    const result = await runFetch({ db: database.db, claudeDir });
+    expect(result).toMatchObject({ state: "idle", repos: 0, reason: null });
+    expect(await cachedNames()).toEqual([]);
+  });
+
+  it("writes no row for an entry with no repo field", async () => {
+    const claudeDir = await makeClaudeDir({ repos: [entryWithoutRepo("acme")] });
+    const result = await runFetch({ db: database.db, claudeDir });
+    expect(result.repos).toBe(1);
+    expect(await cachedNames()).toEqual([]);
   });
 
   it("deletes no row when an invalid entry names no readable repo", async () => {

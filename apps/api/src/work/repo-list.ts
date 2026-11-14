@@ -27,8 +27,9 @@ export interface RepoEntry {
   position: number;
   id: string;
   host: string;
-  owner: string;
-  name: string;
+  /** Null for an entry with no `repo` field: no adapter runs for it. */
+  owner: string | null;
+  name: string | null;
   client: string | null;
   path: string;
   forge: string | null;
@@ -125,7 +126,23 @@ export async function readRepoList(claudeDir: string): Promise<RepoListResult> {
       if (identity === null) identityUnknown = true;
       return;
     }
-    if (identity === null) return;
+    if (identity === null) {
+      if (parsed.data.repo !== undefined) return;
+      const host = (parsed.data.host ?? DEFAULT_HOST).toLowerCase();
+      valid.push({
+        position,
+        id: repoId("no-repo", host, parsed.data.path),
+        host,
+        owner: null,
+        name: null,
+        client: parsed.data.client ?? null,
+        path: parsed.data.path,
+        forge: parsed.data.forge ?? null,
+        tracker: parsed.data.tracker ?? null,
+        enabled: parsed.data.enabled ?? true,
+      });
+      return;
+    }
     valid.push({
       position,
       id: repoId(identity.host, identity.owner, identity.name),

@@ -25,3 +25,10 @@ export function entry(repo: string, client?: string, extra: Record<string, unkno
     ...extra,
   };
 }
+
+/** An entry with no `repo` field. */
+export function entryWithoutRepo(client?: string) {
+  const full: Record<string, unknown> = entry("x/x", client);
+  delete full.repo;
+  return full;
+}

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { WorkClientsResponse, WorkReposResponse, WorkStatusResponse } from "@foreman/shared";
@@ -42,10 +43,14 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (app, { db, cla
             const row = byId.get(repo.id);
             return {
               id: repo.id,
-              fullName: `${repo.owner}/${repo.name}`,
+              fullName:
+                repo.owner === null || repo.name === null
+                  ? path.basename(repo.path)
+                  : `${repo.owner}/${repo.name}`,
               host: repo.host,
               client: repo.client,
-              state: row?.forgeState ?? null,
+              state:
+                repo.owner === null ? "not connected: no forge name" : (row?.forgeState ?? null),
               dataAsOf: row?.lastGoodFetchAt?.toISOString() ?? null,
             };
           })

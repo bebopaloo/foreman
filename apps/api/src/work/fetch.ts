@@ -30,6 +30,7 @@ export async function runFetch({ db, claudeDir }: FetchOptions): Promise<FetchRe
   } else {
     await db.transaction(async (tx) => {
       for (const repo of list.repos) {
+        if (repo.owner === null || repo.name === null) continue;
         const values = {
           host: repo.host,
           owner: repo.owner,

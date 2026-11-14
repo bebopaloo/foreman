@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entry, makeClaudeDir } from "../../test/repo-list-fixtures.ts";
+import { entry, entryWithoutRepo, makeClaudeDir } from "../../test/repo-list-fixtures.ts";
 import { readRepoList } from "./repo-list.ts";
 
 describe("readRepoList", () => {
@@ -93,5 +93,13 @@ describe("readRepoList", () => {
     if (result.status !== "ok") throw new Error("expected ok");
     expect(result.problems).toEqual([{ position: 0, field: "repo" }]);
     expect(result.identityUnknown).toBe(true);
+  });
+
+  it("keeps a valid entry with no repo field and reports no problem", async () => {
+    const result = await readRepoList(await makeClaudeDir({ repos: [entryWithoutRepo("acme")] }));
+    if (result.status !== "ok") throw new Error("expected ok");
+    expect(result.problems).toEqual([]);
+    expect(result.repos).toHaveLength(1);
+    expect(result.repos[0]).toMatchObject({ owner: null, name: null, client: "acme" });
   });
 });
