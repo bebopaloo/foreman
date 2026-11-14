@@ -10,6 +10,16 @@ function expandHome(value: string, home: string): string {
   return path.resolve(expanded);
 }
 
+/** The price table in the repo, three folders above `apps/api/src`. */
+const DEFAULT_PRICE_TABLE = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "data",
+  "price-table.json",
+);
+
 function folderSchema(name: string, home: string) {
   return z
     .string()
@@ -37,6 +47,11 @@ function createConfigSchema(home: string) {
       (folder) => folder !== path.join(home, ".claude"),
     ),
     FOREMAN_DATA_DIR: folderSchema("~/.foreman", home),
+    FOREMAN_PRICE_TABLE: z
+      .string()
+      .min(1)
+      .default(DEFAULT_PRICE_TABLE)
+      .transform((value) => expandHome(value, home)),
   });
 }
 

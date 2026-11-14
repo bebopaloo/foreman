@@ -23,6 +23,14 @@ describe("loadConfig", () => {
     expect(config.CORS_ORIGINS).toEqual(["https://a.example", "https://b.example"]);
   });
 
+  it("reads the price table of the repo by default and from a variable", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_PRICE_TABLE).toMatch(/data\/price-table\.json$/);
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_PRICE_TABLE: "/synthetic/prices.json" })
+        .FOREMAN_PRICE_TABLE,
+    ).toBe("/synthetic/prices.json");
+  });
+
   it("fails fast without a database URL", () => {
     expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
   });
