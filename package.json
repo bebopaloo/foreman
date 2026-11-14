@@ -17,6 +17,8 @@
     "test": "pnpm --recursive test",
     "test:e2e": "playwright test",
     "reindex": "pnpm --filter @foreman/api reindex",
+    "local:up": "bash scripts/local-up.sh up",
+    "local:reindex": "bash scripts/local-up.sh reindex",
     "db:generate": "pnpm --filter @foreman/db generate",
     "db:migrate": "pnpm --filter @foreman/db migrate"
   },
