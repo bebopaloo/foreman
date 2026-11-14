@@ -8,6 +8,7 @@ import {
   assistantLine,
   makeConfigFolder,
   recordingLog,
+  writeArchived,
   writeTranscript,
 } from "./usage-fixtures.ts";
 
@@ -430,5 +431,87 @@ describe("withRefreshLock", () => {
       ran: true,
       value: "third",
     });
+  });
+});
+
+describe("ingestTranscripts archive", () => {
+  it("counts each turn once when a session is in the live folder and in the archive", async () => {
+    const folder = await makeConfigFolder();
+    const lines = [assistantLine("m1"), assistantLine("m2")];
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", lines);
+    await writeArchived(folder.dataDir, "p/session-1.jsonl", [...lines, assistantLine("m3")]);
+
+    const { result } = await refresh(folder);
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => row.turnKey)).toEqual(["m1", "m2", "m3"]);
+    expect(result.turns).toBe(3);
+  });
+
+  it("indexes a session that is only in the archive, with its agent type", async () => {
+    const folder = await makeConfigFolder();
+    await writeArchived(folder.dataDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    await writeArchived(folder.dataDir, "p/session-1/subagents/agent-a1.jsonl", [
+      assistantLine("m2"),
+    ]);
+    await writeArchived(folder.dataDir, "p/session-1/subagents/agent-a1.meta.json", [
+      JSON.stringify({ agentType: "x" }),
+    ]);
+
+    const { result } = await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([
+      ["m1", "main"],
+      ["m2", "sub-agent (unknown)"],
+    ]);
+    expect(result).toMatchObject({ files: 2, unreadableFiles: 0 });
+  });
+
+  it("reads an archive file again only when its size or time changed", async () => {
+    const folder = await makeConfigFolder();
+    await writeArchived(folder.dataDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    await refresh(folder);
+    await database.db.delete(schema.turns);
+
+    await refresh(folder);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(0);
+
+    await writeArchived(folder.dataDir, "p/session-1.jsonl", [
+      assistantLine("m1"),
+      assistantLine("m2"),
+    ]);
+    await refresh(folder);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(2);
+  });
+
+  it("skips an archive file that is not valid gzip, logs its path and reads the others", async () => {
+    const folder = await makeConfigFolder();
+    const bad = await writeArchived(folder.dataDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    await writeFile(bad, "this is not gzip");
+    await writeArchived(folder.dataDir, "p/session-2.jsonl", [assistantLine("m2")]);
+
+    const { result, entries } = await refresh(folder);
+
+    expect(result).toMatchObject({ files: 1, turns: 1, unreadableFiles: 1 });
+    expect(entries.map((entry) => entry.message)).toContain(`unreadable file: ${bad}`);
+  });
+
+  it("keeps the archive turns of a deleted transcript when pnpm reindex runs", async () => {
+    const folder = await makeConfigFolder();
+    await writeArchived(folder.dataDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    const recorder = recordingLog();
+
+    await ingestTranscripts({
+      db: database.db,
+      ...folder,
+      log: recorder.log,
+      replaceAll: true,
+    });
+
+    expect((await database.db.select().from(schema.turns)).map((row) => row.turnKey)).toEqual([
+      "m1",
+    ]);
   });
 });
