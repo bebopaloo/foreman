@@ -21,5 +21,10 @@
     "version": "0.7.0"
   },
   "identity": "app",
-  "operator": "mskai23"
+  "operator": "mskai23",
+  "releases": {
+    "production_branch": "production",
+    "baseline": "500d7df0b52fe37ed7405ded6978eb4a1eac7256",
+    "switched_over": "2026-11-14"
+  }
 }

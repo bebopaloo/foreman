@@ -1,0 +1,43 @@
+# Dev deploy (ADR 0015, work item R8). context-init writes this file to
+# .github/workflows/deploy-dev.yml at the switch-over to Releases.
+#
+# Every merge into the main branch deploys to dev. The `dev` environment holds
+# only test-mode keys and synthetic data, so a fault on the main branch cannot
+# reach client data or real money. Its branch rule lets only the main branch
+# deploy. The repo provides scripts/deploy.sh and scripts/smoke-test.sh.
+name: deploy-dev
+run-name: deploy dev ${{ github.sha }}
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: dev
+    # id-token only lets the job ask the cloud for a short-lived token for the dev deploy role.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: vars.DEPLOY_ROLE_ARN != ''
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy
+        run: ./scripts/deploy.sh dev
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh dev

@@ -1,0 +1,37 @@
+# Dev and production stay apart (ADR 0015, work item R8.2). context-init writes this
+# file to .github/workflows/release-separation.yml at the switch-over to Releases.
+#
+# A pull request and the main branch have no human review before production, so no
+# workflow that they run may use the production environment. This check fails when
+# a workflow other than deploy-production.yml uses it, or when deploy-production.yml
+# runs on anything other than a push to production or a workflow_dispatch. The
+# Machine gate needs every check, so a failure here stops the merge. The logic is in
+# scripts/check_release_separation.py, with tests in scripts/tests/.
+name: release-separation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  separation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The script parses each workflow as YAML. A regex misses valid spellings of
+      # `environment`. The version is pinned so a new release cannot change the check.
+      - name: Install the YAML parser
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check PyYAML==6.0.3
+      - name: Test the separation check
+        run: '"$RUNNER_TEMP/venv/bin/python" -m unittest discover -s scripts/tests'
+      - name: Only the production deploy uses the production environment
+        run: '"$RUNNER_TEMP/venv/bin/python" scripts/check_release_separation.py'
