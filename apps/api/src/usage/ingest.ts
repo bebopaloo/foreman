@@ -3,7 +3,7 @@ import { schema } from "@foreman/db";
 import { eq, sql } from "drizzle-orm";
 import { type ParsedTurn, parseLine } from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
-import { readCompleteLines, scanSources } from "./sources.ts";
+import { type FileCursor, readNewLines, scanSources } from "./sources.ts";
 
 export interface IngestLog {
   info(message: string): void;
@@ -29,6 +29,7 @@ export interface IngestResult {
   unreadableFiles: number;
 }
 
+type CursorRow = typeof schema.fileCursors.$inferInsert;
 type ProjectRow = typeof schema.projects.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string };
 
@@ -74,13 +75,34 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
   }
 }
 
+async function writeCursors(db: Pick<Database, "insert">, cursors: CursorRow[]): Promise<void> {
+  for (let start = 0; start < cursors.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.fileCursors)
+      .values(cursors.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoUpdate({
+        target: schema.fileCursors.path,
+        set: {
+          size: sql`excluded.size`,
+          modifiedMs: sql`excluded.modified_ms`,
+          offset: sql`excluded.byte_offset`,
+          headHash: sql`excluded.head_hash`,
+          tailHash: sql`excluded.tail_hash`,
+        },
+      });
+  }
+}
+
 async function readSources(
   options: IngestOptions,
-): Promise<IngestResult & { rows: IndexedTurn[]; projects: ProjectRow[] }> {
+): Promise<IngestResult & { rows: IndexedTurn[]; projects: ProjectRow[]; cursors: CursorRow[] }> {
   const { db, claudeDir, dataDir, log } = options;
   const scan = await scanSources(claudeDir, dataDir);
   for (const source of scan.missing) log.warn(`missing source: ${source}`);
 
+  const stored = options.replaceAll === true ? [] : await db.select().from(schema.fileCursors);
+  const known = new Map<string, FileCursor>(stored.map((row) => [row.path, row]));
+  const cursors: CursorRow[] = [];
   const byKey = new Map<string, IndexedTurn>();
   let files = 0;
   let skippedLines = 0;
@@ -88,13 +110,16 @@ async function readSources(
   for (const file of scan.files) {
     let lines: string[];
     try {
-      ({ lines } = await readCompleteLines(file.path));
+      const read = await readNewLines(file.path, known.get(file.path));
+      lines = read.lines;
+      cursors.push({ path: file.path, ...read.cursor });
     } catch {
       unreadableFiles += 1;
       log.warn(`unreadable file: ${file.path}`);
       continue;
     }
     files += 1;
+    if (lines.length > 0) log.info(`read ${plural(lines.length, "new line")} in ${file.path}`);
     let skipped = 0;
     for (const line of lines) {
       const parsed = parseLine(line);
@@ -107,10 +132,12 @@ async function readSources(
     if (skipped > 0) log.warn(`skipped ${plural(skipped, "line")} in ${file.path}`);
     skippedLines += skipped;
   }
-  const known = await db.selectDistinct({ key: schema.turns.projectKey }).from(schema.turns);
+  const knownProjects = await db
+    .selectDistinct({ key: schema.turns.projectKey })
+    .from(schema.turns);
   const refs = await resolveProjects(
     [...new Set([...byKey.values()].map((row) => row.projectKey))],
-    known.map((row) => row.key),
+    knownProjects.map((row) => row.key),
   );
   const rows = [...byKey.values()].map((row) => ({
     ...row,
@@ -128,6 +155,7 @@ async function readSources(
     unreadableFiles,
     rows,
     projects: [...projects.values()],
+    cursors,
   };
 }
 
@@ -143,10 +171,14 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, ...result } = await readSources(options);
+    const { rows, projects, cursors, ...result } = await readSources(options);
     await db.transaction(async (tx) => {
-      if (options.replaceAll === true) await tx.delete(schema.turns);
+      if (options.replaceAll === true) {
+        await tx.delete(schema.turns);
+        await tx.delete(schema.fileCursors);
+      }
       await writeTurns(tx, rows);
+      await writeCursors(tx, cursors);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)

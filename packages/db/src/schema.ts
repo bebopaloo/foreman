@@ -1,4 +1,13 @@
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 // The Usage index. It holds counts, times, names and paths only: never a
 // prompt, a reply, a tool input or a tool output.
@@ -43,6 +52,17 @@ export const refreshRuns = pgTable("refresh_runs", {
   filesRead: integer("files_read").notNull().default(0),
   turnsAdded: integer("turns_added").notNull().default(0),
   failureReason: text("failure_reason"),
+});
+
+// One cursor for each transcript file that the ingest read: where the last
+// complete line ends, and hashes of the bytes around the start and the offset.
+export const fileCursors = pgTable("file_cursors", {
+  path: text("path").primaryKey(),
+  size: bigint("size", { mode: "number" }).notNull(),
+  modifiedMs: bigint("modified_ms", { mode: "number" }).notNull(),
+  offset: bigint("byte_offset", { mode: "number" }).notNull(),
+  headHash: text("head_hash").notNull(),
+  tailHash: text("tail_hash").notNull(),
 });
 
 // The work cache. It holds names, states and times only: never a body, a
