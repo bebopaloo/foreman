@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 // The Usage index. It holds counts, times, names and paths only: never a
 // prompt, a reply, a tool input or a tool output.
@@ -27,6 +27,12 @@ export const turns = pgTable(
     index("turns_session_id_idx").on(table.sessionId),
   ],
 );
+
+// One row for each Project key. The key is a path, never a transcript text.
+export const projects = pgTable("projects", {
+  projectKey: text("project_key").primaryKey(),
+  noRepo: boolean("no_repo").notNull(),
+});
 
 export const refreshRuns = pgTable("refresh_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
