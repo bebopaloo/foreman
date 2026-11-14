@@ -1,10 +1,23 @@
 import { type Database, schema } from "@foreman/db";
-import { ProjectsQuery, ProjectsResponse, RefreshStatusResponse } from "@foreman/shared";
+import {
+  BreakdownQuery,
+  BreakdownResponse,
+  MAX_SERIES_BUCKETS,
+  ProjectsQuery,
+  ProjectsResponse,
+  RefreshStatusResponse,
+  SeriesQuery,
+  SeriesResponse,
+} from "@foreman/shared";
 import { eq, max, min } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { z } from "zod";
 import { originGuard } from "../host-check.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
+import { bucketStarts, findProjectKey, queryBreakdown, querySeries } from "../usage/queries.ts";
 import type { Refresher } from "../usage/refresh.ts";
+
+const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
 export interface UsageOptions {
   db: Database;
@@ -75,5 +88,52 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       return { projects: projects.slice(0, request.query.limit) };
     },
   );
+
+  app.get(
+    "/series",
+    {
+      config: { public: true },
+      schema: {
+        querystring: SeriesQuery,
+        response: { 200: SeriesResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { grain, ...range } = request.query;
+      if (bucketStarts(range.from, range.to, grain).length > MAX_SERIES_BUCKETS) {
+        return reply.status(400).send({ error: "Too many buckets", requestId: request.id });
+      }
+      const projectKey = await resolveProject(range.project);
+      if (projectKey === undefined) {
+        return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
+      }
+      return { buckets: await querySeries(db, range, grain, projectKey) };
+    },
+  );
+
+  app.get(
+    "/breakdown",
+    {
+      config: { public: true },
+      schema: {
+        querystring: BreakdownQuery,
+        response: { 200: BreakdownResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { dimension, limit, ...range } = request.query;
+      const projectKey = await resolveProject(range.project);
+      if (projectKey === undefined) {
+        return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
+      }
+      return queryBreakdown(db, range, dimension, limit, projectKey);
+    },
+  );
+
+  /** The Project key for an ID, null for no filter, undefined for an unknown ID. */
+  async function resolveProject(id: string | undefined): Promise<string | null | undefined> {
+    if (id === undefined) return null;
+    return (await findProjectKey(db, id)) ?? undefined;
+  }
   done();
 };
