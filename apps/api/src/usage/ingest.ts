@@ -1,6 +1,6 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { type ParsedTurn, parseLine } from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
 import {
@@ -42,7 +42,7 @@ type ProjectRow = typeof schema.projects.$inferInsert;
 type AgentRow = typeof schema.agents.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
 
-// 17 columns for each row, and Postgres allows 65,535 parameters in a query.
+// 16 columns for each row, and Postgres allows 65,535 parameters in a query.
 const INSERT_BATCH_SIZE = 500;
 
 const COUNT_COLUMNS = [
@@ -80,6 +80,7 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
           cacheReadTokens: sql`greatest(${schema.turns.cacheReadTokens}, excluded.cache_read_tokens)`,
           webSearchCount: sql`greatest(${schema.turns.webSearchCount}, excluded.web_search_count)`,
           agentType: sql`excluded.agent_type`,
+          agentId: sql`excluded.agent_id`,
         },
       });
   }
@@ -226,6 +227,20 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
               startToolCallId: sql`excluded.start_tool_call_id`,
             },
           });
+        // A meta file can appear or change after a refresh stored the turns of its agent.
+        await tx
+          .update(schema.turns)
+          .set({ agentType: schema.agents.agentType })
+          .from(schema.agents)
+          .where(
+            and(
+              eq(schema.turns.agentId, schema.agents.agentId),
+              inArray(
+                schema.agents.agentId,
+                agents.map((agent) => agent.agentId),
+              ),
+            ),
+          );
       }
       if (projects.length > 0) {
         await tx

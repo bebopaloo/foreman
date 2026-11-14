@@ -162,6 +162,60 @@ describe("ingestTranscripts", () => {
     expect(JSON.stringify(agents)).not.toContain("SYNTHETIC");
   });
 
+  it("updates stored sub-agent turns when the meta file appears after the first refresh", async () => {
+    const folder = await makeConfigFolder();
+    const dir = "p/session-1/subagents";
+    await writeTranscript(folder.claudeDir, `${dir}/agent-a1.jsonl`, [assistantLine("m1")]);
+    await refresh(folder);
+
+    await writeMeta(folder.claudeDir, `${dir}/agent-a1.meta.json`, {
+      agentType: "software-developer",
+      toolUseId: "toolu_1",
+    });
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([
+      ["m1", "software-developer"],
+    ]);
+    const agents = await database.db.select().from(schema.agents);
+    expect(agents.map((row) => [row.agentId, row.agentType, row.startToolCallId])).toEqual([
+      ["a1", "software-developer", "toolu_1"],
+    ]);
+  });
+
+  it("sets the agent ID of a stored sub-agent turn that has none", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1/subagents/agent-a1.jsonl", [
+      assistantLine("m1"),
+    ]);
+    await refresh(folder);
+    await database.db.execute(sql`update turns set agent_id = null`);
+    await database.db.execute(sql`truncate table file_cursors`);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows[0]?.agentId).toBe("a1");
+  });
+
+  it("keeps the agents rows after a replaceAll refresh", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1/subagents/agent-a1.jsonl", [
+      assistantLine("m1"),
+    ]);
+    await refresh(folder);
+    await ingestTranscripts({
+      db: database.db,
+      ...folder,
+      log: recordingLog().log,
+      replaceAll: true,
+    });
+
+    const agents = await database.db.select().from(schema.agents);
+    expect(agents.map((row) => row.agentId)).toEqual(["a1"]);
+  });
+
   it("reads the meta file of a sub-agent from the archive", async () => {
     const folder = await makeConfigFolder();
     await writeArchived(folder.dataDir, "p/session-1/subagents/agent-a1.jsonl", [
