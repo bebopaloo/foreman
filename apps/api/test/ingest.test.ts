@@ -175,9 +175,7 @@ describe("ingestTranscripts", () => {
     await refresh(folder);
 
     const rows = await database.db.select().from(schema.turns);
-    expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([
-      ["m1", "software-developer"],
-    ]);
+    expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([["m1", "software-developer"]]);
     const agents = await database.db.select().from(schema.agents);
     expect(agents.map((row) => [row.agentId, row.agentType, row.startToolCallId])).toEqual([
       ["a1", "software-developer", "toolu_1"],
