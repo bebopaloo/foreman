@@ -158,6 +158,52 @@ describe("the list-price estimate", () => {
     });
   });
 
+  describe("a priced and an unpriced model in one session and one day", () => {
+    const mixed: Seed[] = [
+      { time: "2026-11-01T09:00:00.000Z", model: "unknown-model", input: 7 },
+      { time: "2026-11-01T10:00:00.000Z", input: 1_000_000 },
+      { time: "2026-11-01T11:00:00.000Z", input: 1_000_000 },
+      { time: "2026-11-01T12:00:00.000Z", model: "unknown-model", input: 7 },
+    ];
+
+    it("merges both into one session row and one totals row", async () => {
+      await seed(mixed);
+
+      const response = await get(`/api/usage/breakdown?dimension=session&${range}`);
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        rows: (Row & { turns: number; firstTurnAt: string; lastTurnAt: string })[];
+        totals: Row & { turns: number };
+        unpricedModels: unknown[];
+      }>();
+      expect(body.rows).toHaveLength(1);
+      expect(body.rows[0]).toMatchObject({
+        key: "s1",
+        turns: 4,
+        estimate: 6,
+        unpricedTurns: 2,
+        firstTurnAt: "2026-11-01T09:00:00.000Z",
+        lastTurnAt: "2026-11-01T12:00:00.000Z",
+      });
+      expect(body.totals).toMatchObject({ turns: 4, estimate: 6, unpricedTurns: 2 });
+      expect(body.unpricedModels).toEqual([{ model: "unknown-model", turns: 2 }]);
+    });
+
+    it("merges both into one series bucket", async () => {
+      await seed(mixed);
+
+      const response = await get(`/api/usage/series?grain=day&${range}`);
+
+      const body = response.json<{ buckets: (Row & { turns: number })[] }>();
+      expect(body.buckets.map((b) => [b.turns, b.estimate, b.unpricedTurns])).toEqual([
+        [4, 6, 2],
+        [0, 0, 0],
+        [0, 0, 0],
+      ]);
+    });
+  });
+
   it("uses a changed rate for all history when the API starts again", async () => {
     await seed([{ input: 1_000_000 }]);
     const url = `/api/usage/breakdown?dimension=model&${range}`;

@@ -10,7 +10,7 @@ function expandHome(value: string, home: string): string {
   return path.resolve(expanded);
 }
 
-/** The price table in the repo, two folders above `apps/api/src`. */
+/** The price table in the repo, three folders above `apps/api/src`. */
 const DEFAULT_PRICE_TABLE = path.resolve(
   import.meta.dirname,
   "..",
