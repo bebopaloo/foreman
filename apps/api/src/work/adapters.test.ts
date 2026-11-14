@@ -165,6 +165,46 @@ describe("resolveAdapter", () => {
     }
   });
 
+  it("refuses an install folder that is a symlink out of plugins/", async () => {
+    const outside = await mkdtemp(path.join(os.tmpdir(), "foreman-outside-"));
+    try {
+      await mkdir(path.join(outside, ".claude-plugin"), { recursive: true });
+      await mkdir(path.join(outside, "scripts"), { recursive: true });
+      await writeFile(path.join(outside, "scripts", "run.py"), "");
+      await writeFile(
+        path.join(outside, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ factory_adapter: forgeAdapter }),
+      );
+      const link = path.join(claudeDir, "plugins", "cache", "a", "factory-github", "1.0.0");
+      await mkdir(path.dirname(link), { recursive: true });
+      await symlink(outside, link);
+      await writeFile(
+        path.join(claudeDir, "plugins", "installed_plugins.json"),
+        JSON.stringify({
+          version: 2,
+          plugins: { "factory-github@a": [{ scope: "user", installPath: link }] },
+        }),
+      );
+
+      const result = await resolveAdapter(claudeDir, "factory-github", "forge");
+
+      expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("maps a host path that has an earlier plugins segment", async () => {
+    await installPlugin("factory-github@a", {
+      adapter: forgeAdapter,
+      installPath: "/home/plugins/.claude/plugins/cache/a/factory-github/1.0.0",
+    });
+
+    const result = await resolveAdapter(claudeDir, "factory-github", "forge");
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
   it("refuses an install folder that climbs out of plugins/", async () => {
     await installPlugin("factory-github@a", {
       adapter: forgeAdapter,

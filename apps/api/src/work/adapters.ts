@@ -53,11 +53,13 @@ async function readJson(file: string): Promise<unknown> {
 
 /**
  * Maps the install folder of a plugin to the mounted config folder, by the
- * part of the path below `plugins/`.
+ * part of the path below the `plugins/` folder that holds `cache/`.
  */
 function mountInstallPath(pluginsDir: string, installPath: string): string | undefined {
   const segments = installPath.split(/[\\/]+/);
-  const index = segments.indexOf("plugins");
+  const index = segments.findIndex(
+    (segment, position) => segment === "plugins" && segments[position + 1] === "cache",
+  );
   if (index === -1) return undefined;
   const mounted = path.resolve(pluginsDir, ...segments.slice(index + 1));
   return isInside(pluginsDir, mounted) ? mounted : undefined;
