@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "test": "pnpm --recursive test",
     "test:e2e": "playwright test",
+    "reindex": "pnpm --filter @foreman/api reindex",
     "db:generate": "pnpm --filter @foreman/db generate",
     "db:migrate": "pnpm --filter @foreman/db migrate"
   },
