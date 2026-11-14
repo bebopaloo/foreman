@@ -1,3 +1,4 @@
+import { chmod } from "node:fs/promises";
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -131,5 +132,54 @@ describe("ingestTranscripts", () => {
     expect(messages).toContain(`missing source: ${folder.claudeDir}/projects`);
     expect(messages).toContain(`missing source: ${folder.dataDir}/archive`);
     expect(messages).toContain(`missing source: ${folder.dataDir}/limit-readings.jsonl`);
+  });
+
+  it("keeps the largest counts when a later refresh reads smaller counts", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { input: 5, output: 40 }),
+    ]);
+    await refresh(folder);
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { input: 9, output: 10 }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ inputTokens: 9, outputTokens: 40 });
+  });
+
+  it("records a failed run and throws when the write fails", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { input: 3_000_000_000 }),
+    ]);
+
+    await expect(refresh(folder)).rejects.toThrow();
+
+    const runs = await database.db.select().from(schema.refreshRuns);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ state: "failed", failureReason: "refresh failed" });
+    expect(await database.db.select().from(schema.turns)).toHaveLength(0);
+  });
+
+  it("counts an unreadable file and logs its path", async () => {
+    const folder = await makeConfigFolder();
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1"),
+    ]);
+    await writeTranscript(folder.claudeDir, "p/session-2.jsonl", [assistantLine("m2")]);
+    await chmod(file, 0o000);
+
+    try {
+      const { result, entries } = await refresh(folder);
+
+      expect(result).toMatchObject({ files: 1, turns: 1, unreadableFiles: 1 });
+      expect(entries.map((entry) => entry.message)).toContain(`unreadable file: ${file}`);
+    } finally {
+      await chmod(file, 0o600);
+    }
   });
 });

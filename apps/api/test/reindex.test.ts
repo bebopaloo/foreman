@@ -53,4 +53,32 @@ describe("runReindex", () => {
     expect(keys).toEqual(["m1", "m2"]);
     expect(summary).toBe("Reindex done: 1 file, 2 turns.");
   });
+
+  it("keeps the old index data when the write fails", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { input: 3_000_000_000 }),
+    ]);
+    await database.db.insert(schema.turns).values({
+      turnKey: "old",
+      sessionId: "s",
+      time: new Date("2026-01-01T00:00:00Z"),
+      model: "claude-synthetic-1",
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheWrite5mTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheReadTokens: 0,
+      webSearchCount: 0,
+      projectKey: "/synthetic/a/app",
+      agentType: "main",
+    });
+
+    await expect(
+      runReindex({ db: database.db, ...folder, log: recordingLog().log }),
+    ).rejects.toThrow();
+
+    const keys = (await database.db.select().from(schema.turns)).map((row) => row.turnKey);
+    expect(keys).toEqual(["old"]);
+  });
 });

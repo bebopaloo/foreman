@@ -1,4 +1,4 @@
-import { createDatabase, schema } from "@foreman/db";
+import { createDatabase } from "@foreman/db";
 import type { Database } from "@foreman/db";
 import { loadConfig } from "./config.ts";
 import { type IngestLog, ingestTranscripts, plural } from "./usage/ingest.ts";
@@ -10,10 +10,12 @@ export interface ReindexOptions {
   log: IngestLog;
 }
 
-/** Deletes the Usage index data, reads all sources again and returns the counts. */
+/**
+ * Reads all sources again and replaces the Usage index data with them in one
+ * transaction. A failed write keeps the old data. It returns the counts.
+ */
 export async function runReindex(options: ReindexOptions): Promise<string> {
-  await options.db.delete(schema.turns);
-  const result = await ingestTranscripts(options);
+  const result = await ingestTranscripts({ ...options, replaceAll: true });
   return `Reindex done: ${plural(result.files, "file")}, ${plural(result.turns, "turn")}.`;
 }
 

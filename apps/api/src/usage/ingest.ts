@@ -14,6 +14,8 @@ export interface IngestOptions {
   claudeDir: string;
   dataDir: string;
   log: IngestLog;
+  /** Delete all turns in the same transaction that writes the new turns. */
+  replaceAll?: boolean;
 }
 
 export interface IngestResult {
@@ -50,7 +52,7 @@ export function plural(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
-async function writeTurns(db: Database, turns: IndexedTurn[]): Promise<void> {
+async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): Promise<void> {
   for (let start = 0; start < turns.length; start += INSERT_BATCH_SIZE) {
     const batch = turns.slice(start, start + INSERT_BATCH_SIZE);
     await db
@@ -120,7 +122,10 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
     const { rows, ...result } = await readSources(options);
-    await writeTurns(db, rows);
+    await db.transaction(async (tx) => {
+      if (options.replaceAll === true) await tx.delete(schema.turns);
+      await writeTurns(tx, rows);
+    });
     await db
       .update(schema.refreshRuns)
       .set({
