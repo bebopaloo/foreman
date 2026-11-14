@@ -1,4 +1,4 @@
-import { chmod } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, refresh_runs`);
+  await database.db.execute(sql`truncate table turns, projects, refresh_runs`);
 });
 
 async function refresh(folder: { claudeDir: string; dataDir: string }) {
@@ -181,5 +181,41 @@ describe("ingestTranscripts", () => {
     } finally {
       await chmod(file, 0o600);
     }
+  });
+});
+
+describe("ingestTranscripts Projects", () => {
+  it("gives sessions in a worktree and a subfolder the Project of the main checkout", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/s1.jsonl", [
+      assistantLine("m1", { cwd: "/synthetic/a/app", session: "s1" }),
+    ]);
+    await writeTranscript(folder.claudeDir, "p/s2.jsonl", [
+      assistantLine("m2", { cwd: "/synthetic/a/app/.claude/worktrees/x", session: "s2" }),
+    ]);
+    await writeTranscript(folder.claudeDir, "p/s3.jsonl", [
+      assistantLine("m3", { cwd: "/synthetic/a/app/packages/web", session: "s3" }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((row) => row.projectKey))).toEqual(new Set(["/synthetic/a/app"]));
+  });
+
+  it("flags a session outside a repo with its folder path as the key", async () => {
+    const folder = await makeConfigFolder();
+    await mkdir(folder.claudeDir, { recursive: true });
+    await writeTranscript(folder.claudeDir, "p/s1.jsonl", [
+      assistantLine("m1", { cwd: folder.claudeDir }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows[0]?.projectKey).toBe(folder.claudeDir);
+    const projects = await database.db.select().from(schema.projects);
+    expect(projects).toEqual([{ projectKey: folder.claudeDir, noRepo: true }]);
   });
 });

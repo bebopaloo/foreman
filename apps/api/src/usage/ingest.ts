@@ -2,6 +2,7 @@ import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { eq, sql } from "drizzle-orm";
 import { type ParsedTurn, parseLine } from "./parse.ts";
+import { resolveProjects } from "./projects.ts";
 import { readCompleteLines, scanSources } from "./sources.ts";
 
 export interface IngestLog {
@@ -28,6 +29,7 @@ export interface IngestResult {
   unreadableFiles: number;
 }
 
+type ProjectRow = typeof schema.projects.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string };
 
 // 15 columns for each row, and Postgres allows 65,535 parameters in a query.
@@ -74,8 +76,8 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
 
 async function readSources(
   options: IngestOptions,
-): Promise<IngestResult & { rows: IndexedTurn[] }> {
-  const { claudeDir, dataDir, log } = options;
+): Promise<IngestResult & { rows: IndexedTurn[]; projects: ProjectRow[] }> {
+  const { db, claudeDir, dataDir, log } = options;
   const scan = await scanSources(claudeDir, dataDir);
   for (const source of scan.missing) log.warn(`missing source: ${source}`);
 
@@ -105,8 +107,28 @@ async function readSources(
     if (skipped > 0) log.warn(`skipped ${plural(skipped, "line")} in ${file.path}`);
     skippedLines += skipped;
   }
-  const rows = [...byKey.values()];
-  return { state: "idle", files, turns: rows.length, skippedLines, unreadableFiles, rows };
+  const known = await db.selectDistinct({ key: schema.turns.projectKey }).from(schema.turns);
+  const refs = await resolveProjects(
+    [...new Set([...byKey.values()].map((row) => row.projectKey))],
+    known.map((row) => row.key),
+  );
+  const rows = [...byKey.values()].map((row) => ({
+    ...row,
+    projectKey: refs.get(row.projectKey)?.key ?? row.projectKey,
+  }));
+  const projects = new Map<string, ProjectRow>();
+  for (const ref of refs.values()) {
+    projects.set(ref.key, { projectKey: ref.key, noRepo: ref.noRepo });
+  }
+  return {
+    state: "idle",
+    files,
+    turns: rows.length,
+    skippedLines,
+    unreadableFiles,
+    rows,
+    projects: [...projects.values()],
+  };
 }
 
 /**
@@ -121,10 +143,19 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, ...result } = await readSources(options);
+    const { rows, projects, ...result } = await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) await tx.delete(schema.turns);
       await writeTurns(tx, rows);
+      if (projects.length > 0) {
+        await tx
+          .insert(schema.projects)
+          .values(projects)
+          .onConflictDoUpdate({
+            target: schema.projects.projectKey,
+            set: { noRepo: sql`excluded.no_repo` },
+          });
+      }
     });
     await db
       .update(schema.refreshRuns)

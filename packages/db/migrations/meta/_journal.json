@@ -12,8 +12,15 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1794695550228,
-      "tag": "0001_faulty_synch",
+      "when": 1794695511582,
+      "tag": "0001_public_sunspot",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794696040150,
+      "tag": "0002_parallel_doctor_doom",
       "breakpoints": true
     }
   ]
