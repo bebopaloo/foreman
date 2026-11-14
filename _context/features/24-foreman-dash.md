@@ -3,7 +3,7 @@
 **Status:** Approved
 **Work items:** #24
 
-Source: foreman ADR 0003, factory ADR 0007 (amended 2026-11-14), step 3 of the build order. It builds on the approved Spec [`forge-and-tracker-connection.md`](forge-and-tracker-connection.md). Layout reference: the Claude artifact "Foreman dash prototype" (https://claude.ai/artifact/PkocXnpXR2fH717xH8VTNn), tab "Foreman dash". Where the prototype and this Spec differ, this Spec is the master copy.
+Source: foreman ADR 0003, factory ADR 0007 (amended 2026-11-14), step 3 of the build order. It builds on the approved Spec [`23-forge-and-tracker-connection.md`](23-forge-and-tracker-connection.md). Layout reference: the Claude artifact "Foreman dash prototype" (https://claude.ai/artifact/PkocXnpXR2fH717xH8VTNn), tab "Foreman dash". Where the prototype and this Spec differ, this Spec is the master copy.
 
 ## Problem
 
