@@ -1,0 +1,61 @@
+# The local runtime stack: the production-like build on this machine, kept
+# running. Start it with `pnpm local:up`, which creates the Foreman data folder
+# first. The database has no host port and only the Compose network can reach
+# it. It accepts connections without a password (trust), so never use these
+# settings for a shared or hosted environment. Only the web port is published,
+# on 127.0.0.1. The config folder and the Foreman data folder are read-only.
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: app
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: { context: ., target: api }
+    command: ["node", "apps/api/src/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://app@db:5432/app
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    build: { context: ., target: api }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://app@db:5432/app
+      HOST: 0.0.0.0
+      PORT: "3000"
+      CORS_ORIGINS: http://127.0.0.1:${LOCAL_PORT:-47100}
+      FOREMAN_CLAUDE_DIR: /mnt/claude
+      FOREMAN_DATA_DIR: /mnt/foreman
+    volumes:
+      - ${FOREMAN_CLAUDE_DIR:?run pnpm local:up}:/mnt/claude:ro
+      - ${FOREMAN_DATA_DIR:?run pnpm local:up}:/mnt/foreman:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  web:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LOCAL_PORT:-47100}:80"
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  db-data:
