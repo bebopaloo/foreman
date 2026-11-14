@@ -17,9 +17,12 @@ export function App() {
   }
 
   return (
-    <main>
-      <h1>foreman</h1>
-      <p role="status">{message}</p>
-    </main>
+    <>
+      <main>
+        <h1>foreman</h1>
+        <p role="status">{message}</p>
+      </main>
+      {health.isSuccess ? <footer>Foreman {health.data.version}</footer> : null}
+    </>
   );
 }
