@@ -3,7 +3,7 @@ import { schema } from "@foreman/db";
 import { eq, sql } from "drizzle-orm";
 import { type ParsedTurn, parseLine } from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
-import { type FileCursor, readNewLines, scanSources } from "./sources.ts";
+import { type FileCursor, readArchiveLines, readNewLines, scanSources } from "./sources.ts";
 
 export interface IngestLog {
   info(message: string): void;
@@ -114,7 +114,10 @@ async function readSources(
   for (const file of scan.files) {
     let lines: string[];
     try {
-      const read = await readNewLines(file.path, known.get(file.path));
+      const previous = known.get(file.path);
+      const read = file.compressed
+        ? await readArchiveLines(file.path, previous)
+        : await readNewLines(file.path, previous);
       lines = read.lines;
       cursors.push({ path: file.path, ...read.cursor });
     } catch {
@@ -166,7 +169,7 @@ async function readSources(
 }
 
 /**
- * One refresh: reads the live transcripts and writes their turns by turn key.
+ * One refresh: reads the live transcripts and the archive and writes their turns by turn key.
  * A re-read never deletes a turn. The log holds paths and counts only.
  */
 export async function ingestTranscripts(options: IngestOptions): Promise<IngestResult> {

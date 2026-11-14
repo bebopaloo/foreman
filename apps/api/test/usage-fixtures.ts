@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
 
@@ -55,5 +56,17 @@ export async function writeTranscript(
   const file = path.join(claudeDir, "projects", relativePath);
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, lines.join("\n") + (options.endWithNewline === false ? "" : "\n"));
+  return file;
+}
+
+/** Writes a gzip-compressed copy of a transcript below `<dataDir>/archive`, as the archive hook does. */
+export async function writeArchived(
+  dataDir: string,
+  relativePath: string,
+  lines: string[],
+): Promise<string> {
+  const file = path.join(dataDir, "archive", `${relativePath}.gz`);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, gzipSync(lines.join("\n") + "\n"), { mode: 0o600 });
   return file;
 }

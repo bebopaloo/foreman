@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import { type FileHandle, open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
+
+const gunzipAsync = promisify(gunzip);
 
 export interface TranscriptFile {
   path: string;
   /** "main" for a session file, "sub-agent (unknown)" for a file below a session folder. */
   agentType: string;
+  /** True for a gzip file of the Transcript archive. */
+  compressed: boolean;
 }
 
 export interface SourceScan {
@@ -31,34 +37,43 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
-/**
- * Finds the live transcripts below `<claudeDir>/projects`, and names the
- * sources that do not exist: a missing source is empty, not a failure.
- */
-export async function scanSources(claudeDir: string, dataDir: string): Promise<SourceScan> {
-  const projects = path.join(claudeDir, "projects");
-  const missing: string[] = [];
-  for (const source of [
-    projects,
-    path.join(dataDir, "archive"),
-    path.join(dataDir, "limit-readings.jsonl"),
-  ]) {
-    if (!(await exists(source))) missing.push(source);
-  }
-  if (missing.includes(projects)) return { files: [], missing };
+const ARCHIVE_SUFFIX = ".jsonl.gz";
 
-  const entries = await readdir(projects, { recursive: true, withFileTypes: true });
-  const files = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+async function findFiles(
+  root: string,
+  suffix: string,
+  compressed: boolean,
+): Promise<TranscriptFile[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
     .map((entry) => {
       const file = path.join(entry.parentPath, entry.name);
-      const depth = path.relative(projects, file).split(path.sep).length;
+      const depth = path.relative(root, file).split(path.sep).length;
       return {
         path: file,
         agentType: depth > MAIN_FILE_DEPTH ? UNKNOWN_SUB_AGENT_TYPE : MAIN_AGENT_TYPE,
+        compressed,
       };
-    })
-    .sort((a, b) => a.path.localeCompare(b.path));
+    });
+}
+
+/**
+ * Finds the live transcripts below `<claudeDir>/projects` and the compressed
+ * transcripts below `<dataDir>/archive`, and names the sources that do not
+ * exist: a missing source is empty, not a failure.
+ */
+export async function scanSources(claudeDir: string, dataDir: string): Promise<SourceScan> {
+  const projects = path.join(claudeDir, "projects");
+  const archive = path.join(dataDir, "archive");
+  const missing: string[] = [];
+  for (const source of [projects, archive, path.join(dataDir, "limit-readings.jsonl")]) {
+    if (!(await exists(source))) missing.push(source);
+  }
+  const files = [
+    ...(missing.includes(projects) ? [] : await findFiles(projects, ".jsonl", false)),
+    ...(missing.includes(archive) ? [] : await findFiles(archive, ARCHIVE_SUFFIX, true)),
+  ].sort((a, b) => a.path.localeCompare(b.path));
   return { files, missing };
 }
 
@@ -131,6 +146,34 @@ export async function readNewLines(
       .filter((line) => line.trim() !== "");
     const hashes = await hashesBefore(handle, offset);
     return { lines, cursor: { size, modifiedMs: Math.trunc(mtimeMs), offset, ...hashes } };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * The complete lines of a compressed archive file. The file is read in full
+ * when its size or time changed, and not at all when they did not. The hashes
+ * stay empty: the size and the time are the check for a compressed file.
+ */
+export async function readArchiveLines(
+  file: string,
+  previous: FileCursor | undefined,
+): Promise<FileLines> {
+  const handle = await open(file, "r");
+  try {
+    const { size, mtimeMs } = await handle.stat();
+    const modifiedMs = Math.trunc(mtimeMs);
+    const cursor = { size, modifiedMs, offset: size, headHash: "", tailHash: "" };
+    if (previous?.size === size && previous.modifiedMs === modifiedMs) {
+      return { lines: [], cursor };
+    }
+    const data = await gunzipAsync(await readRange(handle, 0, size));
+    const lines = data
+      .toString("utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    return { lines, cursor };
   } finally {
     await handle.close();
   }
