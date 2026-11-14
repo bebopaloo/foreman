@@ -23,7 +23,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, projects, refresh_runs`);
+  await database.db.execute(sql`truncate table turns, agents, projects, refresh_runs`);
 });
 
 async function seed(sessions: { cwd: string; time: string }[]) {

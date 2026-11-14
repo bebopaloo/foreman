@@ -9,6 +9,7 @@ import {
   makeConfigFolder,
   recordingLog,
   writeArchived,
+  writeMeta,
   writeTranscript,
 } from "./usage-fixtures.ts";
 
@@ -23,7 +24,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, projects, refresh_runs, file_cursors`);
+  await database.db.execute(
+    sql`truncate table turns, agents, projects, refresh_runs, file_cursors`,
+  );
 });
 
 async function refresh(folder: { claudeDir: string; dataDir: string }) {
@@ -121,6 +124,57 @@ describe("ingestTranscripts", () => {
     await refresh(folder);
     const rows = await database.db.select().from(schema.turns);
     expect(rows[0]?.agentType).toBe("sub-agent (unknown)");
+  });
+
+  it("gives sub-agent turns the type of the meta file and records the start call", async () => {
+    const folder = await makeConfigFolder();
+    const dir = "p/session-1/subagents";
+    await writeTranscript(folder.claudeDir, `${dir}/agent-a1.jsonl`, [assistantLine("m1")]);
+    await writeMeta(folder.claudeDir, `${dir}/agent-a1.meta.json`, {
+      agentType: "software-developer",
+      toolUseId: "toolu_1",
+      description: "SYNTHETIC-TASK-TEXT",
+    });
+    await writeTranscript(folder.claudeDir, `${dir}/agent-a2.jsonl`, [assistantLine("m2")]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => [row.turnKey, row.agentId, row.agentType])).toEqual([
+      ["m1", "a1", "software-developer"],
+      ["m2", "a2", "sub-agent (unknown)"],
+    ]);
+    const agents = await database.db.select().from(schema.agents).orderBy(schema.agents.agentId);
+    expect(agents).toEqual([
+      {
+        agentId: "a1",
+        sessionId: "session-1",
+        agentType: "software-developer",
+        startToolCallId: "toolu_1",
+      },
+      {
+        agentId: "a2",
+        sessionId: "session-1",
+        agentType: "sub-agent (unknown)",
+        startToolCallId: null,
+      },
+    ]);
+    expect(JSON.stringify(agents)).not.toContain("SYNTHETIC");
+  });
+
+  it("reads the meta file of a sub-agent from the archive", async () => {
+    const folder = await makeConfigFolder();
+    await writeArchived(folder.dataDir, "p/session-1/subagents/agent-a1.jsonl", [
+      assistantLine("m1"),
+    ]);
+    await writeArchived(folder.dataDir, "p/session-1/subagents/agent-a1.meta.json", [
+      JSON.stringify({ agentType: "reviewer" }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows[0]?.agentType).toBe("reviewer");
   });
 
   it("ends idle with 0 files and logs each missing source", async () => {
@@ -464,7 +518,7 @@ describe("ingestTranscripts archive", () => {
     const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
     expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([
       ["m1", "main"],
-      ["m2", "sub-agent (unknown)"],
+      ["m2", "x"],
     ]);
     expect(result).toMatchObject({ files: 2, unreadableFiles: 0 });
   });

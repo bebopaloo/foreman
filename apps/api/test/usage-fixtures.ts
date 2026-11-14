@@ -70,3 +70,12 @@ export async function writeArchived(
   await writeFile(file, gzipSync(lines.join("\n") + "\n"), { mode: 0o600 });
   return file;
 }
+
+/** Writes the meta file of a sub-agent next to its transcript. */
+export async function writeMeta(
+  claudeDir: string,
+  relativePath: string,
+  meta: Record<string, unknown>,
+): Promise<string> {
+  return writeTranscript(claudeDir, relativePath, [JSON.stringify(meta)]);
+}

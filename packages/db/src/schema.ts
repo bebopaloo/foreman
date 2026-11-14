@@ -29,6 +29,7 @@ export const turns = pgTable(
     projectKey: text("project_key").notNull(),
     branch: text("branch"),
     agentType: text("agent_type").notNull(),
+    agentId: text("agent_id"),
   },
   (table) => [
     index("turns_time_idx").on(table.time),
@@ -36,6 +37,14 @@ export const turns = pgTable(
     index("turns_session_id_idx").on(table.sessionId),
   ],
 );
+
+// One row for each sub-agent: its Agent type and the ID of the tool call that started it.
+export const agents = pgTable("agents", {
+  agentId: text("agent_id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  agentType: text("agent_type").notNull(),
+  startToolCallId: text("start_tool_call_id"),
+});
 
 // One row for each Project key. The key is a path, never a transcript text.
 export const projects = pgTable("projects", {
