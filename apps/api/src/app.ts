@@ -10,6 +10,7 @@ import {
 import type { Config } from "./config.ts";
 import { registerHostCheck } from "./host-check.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { workRoutes } from "./routes/work.ts";
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -59,6 +60,7 @@ export async function buildApp({ config, db, logger }: AppOptions) {
   });
 
   await app.register(healthRoutes, { prefix: "/api", db });
+  await app.register(workRoutes, { prefix: "/api", db, claudeDir: config.FOREMAN_CLAUDE_DIR });
 
   return app;
 }
