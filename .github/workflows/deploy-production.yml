@@ -1,0 +1,73 @@
+# Production deploy (ADR 0015, work item R8). context-init writes this file to
+# .github/workflows/deploy-production.yml at the switch-over to Releases.
+#
+# It runs on a push to production (perform-release merges a release PR) and on a
+# workflow_dispatch with the input `ref` (perform-release rollback redeploys a tag).
+# The job uses the `production` environment. Its branch rule lets only the
+# production branch deploy, and only it holds the production secrets and variables.
+#
+# The repo provides scripts/deploy.sh and scripts/smoke-test.sh; each takes the
+# environment name. With DEPLOY_ROLE_ARN set on the environment, the job assumes
+# that cloud role through OIDC. With the release_record module on, the job also
+# signs the SBOM with scripts/sign.sh, which holds the signing tool and key.
+name: deploy-production
+run-name: deploy ${{ inputs.ref || github.sha }}
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The release tag to redeploy, vX.Y.Z (perform-release rollback)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    # id-token only lets the job ask the cloud for a short-lived token for the deploy role.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_REF: ${{ inputs.ref || github.sha }}
+    steps:
+      - name: A redeploy takes only a release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! [[ "$DEPLOY_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::ref must be a release tag vX.Y.Z, not $DEPLOY_REF"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: A redeploy takes only a tag that production holds
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch --quiet origin production
+          if ! git merge-base --is-ancestor "$DEPLOY_REF" FETCH_HEAD; then
+            echo "::error::$DEPLOY_REF is not in the production branch"
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: vars.DEPLOY_ROLE_ARN != ''
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy
+        run: ./scripts/deploy.sh production
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh production
