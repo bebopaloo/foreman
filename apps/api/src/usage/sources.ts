@@ -1,4 +1,5 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { type FileHandle, open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 export interface TranscriptFile {
@@ -61,17 +62,76 @@ export async function scanSources(claudeDir: string, dataDir: string): Promise<S
   return { files, missing };
 }
 
+export interface FileCursor {
+  size: number;
+  modifiedMs: number;
+  /** The byte after the last complete line. */
+  offset: number;
+  /** SHA-256 of the first 4 KiB, or of all bytes before the offset when fewer. */
+  headHash: string;
+  /** SHA-256 of the 4 KiB before the offset. */
+  tailHash: string;
+}
+
 export interface FileLines {
   lines: string[];
+  cursor: FileCursor;
+}
+
+const HASH_BYTES = 4096;
+const LINE_END = 0x0a;
+
+function sha256(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function readRange(handle: FileHandle, start: number, end: number): Promise<Buffer> {
+  const buffer = Buffer.alloc(Math.max(0, end - start));
+  let filled = 0;
+  while (filled < buffer.length) {
+    const { bytesRead } = await handle.read(buffer, filled, buffer.length - filled, start + filled);
+    if (bytesRead === 0) break;
+    filled += bytesRead;
+  }
+  return buffer.subarray(0, filled);
+}
+
+async function hashesBefore(handle: FileHandle, offset: number) {
+  const head = await readRange(handle, 0, Math.min(HASH_BYTES, offset));
+  const tail = await readRange(handle, Math.max(0, offset - HASH_BYTES), offset);
+  return { headHash: sha256(head), tailHash: sha256(tail) };
 }
 
 /**
- * The complete lines of a file. A last line with no line end may be half
- * written, so it is left out.
+ * The complete lines of a file that are new since the cursor. The read starts
+ * at the cursor offset when the size and the hashes still match, and at the
+ * start of the file when they do not. A last line with no line end may be half
+ * written, so it is left out and the new offset stays before it.
  */
-export async function readCompleteLines(file: string): Promise<FileLines> {
-  const text = await readFile(file, "utf8");
-  const lines = text.split("\n");
-  lines.pop();
-  return { lines: lines.filter((line) => line.trim() !== "") };
+export async function readNewLines(
+  file: string,
+  previous: FileCursor | undefined,
+): Promise<FileLines> {
+  const handle = await open(file, "r");
+  try {
+    const { size, mtimeMs } = await handle.stat();
+    let start = 0;
+    if (previous !== undefined && previous.offset <= size) {
+      const hashes = await hashesBefore(handle, previous.offset);
+      if (hashes.headHash === previous.headHash && hashes.tailHash === previous.tailHash) {
+        start = previous.offset;
+      }
+    }
+    const data = await readRange(handle, start, size);
+    const complete = data.subarray(0, data.lastIndexOf(LINE_END) + 1);
+    const offset = start + complete.length;
+    const lines = complete
+      .toString("utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    const hashes = await hashesBefore(handle, offset);
+    return { lines, cursor: { size, modifiedMs: Math.trunc(mtimeMs), offset, ...hashes } };
+  } finally {
+    await handle.close();
+  }
 }

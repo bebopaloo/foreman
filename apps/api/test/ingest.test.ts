@@ -1,4 +1,4 @@
-import { chmod, mkdir } from "node:fs/promises";
+import { appendFile, chmod, mkdir, writeFile } from "node:fs/promises";
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, projects, refresh_runs`);
+  await database.db.execute(sql`truncate table turns, projects, refresh_runs, file_cursors`);
 });
 
 async function refresh(folder: { claudeDir: string; dataDir: string }) {
@@ -181,6 +181,133 @@ describe("ingestTranscripts", () => {
     } finally {
       await chmod(file, 0o600);
     }
+  });
+});
+
+describe("ingestTranscripts cursors", () => {
+  it("reads only the 2 new lines and logs the path and the count", async () => {
+    const folder = await makeConfigFolder();
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1"),
+      assistantLine("m2"),
+      assistantLine("m3"),
+    ]);
+    await refresh(folder);
+    await appendFile(file, [assistantLine("m4"), assistantLine("m5")].join("\n") + "\n");
+
+    const { result, entries } = await refresh(folder);
+
+    expect(result).toMatchObject({ files: 1, turns: 2 });
+    expect(entries.map((entry) => entry.message)).toContain(`read 2 new lines in ${file}`);
+    expect(JSON.stringify(entries)).not.toContain("SYNTHETIC");
+    expect(await database.db.select().from(schema.turns)).toHaveLength(5);
+  });
+
+  it("reads nothing from a file that did not change", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    await refresh(folder);
+
+    const { result } = await refresh(folder);
+
+    expect(result).toMatchObject({ files: 1, turns: 0 });
+  });
+
+  it("reads the full file again when bytes that it already read changed", async () => {
+    const folder = await makeConfigFolder();
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { input: 5 }),
+      assistantLine("m2"),
+    ]);
+    await refresh(folder);
+    await writeFile(
+      file,
+      [assistantLine("m1", { input: 9 }), assistantLine("m2"), assistantLine("m3")].join("\n") +
+        "\n",
+    );
+
+    const { result, entries } = await refresh(folder);
+
+    expect(result.turns).toBe(3);
+    expect(entries.map((entry) => entry.message)).toContain(`read 3 new lines in ${file}`);
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => row.turnKey)).toEqual(["m1", "m2", "m3"]);
+    expect(rows[0]?.inputTokens).toBe(9);
+  });
+
+  it("reads the full file again when it is smaller than the offset", async () => {
+    const folder = await makeConfigFolder();
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1"),
+      assistantLine("m2"),
+    ]);
+    await refresh(folder);
+    await writeFile(file, assistantLine("m3") + "\n");
+
+    const { result } = await refresh(folder);
+
+    expect(result.turns).toBe(1);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(3);
+  });
+
+  it("reads a half-written last line in the next refresh, when it is complete", async () => {
+    const folder = await makeConfigFolder();
+    const second = assistantLine("m2");
+    const file = await writeTranscript(
+      folder.claudeDir,
+      "p/session-1.jsonl",
+      [assistantLine("m1"), second.slice(0, 40)],
+      { endWithNewline: false },
+    );
+    await refresh(folder);
+    expect((await database.db.select().from(schema.turns)).map((row) => row.turnKey)).toEqual([
+      "m1",
+    ]);
+    await appendFile(file, second.slice(40) + "\n");
+
+    const { result } = await refresh(folder);
+
+    expect(result.turns).toBe(1);
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => row.turnKey)).toEqual(["m1", "m2"]);
+  });
+
+  it("keeps the cursor of a file that it cannot read, and reads it later", async () => {
+    const folder = await makeConfigFolder();
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1"),
+    ]);
+    await refresh(folder);
+    await appendFile(file, assistantLine("m2") + "\n");
+    await chmod(file, 0o000);
+    try {
+      const { result } = await refresh(folder);
+      expect(result.unreadableFiles).toBe(1);
+    } finally {
+      await chmod(file, 0o600);
+    }
+
+    const { result } = await refresh(folder);
+
+    expect(result.turns).toBe(1);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(2);
+  });
+
+  it("ignores the cursors when it replaces all turns", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    await refresh(folder);
+    await database.db.execute(sql`truncate table turns`);
+
+    const result = await ingestTranscripts({
+      db: database.db,
+      ...folder,
+      log: recordingLog().log,
+      replaceAll: true,
+    });
+
+    expect(result.turns).toBe(1);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(1);
   });
 });
 
