@@ -12,6 +12,7 @@ import { registerHostCheck } from "./host-check.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
 import { usageRoutes } from "./routes/usage.ts";
+import { loadPriceTable } from "./usage/prices.ts";
 import { createRefresher, type Refresher } from "./usage/refresh.ts";
 
 declare module "fastify" {
@@ -36,6 +37,8 @@ export interface AppOptions {
 const REDACTED_KEYS = ["req.headers.authorization", "req.headers.cookie", "*.password", "*.token"];
 
 export async function buildApp({ config, db, logger, refresher }: AppOptions) {
+  // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
+  const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
     logger: logger ?? { level: config.LOG_LEVEL, redact: REDACTED_KEYS },
   }).withTypeProvider<ZodTypeProvider>();
@@ -93,6 +96,7 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
     prefix: "/api/usage",
     db,
     refresher: activeRefresher,
+    priceTable,
     allowedOrigins: config.CORS_ORIGINS,
   });
 

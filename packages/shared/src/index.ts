@@ -145,9 +145,22 @@ const tokenCounts = {
   turns: z.number().int(),
 };
 
+export const ESTIMATE_NOTE =
+  "List-price estimate: what this usage costs at the public API prices. It is not what your subscription charges." as const;
+
+/** The estimate in USD. It is null when the turns have no price. */
+const estimateFields = {
+  estimate: z.number().nonnegative().nullable(),
+  unpricedTurns: z.number().int(),
+};
+
+const unpricedModels = z.array(z.object({ model: z.string(), turns: z.number().int() }).strict());
+
 export const SeriesResponse = z
   .object({
-    buckets: z.array(z.object({ start: UsageDate, ...tokenCounts }).strict()),
+    buckets: z.array(z.object({ start: UsageDate, ...tokenCounts, ...estimateFields }).strict()),
+    unpricedModels,
+    note: z.literal(ESTIMATE_NOTE),
   })
   .strict();
 export type SeriesResponse = z.infer<typeof SeriesResponse>;
@@ -160,13 +173,16 @@ export const BreakdownResponse = z
           key: z.string(),
           label: z.string(),
           ...tokenCounts,
+          ...estimateFields,
           firstTurnAt: z.iso.datetime().optional(),
           lastTurnAt: z.iso.datetime().optional(),
         })
         .strict(),
     ),
-    totals: z.object(tokenCounts).strict(),
+    totals: z.object({ ...tokenCounts, ...estimateFields }).strict(),
     rowCount: z.number().int(),
+    unpricedModels,
+    note: z.literal(ESTIMATE_NOTE),
   })
   .strict();
 export type BreakdownResponse = z.infer<typeof BreakdownResponse>;

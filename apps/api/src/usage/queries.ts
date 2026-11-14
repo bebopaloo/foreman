@@ -1,6 +1,7 @@
 import { type Database, schema } from "@foreman/db";
-import { MAX_SERIES_BUCKETS, type UsageGrain } from "@foreman/shared";
+import { ESTIMATE_NOTE, MAX_SERIES_BUCKETS, type UsageGrain } from "@foreman/shared";
 import { sql, type SQL } from "drizzle-orm";
+import { estimateGroup, type PriceTable } from "./prices.ts";
 import { labelProjects, projectId } from "./projects.ts";
 
 export interface UsageRange {
@@ -38,6 +39,67 @@ const sums = {
   cacheReadTokens: sql<number>`coalesce(sum(${schema.turns.cacheReadTokens}), 0)::float8`,
   turns: sql<number>`count(*)::float8`,
 };
+
+// The estimate needs the model, the speed and the service tier of each turn, so each query
+// groups by them as well. The rows merge in code, after the price of each group is known.
+const priceSums = {
+  model: schema.turns.model,
+  speed: schema.turns.speed,
+  serviceTier: schema.turns.serviceTier,
+  cacheWrite5mTokens: sql<number>`coalesce(sum(${schema.turns.cacheWrite5mTokens}), 0)::float8`,
+  cacheWrite1hTokens: sql<number>`coalesce(sum(${schema.turns.cacheWrite1hTokens}), 0)::float8`,
+  webSearchCount: sql<number>`coalesce(sum(${schema.turns.webSearchCount}), 0)::float8`,
+};
+
+const priceGroupBy = [schema.turns.model, schema.turns.speed, schema.turns.serviceTier] as const;
+
+interface PricedGroup extends TokenCounts {
+  model: string;
+  speed: string | null;
+  serviceTier: string | null;
+  cacheWrite5mTokens: number;
+  cacheWrite1hTokens: number;
+  webSearchCount: number;
+}
+
+/** The totals of the groups that fall into one row, bucket or response. */
+class Accumulator {
+  counts: TokenCounts = { ...ZERO };
+  estimate = 0;
+  unpricedTurns = 0;
+
+  add(table: PriceTable, group: PricedGroup, unpriced: Map<string, number>): void {
+    this.counts = {
+      inputTokens: this.counts.inputTokens + group.inputTokens,
+      outputTokens: this.counts.outputTokens + group.outputTokens,
+      cacheWriteTokens: this.counts.cacheWriteTokens + group.cacheWriteTokens,
+      cacheReadTokens: this.counts.cacheReadTokens + group.cacheReadTokens,
+      turns: this.counts.turns + group.turns,
+    };
+    const result = estimateGroup(table, group);
+    this.estimate += result.estimate;
+    this.unpricedTurns += result.unpricedTurns;
+    if (result.unpricedModel !== null) {
+      unpriced.set(result.unpricedModel, (unpriced.get(result.unpricedModel) ?? 0) + group.turns);
+    }
+  }
+
+  /** Token counts and estimate. The estimate is null when all turns are unpriced. */
+  result() {
+    const allUnpriced = this.counts.turns > 0 && this.unpricedTurns === this.counts.turns;
+    return {
+      ...this.counts,
+      estimate: allUnpriced ? null : Math.round(this.estimate * 1e6) / 1e6,
+      unpricedTurns: this.unpricedTurns,
+    };
+  }
+}
+
+function unpricedList(unpriced: Map<string, number>) {
+  return [...unpriced]
+    .map(([model, turns]) => ({ model, turns }))
+    .sort((a, b) => b.turns - a.turns || a.model.localeCompare(b.model));
+}
 
 function rangeFilter(range: UsageRange, projectKey: string | null): SQL {
   const day = localDate(range.tz);
@@ -93,6 +155,7 @@ export function bucketStarts(from: string, to: string, grain: UsageGrain): strin
 
 export async function querySeries(
   db: Database,
+  table: PriceTable,
   range: UsageRange,
   grain: UsageGrain,
   projectKey: string | null,
@@ -100,22 +163,25 @@ export async function querySeries(
   const starts = bucketStarts(range.from, range.to, grain);
   const start = sql<string>`to_char(date_trunc(${grain}::text, ${schema.turns.time} at time zone ${range.tz}::text), 'YYYY-MM-DD')`;
   const rows = await db
-    .select({ start, ...sums })
+    .select({ start, ...sums, ...priceSums })
     .from(schema.turns)
     .where(rangeFilter(range, projectKey))
-    .groupBy(sql`1`);
-  const byStart = new Map(rows.map((row) => [row.start, row]));
-  return starts.map((day) => {
-    const row = byStart.get(day);
-    return {
+    .groupBy(sql`1`, ...priceGroupBy);
+  const unpriced = new Map<string, number>();
+  const byStart = new Map<string, Accumulator>();
+  for (const row of rows) {
+    const bucket = byStart.get(row.start) ?? new Accumulator();
+    bucket.add(table, row, unpriced);
+    byStart.set(row.start, bucket);
+  }
+  return {
+    buckets: starts.map((day) => ({
       start: day,
-      inputTokens: row?.inputTokens ?? 0,
-      outputTokens: row?.outputTokens ?? 0,
-      cacheWriteTokens: row?.cacheWriteTokens ?? 0,
-      cacheReadTokens: row?.cacheReadTokens ?? 0,
-      turns: row?.turns ?? 0,
-    };
-  });
+      ...(byStart.get(day) ?? new Accumulator()).result(),
+    })),
+    unpricedModels: unpricedList(unpriced),
+    note: ESTIMATE_NOTE,
+  };
 }
 
 export type BreakdownDimension = "project" | "model" | "agentType" | "branch" | "session";
@@ -138,8 +204,16 @@ function dimensionKey(dimension: BreakdownDimension): SQL<string> {
 const total = (row: TokenCounts) =>
   row.inputTokens + row.outputTokens + row.cacheWriteTokens + row.cacheReadTokens;
 
+interface DimensionGroup {
+  accumulator: Accumulator;
+  projectKey: string;
+  first: Date;
+  last: Date;
+}
+
 export async function queryBreakdown(
   db: Database,
+  table: PriceTable,
   range: UsageRange,
   dimension: BreakdownDimension,
   limit: number,
@@ -153,10 +227,11 @@ export async function queryBreakdown(
       first: sql<Date>`min(${schema.turns.time})`.mapWith((value: string) => new Date(value)),
       last: sql<Date>`max(${schema.turns.time})`.mapWith((value: string) => new Date(value)),
       ...sums,
+      ...priceSums,
     })
     .from(schema.turns)
     .where(rangeFilter(range, projectKey))
-    .groupBy(key);
+    .groupBy(key, ...priceGroupBy);
 
   // Labels come from all Projects, so that a filter does not change a label.
   const refs = await db
@@ -165,39 +240,48 @@ export async function queryBreakdown(
   const labels = labelProjects(refs);
   const labelOf = (projectKey: string) => labels.get(projectKey) ?? projectKey;
 
-  const rows = grouped.map((row) => {
-    const counts: TokenCounts = {
-      inputTokens: row.inputTokens,
-      outputTokens: row.outputTokens,
-      cacheWriteTokens: row.cacheWriteTokens,
-      cacheReadTokens: row.cacheReadTokens,
-      turns: row.turns,
+  const unpriced = new Map<string, number>();
+  const everything = new Accumulator();
+  const byKey = new Map<string, DimensionGroup>();
+  for (const row of grouped) {
+    const existing = byKey.get(row.key);
+    const group = existing ?? {
+      accumulator: new Accumulator(),
+      projectKey: row.projectKey,
+      first: row.first,
+      last: row.last,
     };
+    group.accumulator.add(table, row, unpriced);
+    // The totals row counts each group once, so the unpriced models are not counted twice.
+    everything.add(table, row, new Map());
+    if (row.first < group.first) group.first = row.first;
+    if (row.last > group.last) group.last = row.last;
+    byKey.set(row.key, group);
+  }
+
+  const rows = [...byKey].map(([groupKey, group]) => {
+    const figures = group.accumulator.result();
     if (dimension === "project") {
-      return { key: projectId(row.key), label: labelOf(row.key), ...counts };
+      return { key: projectId(groupKey), label: labelOf(groupKey), ...figures };
     }
     if (dimension === "session") {
       return {
-        key: row.key,
-        label: labelOf(row.projectKey),
-        ...counts,
-        firstTurnAt: row.first.toISOString(),
-        lastTurnAt: row.last.toISOString(),
+        key: groupKey,
+        label: labelOf(group.projectKey),
+        ...figures,
+        firstTurnAt: group.first.toISOString(),
+        lastTurnAt: group.last.toISOString(),
       };
     }
-    return { key: row.key, label: row.key, ...counts };
+    return { key: groupKey, label: groupKey, ...figures };
   });
   rows.sort((a, b) => total(b) - total(a) || a.key.localeCompare(b.key));
 
-  const totals = rows.reduce<TokenCounts>(
-    (sum, row) => ({
-      inputTokens: sum.inputTokens + row.inputTokens,
-      outputTokens: sum.outputTokens + row.outputTokens,
-      cacheWriteTokens: sum.cacheWriteTokens + row.cacheWriteTokens,
-      cacheReadTokens: sum.cacheReadTokens + row.cacheReadTokens,
-      turns: sum.turns + row.turns,
-    }),
-    ZERO,
-  );
-  return { rows: rows.slice(0, limit), totals, rowCount: rows.length };
+  return {
+    rows: rows.slice(0, limit),
+    totals: everything.result(),
+    rowCount: rows.length,
+    unpricedModels: unpricedList(unpriced),
+    note: ESTIMATE_NOTE,
+  };
 }
