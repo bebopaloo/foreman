@@ -1,4 +1,4 @@
-import { appendFile, chmod, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -233,6 +233,39 @@ describe("ingestTranscripts cursors", () => {
     const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
     expect(rows.map((row) => row.turnKey)).toEqual(["m1", "m2", "m3"]);
     expect(rows[0]?.inputTokens).toBe(9);
+  });
+
+  it("reads only the new lines of a file over 4 KiB that grows", async () => {
+    const folder = await makeConfigFolder();
+    const lines = Array.from({ length: 30 }, (_, index) => assistantLine("m" + String(index)));
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", lines);
+    expect((await readFile(file)).length).toBeGreaterThan(8192);
+    await refresh(folder);
+    await appendFile(file, [assistantLine("m30"), assistantLine("m31")].join("\n") + "\n");
+
+    const { result, entries } = await refresh(folder);
+
+    expect(result.turns).toBe(2);
+    expect(entries.map((entry) => entry.message)).toContain(`read 2 new lines in ${file}`);
+    expect(await database.db.select().from(schema.turns)).toHaveLength(32);
+  });
+
+  it("reads the full file again when only the 4 KiB before the offset changed", async () => {
+    const folder = await makeConfigFolder();
+    const lines = Array.from({ length: 30 }, (_, index) => assistantLine("m" + String(index)));
+    const file = await writeTranscript(folder.claudeDir, "p/session-1.jsonl", lines);
+    expect((await readFile(file)).length).toBeGreaterThan(8192);
+    await refresh(folder);
+    const changed = [...lines];
+    changed[25] = assistantLine("m25", { input: 9 });
+    await writeFile(file, changed.join("\n") + "\n");
+
+    const { result } = await refresh(folder);
+
+    expect(result.turns).toBe(30);
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows).toHaveLength(30);
+    expect(rows.find((row) => row.turnKey === "m25")?.inputTokens).toBe(9);
   });
 
   it("reads the full file again when it is smaller than the offset", async () => {
