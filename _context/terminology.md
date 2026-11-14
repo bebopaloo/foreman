@@ -49,7 +49,25 @@ One record of the used percentage and the reset time of each **Limit window**, t
 _Parent:_ **Limit window**\
 _Avoid_: snapshot, sample
 
+### Foreman dash
+The start view of Foreman. For the **Client scope**, it shows the factory's progress, the builds that run in parallel, the review and control health, and the items that wait for the Operator, with links into the other views.\
+_Refs:_ **Client scope**\
+_Avoid_: dashboard, home page, mission control
+
+### Client scope
+The one client whose repos Foreman shows, or "All". Each repo in the factory's repo list names its client. With one client in scope, every view shows only the data of that client's repos, and the header shows the scope. A repo with no client is "Unassigned" and shows only in "All".\
+_Refs:_ **Project**\
+_Avoid_: tenant, workspace, filter, demo mode
+
+### Work cache
+The copy of the tracker and forge work state that Foreman keeps in its database: issues, pull requests, reviews and Releases, with titles and structured fields only. Foreman fills it with read commands of the adapters, and the forge and the tracker stay the record.\
+_Refs:_ **Usage index**, **Client scope**\
+_Avoid_: snapshot, mirror, index
+
 ## Flagged ambiguities
+
+### Usage index vs Work cache
+The **Usage index** comes from local files, and a reindex restores all of it. The **Work cache** comes from the forge and the tracker. A reindex restores its open items and the newest closed items, but not the older closed items.
 
 ### Transcript archive vs Usage index
 The **Transcript archive** holds the raw transcripts and is the store of record. The **Usage index** holds only counts and labels, and Foreman can delete it and build it again from the archive. A loss of the index loses nothing; a loss of the archive loses history.

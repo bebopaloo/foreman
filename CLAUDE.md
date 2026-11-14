@@ -20,7 +20,8 @@ All of them pass before a commit.
 
 ## Constraints
 
-- Foreman binds to `127.0.0.1` only and sends no data off the machine. No telemetry, no external fonts or scripts, no outbound HTTP.
+- Foreman binds to `127.0.0.1` only. No telemetry, no external fonts or scripts, and no outbound HTTP from Foreman's own code. The one exception: the adapter subprocesses run allow-listed read commands against the configured forge and tracker hosts, with Foreman's read-only token (`_context/adr/0003-read-only-forge-and-tracker-connection.md`).
+- Foreman is read-only. It never changes the tracker, the forge, the repos or the factory.
 - It reads Claude Code's own files and never writes them. Changes to Claude Code settings go through factory skills, not through Foreman.
 - The API runs TypeScript with Node type stripping: use only erasable syntax (no `enum`, no parameter properties, no `namespace`), and import local files with their `.ts` extension.
 - `.claude/rules/` holds the Repo rules from the factory's Rule templates. Change a rule there in its own commit; `.prettierignore` skips the folder so the files stay comparable with the templates.
