@@ -27,7 +27,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The web app runs at http://127.0.0.1:5173 and calls the API at http://127.0.0.1:3000 through the Vite proxy.
+The web app runs at http://127.0.0.1:47173 and calls the API at http://127.0.0.1:47130 through the Vite proxy.
 
 The local database listens on `127.0.0.1:55432`. Set `DB_PORT` before `docker compose up` to use another port, and set the same `DB_PORT` when you run the tests. It accepts local connections without a password; never use these settings for a shared database.
 
@@ -55,8 +55,8 @@ CI runs all of these, a secret scan and a dependency audit on every pull request
 `compose.preview.yaml` runs a production-like build of the current checkout on this machine: the API image, the built web app behind Caddy on one origin, and its own database. Only the web port is published, on `127.0.0.1`.
 
 ```bash
-PREVIEW_PORT=8100 docker compose -f compose.preview.yaml -p foreman-preview up -d --build --wait
-E2E_BASE_URL=http://127.0.0.1:8100 pnpm test:e2e
+PREVIEW_PORT=47180 docker compose -f compose.preview.yaml -p foreman-preview up -d --build --wait
+E2E_BASE_URL=http://127.0.0.1:47180 pnpm test:e2e
 docker compose -f compose.preview.yaml -p foreman-preview down --volumes
 ```
 
@@ -70,10 +70,10 @@ Change `packages/db/src/schema.ts`, run `pnpm db:generate`, read the generated S
 
 The API reads these variables at start-up and stops if one is invalid.
 
-| Variable       | Default                                               |
-| -------------- | ----------------------------------------------------- |
-| `DATABASE_URL` | none; `pnpm dev` uses the local database              |
-| `HOST`         | `127.0.0.1`                                           |
-| `PORT`         | `3000`                                                |
-| `CORS_ORIGINS` | `http://127.0.0.1:5173`; a comma-separated allow-list |
-| `LOG_LEVEL`    | `info`                                                |
+| Variable       | Default                                                |
+| -------------- | ------------------------------------------------------ |
+| `DATABASE_URL` | none; `pnpm dev` uses the local database               |
+| `HOST`         | `127.0.0.1`                                            |
+| `PORT`         | `47130`                                                |
+| `CORS_ORIGINS` | `http://127.0.0.1:47173`; a comma-separated allow-list |
+| `LOG_LEVEL`    | `info`                                                 |

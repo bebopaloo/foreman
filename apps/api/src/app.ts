@@ -8,6 +8,7 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import type { Config } from "./config.ts";
+import { registerHostCheck } from "./host-check.ts";
 import { healthRoutes } from "./routes/health.ts";
 
 declare module "fastify" {
@@ -42,6 +43,9 @@ export async function buildApp({ config, db, logger }: AppOptions) {
       .status(status)
       .send({ error: status >= 500 ? "Internal error" : "Bad request", requestId: request.id });
   });
+
+  // First hook: a foreign Host never reaches CORS, auth or a route.
+  registerHostCheck(app);
 
   await app.register(helmet);
   await app.register(cors, { origin: config.CORS_ORIGINS });
