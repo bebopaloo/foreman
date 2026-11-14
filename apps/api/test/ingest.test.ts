@@ -229,6 +229,34 @@ describe("ingestTranscripts", () => {
     expect(rows[0]?.agentType).toBe("reviewer");
   });
 
+  it("keeps the known agent type when a later copy of the agent has no meta file", async () => {
+    const folder = await makeConfigFolder();
+    const dir = "p/session-1/subagents";
+    await writeTranscript(folder.claudeDir, `${dir}/agent-a1.jsonl`, [assistantLine("m1")]);
+    await writeMeta(folder.claudeDir, `${dir}/agent-a1.meta.json`, {
+      agentType: "software-developer",
+      toolUseId: "toolu_1",
+    });
+    await writeArchived(folder.dataDir, `${dir}/agent-a1.jsonl`, [assistantLine("m2")]);
+
+    await refresh(folder);
+
+    const agents = await database.db.select().from(schema.agents);
+    expect(agents).toEqual([
+      {
+        agentId: "a1",
+        sessionId: "session-1",
+        agentType: "software-developer",
+        startToolCallId: "toolu_1",
+      },
+    ]);
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => [row.turnKey, row.agentType])).toEqual([
+      ["m1", "software-developer"],
+      ["m2", "software-developer"],
+    ]);
+  });
+
   it("ends idle with 0 files and logs each missing source", async () => {
     const folder = await makeConfigFolder();
 

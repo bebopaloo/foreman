@@ -24,7 +24,7 @@ export interface SourceScan {
 }
 
 const MAIN_AGENT_TYPE = "main";
-const UNKNOWN_SUB_AGENT_TYPE = "sub-agent (unknown)";
+export const UNKNOWN_SUB_AGENT_TYPE = "sub-agent (unknown)";
 // <project folder>/<session id>.jsonl is a main session file.
 const MAIN_FILE_DEPTH = 2;
 

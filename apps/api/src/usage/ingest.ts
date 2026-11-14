@@ -9,6 +9,7 @@ import {
   readArchiveLines,
   readNewLines,
   scanSources,
+  UNKNOWN_SUB_AGENT_TYPE,
 } from "./sources.ts";
 
 export interface IngestLog {
@@ -147,11 +148,15 @@ async function readSources(options: IngestOptions): Promise<
     if (file.agent !== undefined) {
       const meta = await readAgentMeta(file);
       agentType = meta.agentType ?? agentType;
+      const earlier = agents.get(file.agent.agentId);
+      if (agentType === UNKNOWN_SUB_AGENT_TYPE && earlier !== undefined) {
+        agentType = earlier.agentType;
+      }
       agents.set(file.agent.agentId, {
         agentId: file.agent.agentId,
         sessionId: file.agent.sessionId,
         agentType,
-        startToolCallId: meta.startToolCallId ?? null,
+        startToolCallId: meta.startToolCallId ?? earlier?.startToolCallId ?? null,
       });
     }
     let skipped = 0;
@@ -223,8 +228,8 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
           .onConflictDoUpdate({
             target: schema.agents.agentId,
             set: {
-              agentType: sql`excluded.agent_type`,
-              startToolCallId: sql`excluded.start_tool_call_id`,
+              agentType: sql`case when excluded.agent_type = ${UNKNOWN_SUB_AGENT_TYPE} then ${schema.agents.agentType} else excluded.agent_type end`,
+              startToolCallId: sql`coalesce(excluded.start_tool_call_id, ${schema.agents.startToolCallId})`,
             },
           });
         // A meta file can appear or change after a refresh stored the turns of its agent.
