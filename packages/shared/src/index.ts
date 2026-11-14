@@ -71,3 +71,15 @@ export type UsageProject = z.infer<typeof UsageProject>;
 export const ProjectsResponse = z.object({ projects: z.array(UsageProject) }).strict();
 
 export type ProjectsResponse = z.infer<typeof ProjectsResponse>;
+
+export const RefreshStatusResponse = z
+  .object({
+    state: z.enum(["idle", "running", "failed"]),
+    filesRead: z.number().int().nullable(),
+    filesTotal: z.number().int().nullable(),
+    dataAsOf: z.iso.datetime().nullable(),
+    reason: z.string().nullable(),
+  })
+  .strict();
+
+export type RefreshStatusResponse = z.infer<typeof RefreshStatusResponse>;

@@ -1,15 +1,44 @@
 import { type Database, schema } from "@foreman/db";
-import { ProjectsQuery, ProjectsResponse } from "@foreman/shared";
+import { ProjectsQuery, ProjectsResponse, RefreshStatusResponse } from "@foreman/shared";
 import { eq, max, min } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { originGuard } from "../host-check.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
+import type { Refresher } from "../usage/refresh.ts";
 
 export interface UsageOptions {
   db: Database;
+  refresher: Refresher;
+  /** The origins that may send a refresh request. */
+  allowedOrigins: readonly string[];
 }
 
 // Foreman has no sign-in: the loopback bind and the Host check are its access control.
-export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (app, { db }, done) => {
+export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
+  app,
+  { db, refresher, allowedOrigins },
+  done,
+) => {
+  app.get(
+    "/status",
+    { config: { public: true }, schema: { response: { 200: RefreshStatusResponse } } },
+    () => refresher.status(),
+  );
+
+  // The refresh runs in the background: the request never waits for it.
+  app.post(
+    "/refresh",
+    {
+      config: { public: true },
+      onRequest: originGuard(allowedOrigins),
+      schema: { response: { 202: RefreshStatusResponse } },
+    },
+    async (_request, reply) => {
+      void refresher.trigger();
+      return reply.status(202).send(await refresher.status());
+    },
+  );
+
   app.get(
     "/projects",
     {

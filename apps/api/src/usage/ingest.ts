@@ -17,6 +17,8 @@ export interface IngestOptions {
   log: IngestLog;
   /** Delete all turns in the same transaction that writes the new turns. */
   replaceAll?: boolean;
+  /** Called with the files read and the files found, at the start and after each file. */
+  onProgress?: (progress: { filesRead: number; filesTotal: number }) => void;
 }
 
 export interface IngestResult {
@@ -107,6 +109,8 @@ async function readSources(
   let files = 0;
   let skippedLines = 0;
   let unreadableFiles = 0;
+  const filesTotal = scan.files.length;
+  options.onProgress?.({ filesRead: 0, filesTotal });
   for (const file of scan.files) {
     let lines: string[];
     try {
@@ -116,6 +120,7 @@ async function readSources(
     } catch {
       unreadableFiles += 1;
       log.warn(`unreadable file: ${file.path}`);
+      options.onProgress?.({ filesRead: files + unreadableFiles, filesTotal });
       continue;
     }
     files += 1;
@@ -131,6 +136,7 @@ async function readSources(
     }
     if (skipped > 0) log.warn(`skipped ${plural(skipped, "line")} in ${file.path}`);
     skippedLines += skipped;
+    options.onProgress?.({ filesRead: files + unreadableFiles, filesTotal });
   }
   const knownProjects = await db
     .selectDistinct({ key: schema.turns.projectKey })
@@ -208,4 +214,27 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
       .where(eq(schema.refreshRuns.id, run.id));
     throw error;
   }
+}
+
+export type LockResult<T> = { ran: true; value: T } | { ran: false };
+
+// The key of the Postgres advisory lock that one refresh holds.
+const REFRESH_LOCK_KEY = 5_011_001;
+
+/**
+ * Runs `fn` while it holds the refresh lock. The lock belongs to one open
+ * transaction, so Postgres frees it when the process ends. When another refresh
+ * holds the lock, `fn` does not run.
+ */
+export async function withRefreshLock<T>(
+  db: Database,
+  fn: () => Promise<T>,
+): Promise<LockResult<T>> {
+  return db.transaction(async (tx): Promise<LockResult<T>> => {
+    const rows = await tx.execute<{ locked: boolean }>(
+      sql`select pg_try_advisory_xact_lock(${REFRESH_LOCK_KEY}) as locked`,
+    );
+    if (rows[0]?.locked !== true) return { ran: false };
+    return { ran: true, value: await fn() };
+  });
 }

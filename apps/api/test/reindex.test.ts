@@ -2,6 +2,7 @@ import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { runReindex } from "../src/reindex.ts";
+import { withRefreshLock } from "../src/usage/ingest.ts";
 import { openTestDatabase } from "./database.ts";
 import {
   assistantLine,
@@ -80,5 +81,34 @@ describe("runReindex", () => {
 
     const keys = (await database.db.select().from(schema.turns)).map((row) => row.turnKey);
     expect(keys).toEqual(["old"]);
+  });
+
+  it("stops with a message and keeps the data while a refresh runs", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [assistantLine("m1")]);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered: () => void = () => undefined;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const refresh = withRefreshLock(database.db, async () => {
+      entered();
+      await held;
+    });
+    await inside;
+
+    try {
+      await expect(
+        runReindex({ db: database.db, ...folder, log: recordingLog().log }),
+      ).rejects.toThrow("A refresh is running.");
+    } finally {
+      release();
+      await refresh;
+    }
+
+    expect(await database.db.select().from(schema.turns)).toEqual([]);
   });
 });
