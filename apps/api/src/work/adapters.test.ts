@@ -216,6 +216,17 @@ describe("resolveAdapter", () => {
     expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
   });
 
+  it("refuses a plugins/cache path that climbs out of plugins/", async () => {
+    await installPlugin("factory-github@a", {
+      adapter: forgeAdapter,
+      installPath: "/home/x/.claude/plugins/cache/../../../elsewhere",
+    });
+
+    const result = await resolveAdapter(claudeDir, "factory-github", "forge");
+
+    expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
+  });
+
   it("refuses an adapter of the wrong role", async () => {
     await installPlugin("factory-github@a", { adapter: { ...forgeAdapter, role: "tracker" } });
 
