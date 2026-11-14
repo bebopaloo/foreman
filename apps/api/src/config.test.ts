@@ -37,3 +37,27 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ DATABASE_URL, PORT: "70000" })).toThrow(/PORT/);
   });
 });
+
+describe("loadConfig config folder", () => {
+  const HOME = "/home/synthetic";
+
+  it("reads from ~/.claude-bebopaloo with no variable", () => {
+    const config = loadConfig({ DATABASE_URL }, HOME);
+    expect(config.FOREMAN_CLAUDE_DIR).toBe("/home/synthetic/.claude-bebopaloo");
+    expect(config.FOREMAN_DATA_DIR).toBe("/home/synthetic/.foreman");
+  });
+
+  it("uses the folder that the variable names", () => {
+    const config = loadConfig({ DATABASE_URL, FOREMAN_CLAUDE_DIR: "/srv/claude" }, HOME);
+    expect(config.FOREMAN_CLAUDE_DIR).toBe("/srv/claude");
+  });
+
+  it("stops when the variable points to ~/.claude", () => {
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_CLAUDE_DIR: "~/.claude" }, HOME)).toThrow(
+      /FOREMAN_CLAUDE_DIR/,
+    );
+    expect(() =>
+      loadConfig({ DATABASE_URL, FOREMAN_CLAUDE_DIR: "/home/synthetic/.claude/" }, HOME),
+    ).toThrow(/FOREMAN_CLAUDE_DIR/);
+  });
+});
