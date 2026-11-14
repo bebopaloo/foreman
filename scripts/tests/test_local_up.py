@@ -67,6 +67,15 @@ class LocalUpScript(unittest.TestCase):
             self.assertIn("FOREMAN_CLAUDE_DIR", result.stderr)
             self.assertEqual(log, "")
 
+    def test_refuses_a_symlink_to_the_default_claude_folder(self):
+        with tempfile.TemporaryDirectory() as home:
+            (pathlib.Path(home) / ".claude").mkdir()
+            (pathlib.Path(home) / "link").symlink_to(pathlib.Path(home) / ".claude")
+            result, log = run_script(home, {"FOREMAN_CLAUDE_DIR": f"{home}/link"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("FOREMAN_CLAUDE_DIR", result.stderr)
+            self.assertEqual(log, "")
+
     def test_reindex_runs_in_the_api_container(self):
         with tempfile.TemporaryDirectory() as home:
             result, log = run_script(home, args=("reindex",))
@@ -93,6 +102,10 @@ class ComposeFile(unittest.TestCase):
         self.assertIn("${FOREMAN_CLAUDE_DIR:?", COMPOSE)
         self.assertIn("${FOREMAN_DATA_DIR:?", COMPOSE)
         self.assertEqual(COMPOSE.count(":ro"), 2)
+
+    def test_api_allows_both_loopback_origins(self):
+        self.assertIn("http://127.0.0.1:${LOCAL_PORT:-47100}", COMPOSE)
+        self.assertIn("http://localhost:${LOCAL_PORT:-47100}", COMPOSE)
 
     def test_long_running_services_restart_unless_stopped(self):
         self.assertEqual(COMPOSE.count("restart: unless-stopped"), 3)

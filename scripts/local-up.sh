@@ -18,7 +18,7 @@ compose=(docker compose -f compose.local.yaml -p "${LOCAL_PROJECT:-foreman-local
 case "$command" in
   up)
     claude_dir="${FOREMAN_CLAUDE_DIR%/}"
-    if [ "$claude_dir" = "$HOME/.claude" ]; then
+    if [ "$claude_dir" = "$HOME/.claude" ] || [ "$claude_dir" -ef "$HOME/.claude" ]; then
       echo "FOREMAN_CLAUDE_DIR must not be ~/.claude." >&2
       exit 1
     fi
