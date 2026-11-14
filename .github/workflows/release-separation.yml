@@ -5,7 +5,8 @@
 # workflow that they run may use the production environment. This check fails when
 # a workflow other than deploy-production.yml uses it, or when deploy-production.yml
 # runs on anything other than a push to production or a workflow_dispatch. The
-# Machine gate needs every check, so a failure here stops the merge.
+# Machine gate needs every check, so a failure here stops the merge. The logic is in
+# scripts/check_release_separation.py, with tests in scripts/tests/.
 name: release-separation
 
 on:
@@ -24,27 +25,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Only the production deploy uses the production environment
+      # The script parses each workflow as YAML. A regex misses valid spellings of
+      # `environment`. The version is pinned so a new release cannot change the check.
+      - name: Install the YAML parser
         run: |
-          python3 - <<'PY'
-          import pathlib, re, sys
-
-          PRODUCTION = re.compile(r"^\s*environment:\s*(?:\{\s*name:\s*)?['\"]?production['\"]?\s*\}?\s*(?:#.*)?$"
-                                  r"|^\s*environment:\s*\n\s+name:\s*['\"]?production['\"]?", re.MULTILINE)
-          TRIGGER = re.compile(r"^on:\s*\n((?:[ \t]+.*\n|\s*\n)+)", re.MULTILINE)
-          problems = []
-          for path in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
-              text = path.read_text()
-              if path.name == "deploy-production.yml":
-                  trigger = TRIGGER.search(text)
-                  events = set(re.findall(r"^  ([\w-]+):", trigger.group(1), re.MULTILINE)) if trigger else set()
-                  if not trigger or events - {"push", "workflow_dispatch"}:
-                      problems.append(f"{path}: runs on {sorted(events)}; only push to production and workflow_dispatch")
-                  elif not re.search(r"^  push:\s*\n    branches:\s*\[\s*production\s*\]", trigger.group(1), re.MULTILINE):
-                      problems.append(f"{path}: a push deploys only from the production branch")
-              elif PRODUCTION.search(text):
-                  problems.append(f"{path}: uses the production environment; only deploy-production.yml may")
-          for problem in problems:
-              print(f"::error::{problem}")
-          sys.exit(1 if problems else 0)
-          PY
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check PyYAML==6.0.3
+      - name: Test the separation check
+        run: '"$RUNNER_TEMP/venv/bin/python" -m unittest discover -s scripts/tests'
+      - name: Only the production deploy uses the production environment
+        run: '"$RUNNER_TEMP/venv/bin/python" scripts/check_release_separation.py'
