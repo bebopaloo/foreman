@@ -78,6 +78,11 @@ describe("an invalid query", () => {
   it.each(routes)("%s rejects an unknown time zone", async (route) => {
     expect((await get(`${route}&from=2026-11-01&to=2026-11-03&tz=Mars/Base`)).statusCode).toBe(400);
   });
+  it.each(routes)("%s rejects an offset time zone", async (route) => {
+    for (const tz of ["%2B03:00", "-05:00", "EST5EDT%20extra", "UTC%2B3"]) {
+      expect((await get(`${route}&from=2026-11-01&to=2026-11-03&tz=${tz}`)).statusCode).toBe(400);
+    }
+  });
   it.each(routes)("%s rejects a from date after the to date", async (route) => {
     expect((await get(`${route}&from=2026-11-04&to=2026-11-03&tz=UTC`)).statusCode).toBe(400);
   });

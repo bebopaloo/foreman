@@ -87,13 +87,11 @@ export type RefreshStatusResponse = z.infer<typeof RefreshStatusResponse>;
 /** The most buckets that one series request may ask for. */
 export const MAX_SERIES_BUCKETS = 3700;
 
+// Only IANA names: Postgres reads an offset such as `+03:00` with the opposite sign.
+const TIME_ZONES: ReadonlySet<string> = new Set([...Intl.supportedValuesOf("timeZone"), "UTC"]);
+
 function isTimeZone(value: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value });
-    return true;
-  } catch {
-    return false;
-  }
+  return TIME_ZONES.has(value);
 }
 
 const UsageDate = z

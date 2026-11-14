@@ -98,16 +98,12 @@ export async function querySeries(
   projectKey: string | null,
 ) {
   const starts = bucketStarts(range.from, range.to, grain);
-  // `grain` is an enum value and `tz` is a parameter. A parameter in the group
-  // key would not match the same parameter in the select list, so the key uses
-  // a literal zone name that Postgres reads as a string constant.
-  const zone = sql.raw(`'${range.tz.replaceAll("'", "''")}'`);
-  const start = sql<string>`to_char(date_trunc(${sql.raw(`'${grain}'`)}, ${schema.turns.time} at time zone ${zone}), 'YYYY-MM-DD')`;
+  const start = sql<string>`to_char(date_trunc(${grain}::text, ${schema.turns.time} at time zone ${range.tz}::text), 'YYYY-MM-DD')`;
   const rows = await db
     .select({ start, ...sums })
     .from(schema.turns)
     .where(rangeFilter(range, projectKey))
-    .groupBy(start);
+    .groupBy(sql`1`);
   const byStart = new Map(rows.map((row) => [row.start, row]));
   return starts.map((day) => {
     const row = byStart.get(day);
