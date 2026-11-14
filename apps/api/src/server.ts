@@ -6,6 +6,7 @@ const config = loadConfig();
 const database = createDatabase(config.DATABASE_URL);
 const app = await buildApp({ config, db: database.db });
 app.addHook("onClose", async () => {
+  await app.refresher.stop();
   await database.close();
 });
 
@@ -16,3 +17,4 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 await app.listen({ host: config.HOST, port: config.PORT });
+app.refresher.start();

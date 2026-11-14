@@ -12,11 +12,16 @@ import { registerHostCheck } from "./host-check.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
 import { usageRoutes } from "./routes/usage.ts";
+import { createRefresher, type Refresher } from "./usage/refresh.ts";
 
 declare module "fastify" {
   interface FastifyContextConfig {
     /** Marks a route that needs no sign-in. Every other route needs an `onRequest` auth hook. */
     public?: boolean;
+  }
+  interface FastifyInstance {
+    /** The refresh schedule and state. `server.ts` starts it. */
+    refresher: Refresher;
   }
 }
 
@@ -24,14 +29,36 @@ export interface AppOptions {
   config: Config;
   db: Database;
   logger?: FastifyServerOptions["logger"];
+  /** Tests pass a fake. The default reads the folders of the config. */
+  refresher?: Refresher;
 }
 
 const REDACTED_KEYS = ["req.headers.authorization", "req.headers.cookie", "*.password", "*.token"];
 
-export async function buildApp({ config, db, logger }: AppOptions) {
+export async function buildApp({ config, db, logger, refresher }: AppOptions) {
   const app = Fastify({
     logger: logger ?? { level: config.LOG_LEVEL, redact: REDACTED_KEYS },
   }).withTypeProvider<ZodTypeProvider>();
+
+  const activeRefresher =
+    refresher ??
+    createRefresher({
+      db,
+      claudeDir: config.FOREMAN_CLAUDE_DIR,
+      dataDir: config.FOREMAN_DATA_DIR,
+      log: {
+        info: (message) => {
+          app.log.info(message);
+        },
+        warn: (message) => {
+          app.log.warn(message);
+        },
+      },
+    });
+  app.decorate("refresher", activeRefresher);
+  app.addHook("onClose", async () => {
+    await activeRefresher.stop();
+  });
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -62,7 +89,12 @@ export async function buildApp({ config, db, logger }: AppOptions) {
 
   await app.register(healthRoutes, { prefix: "/api", db });
   await app.register(workRoutes, { prefix: "/api", db, claudeDir: config.FOREMAN_CLAUDE_DIR });
-  await app.register(usageRoutes, { prefix: "/api/usage", db });
+  await app.register(usageRoutes, {
+    prefix: "/api/usage",
+    db,
+    refresher: activeRefresher,
+    allowedOrigins: config.CORS_ORIGINS,
+  });
 
   return app;
 }

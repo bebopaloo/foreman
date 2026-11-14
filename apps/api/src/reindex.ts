@@ -1,7 +1,14 @@
 import { createDatabase } from "@foreman/db";
 import type { Database } from "@foreman/db";
 import { loadConfig } from "./config.ts";
-import { type IngestLog, ingestTranscripts, plural } from "./usage/ingest.ts";
+import { type IngestLog, ingestTranscripts, plural, withRefreshLock } from "./usage/ingest.ts";
+
+export class RefreshRunningError extends Error {
+  constructor() {
+    super("A refresh is running.");
+    this.name = "RefreshRunningError";
+  }
+}
 
 export interface ReindexOptions {
   db: Database;
@@ -13,9 +20,14 @@ export interface ReindexOptions {
 /**
  * Reads all sources again and replaces the Usage index data with them in one
  * transaction. A failed write keeps the old data. It returns the counts.
+ * It stops with a `RefreshRunningError` while a refresh holds the refresh lock.
  */
 export async function runReindex(options: ReindexOptions): Promise<string> {
-  const result = await ingestTranscripts({ ...options, replaceAll: true });
+  const locked = await withRefreshLock(options.db, () =>
+    ingestTranscripts({ ...options, replaceAll: true }),
+  );
+  if (!locked.ran) throw new RefreshRunningError();
+  const result = locked.value;
   return `Reindex done: ${plural(result.files, "file")}, ${plural(result.turns, "turn")}.`;
 }
 
@@ -37,6 +49,10 @@ async function main(): Promise<void> {
       },
     });
     console.log(summary);
+  } catch (error) {
+    if (!(error instanceof RefreshRunningError)) throw error;
+    console.error(error.message);
+    process.exitCode = 1;
   } finally {
     await database.close();
   }

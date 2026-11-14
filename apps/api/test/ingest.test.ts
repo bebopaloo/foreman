@@ -2,7 +2,7 @@ import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ingestTranscripts } from "../src/usage/ingest.ts";
+import { ingestTranscripts, withRefreshLock } from "../src/usage/ingest.ts";
 import { openTestDatabase } from "./database.ts";
 import {
   assistantLine,
@@ -377,5 +377,58 @@ describe("ingestTranscripts Projects", () => {
     expect(rows[0]?.projectKey).toBe(folder.claudeDir);
     const projects = await database.db.select().from(schema.projects);
     expect(projects).toEqual([{ projectKey: folder.claudeDir, noRepo: true }]);
+  });
+});
+
+describe("ingestTranscripts progress", () => {
+  it("reports the files read and the files found", async () => {
+    const folder = await makeConfigFolder();
+    for (const name of ["a", "b", "c"]) {
+      await writeTranscript(folder.claudeDir, `p/${name}.jsonl`, [assistantLine(`m-${name}`)]);
+    }
+    const seen: { filesRead: number; filesTotal: number }[] = [];
+
+    await ingestTranscripts({
+      db: database.db,
+      ...folder,
+      log: recordingLog().log,
+      onProgress: (progress) => seen.push(progress),
+    });
+
+    expect(seen).toEqual([
+      { filesRead: 0, filesTotal: 3 },
+      { filesRead: 1, filesTotal: 3 },
+      { filesRead: 2, filesTotal: 3 },
+      { filesRead: 3, filesTotal: 3 },
+    ]);
+  });
+});
+
+describe("withRefreshLock", () => {
+  it("runs one caller at a time and tells the second caller that a refresh runs", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered: () => void = () => undefined;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const first = withRefreshLock(database.db, async () => {
+      entered();
+      await held;
+      return "first";
+    });
+    await inside;
+
+    const second = await withRefreshLock(database.db, () => Promise.resolve("second"));
+    release();
+
+    expect(second).toEqual({ ran: false });
+    expect(await first).toEqual({ ran: true, value: "first" });
+    expect(await withRefreshLock(database.db, () => Promise.resolve("third"))).toEqual({
+      ran: true,
+      value: "third",
+    });
   });
 });
