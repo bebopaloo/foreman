@@ -64,3 +64,31 @@ export const fileCursors = pgTable("file_cursors", {
   headHash: text("head_hash").notNull(),
   tailHash: text("tail_hash").notNull(),
 });
+
+// The work cache. It holds names, states and times only: never a body, a
+// comment or a token.
+export const workRepos = pgTable("work_repos", {
+  id: text("id").primaryKey(),
+  host: text("host").notNull(),
+  owner: text("owner").notNull(),
+  name: text("name").notNull(),
+  client: text("client"),
+  forgePlugin: text("forge_plugin"),
+  trackerPlugin: text("tracker_plugin"),
+  forgeState: text("forge_state"),
+  forgeErrorClass: text("forge_error_class"),
+  trackerState: text("tracker_state"),
+  trackerErrorClass: text("tracker_error_class"),
+  lastGoodFetchAt: timestamp("last_good_fetch_at", { withTimezone: true }),
+});
+
+export const workFetchRuns = pgTable("work_fetch_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  kind: text("kind").notNull(),
+  state: text("state").notNull(),
+  reposRead: integer("repos_read").notNull().default(0),
+  adapterCalls: integer("adapter_calls").notNull().default(0),
+  failureReason: text("failure_reason"),
+});

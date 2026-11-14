@@ -1,58 +1,9 @@
 {
-  "id": "b372a557-fb9e-4b99-bb7c-8f53883eb77f",
+  "id": "a763dec0-0880-4c08-8210-d968c154bda1",
   "prevId": "3acda4f4-19b0-4804-8fe0-2d7419a122f0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.file_cursors": {
-      "name": "file_cursors",
-      "schema": "",
-      "columns": {
-        "path": {
-          "name": "path",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "size": {
-          "name": "size",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "modified_ms": {
-          "name": "modified_ms",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "byte_offset": {
-          "name": "byte_offset",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "head_hash": {
-          "name": "head_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tail_hash": {
-          "name": "tail_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.projects": {
       "name": "projects",
       "schema": "",
@@ -285,6 +236,155 @@
           "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_fetch_runs": {
+      "name": "work_fetch_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repos_read": {
+          "name": "repos_read",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "adapter_calls": {
+          "name": "adapter_calls",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_repos": {
+      "name": "work_repos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "host": {
+          "name": "host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client": {
+          "name": "client",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forge_plugin": {
+          "name": "forge_plugin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tracker_plugin": {
+          "name": "tracker_plugin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forge_state": {
+          "name": "forge_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "forge_error_class": {
+          "name": "forge_error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tracker_state": {
+          "name": "tracker_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tracker_error_class": {
+          "name": "tracker_error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_good_fetch_at": {
+          "name": "last_good_fetch_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
