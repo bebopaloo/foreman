@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ClientName } from "./client.ts";
-import { NextCursor, pageQueryShape } from "./paging.ts";
+import { NextCursor, pageQueryShape, pageResponseSchema } from "./paging.ts";
 
 export { ClientName };
 
@@ -263,6 +263,104 @@ export const LimitsResponse = z
 export type LimitsResponse = z.infer<typeof LimitsResponse>;
 
 export * from "./paging.ts";
+
+const WORK_PAGE = { defaultLimit: 100, maxLimit: 500 };
+const RepoId = z.string().regex(/^[0-9a-f]{12}$/);
+
+const workScopeShape = {
+  client: ClientName.optional(),
+  repo: RepoId.optional(),
+  ...pageQueryShape(WORK_PAGE),
+};
+
+export const WorkIssuesQuery = z
+  .object({
+    ...workScopeShape,
+    issue_state: z.string().min(1).max(100).optional(),
+    state: z.enum(["open", "closed"]).optional(),
+  })
+  .strict();
+export type WorkIssuesQuery = z.infer<typeof WorkIssuesQuery>;
+
+export const WorkPullRequestsQuery = z.object(workScopeShape).strict();
+export type WorkPullRequestsQuery = z.infer<typeof WorkPullRequestsQuery>;
+
+export const WorkReleasesQuery = z.object(workScopeShape).strict();
+export type WorkReleasesQuery = z.infer<typeof WorkReleasesQuery>;
+
+export const WorkIssue = z
+  .object({
+    repoId: RepoId,
+    number: z.number().int(),
+    title: z.string(),
+    state: z.string(),
+    issueState: z.string(),
+    priority: z.string(),
+    labels: z.array(z.string()),
+    author: z.string(),
+    link: z.string().nullable(),
+    relations: z
+      .object({
+        parent: z.number().int().nullable(),
+        children: z.array(z.number().int()),
+        blockedBy: z.array(z.number().int()),
+      })
+      .strict(),
+    stale: z.boolean(),
+  })
+  .strict();
+export type WorkIssue = z.infer<typeof WorkIssue>;
+
+export const WorkIssuesResponse = pageResponseSchema(WorkIssue);
+export type WorkIssuesResponse = z.infer<typeof WorkIssuesResponse>;
+
+export const WorkPullRequest = z
+  .object({
+    repoId: RepoId,
+    number: z.number().int(),
+    title: z.string(),
+    state: z.string(),
+    draft: z.boolean(),
+    headBranch: z.string(),
+    baseBranch: z.string(),
+    author: z.string(),
+    checks: z.string(),
+    labels: z.array(z.string()),
+    link: z.string().nullable(),
+    reviews: z.array(
+      z.object({ author: z.string(), state: z.string(), count: z.number().int() }).strict(),
+    ),
+    stale: z.boolean(),
+  })
+  .strict();
+export type WorkPullRequest = z.infer<typeof WorkPullRequest>;
+
+export const WorkPullRequestsResponse = pageResponseSchema(WorkPullRequest);
+export type WorkPullRequestsResponse = z.infer<typeof WorkPullRequestsResponse>;
+
+export const WorkRelease = z
+  .object({
+    repoId: RepoId,
+    name: z.string(),
+    state: z.string(),
+    link: z.string().nullable(),
+    issueNumbers: z.array(z.number().int()),
+    forgeRelease: z
+      .object({
+        tag: z.string(),
+        targetCommit: z.string().nullable(),
+        assetNames: z.array(z.string()),
+        link: z.string().nullable(),
+        noForgeRelease: z.boolean(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type WorkRelease = z.infer<typeof WorkRelease>;
+
+export const WorkReleasesResponse = pageResponseSchema(WorkRelease);
+export type WorkReleasesResponse = z.infer<typeof WorkReleasesResponse>;
 export * from "./dash.ts";
 export * from "./ledger.ts";
 export * from "./factory-health.ts";
