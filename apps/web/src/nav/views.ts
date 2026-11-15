@@ -7,10 +7,10 @@ export interface View {
 export const VIEWS: readonly View[] = [
   { label: "Foreman dash", path: "/" },
   { label: "Work", path: "/work" },
-  { label: "Usage", path: "/usage" },
-  { label: "Sessions", path: "/sessions" },
   { label: "Reviews", path: "/reviews" },
-  { label: "Factory health", path: "/health" },
   { label: "Controls", path: "/controls" },
+  { label: "Sessions", path: "/sessions" },
+  { label: "Usage", path: "/usage" },
   { label: "Engagement ledger", path: "/ledger" },
+  { label: "Factory health", path: "/health" },
 ];

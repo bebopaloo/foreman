@@ -135,6 +135,35 @@ describe("GET /api/dash repos", () => {
     ]);
   });
 
+  it("lists a repo with no forge name by its folder name, as not connected", async () => {
+    const unnamed = {
+      path: "/synthetic/local-only",
+      forge: "github",
+      tracker: "github",
+      enabled: true,
+    };
+    const body = await dash([APP, unnamed]);
+    expect(body.repos.map((repo) => [repo.repo, repo.state])).toEqual([
+      ["acme/app", "not fetched"],
+      ["local-only", "not connected: no forge name"],
+    ]);
+    expect(body.repos[1]).toMatchObject({ client: null, dataAsOf: null });
+    expect(body.complete).toEqual({ connectedRepos: 0, missingRepos: 1 });
+  });
+
+  it("keeps a repo with no forge name out of a client scope of another client", async () => {
+    const unnamed = {
+      path: "/synthetic/local-only",
+      forge: "github",
+      tracker: "github",
+      client: "acme",
+    };
+    const other = await dash([APP, unnamed], { client: "globex" });
+    expect(other.repos).toEqual([]);
+    const same = await dash([APP, unnamed], { client: "acme" });
+    expect(same.repos.map((repo) => repo.repo)).toEqual(["acme/app", "local-only"]);
+  });
+
   it("lists only the repos of the client in a client scope", async () => {
     const body = await dash([APP, SITE, PORTAL], { client: "globex" });
     expect(body.repos.map((repo) => repo.repo)).toEqual(["globex/portal"]);

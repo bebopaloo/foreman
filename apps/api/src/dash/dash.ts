@@ -228,16 +228,23 @@ function lastRunOf(
   return { lastRun, peak: run.peak };
 }
 
-/** The repos of the repo list in scope that have a forge name. */
-function reposInScope(repoList: RepoListResult, scope: RunScope) {
+/** The distinct repo list entries in scope, with or without a forge name. */
+function entriesInScope(repoList: RepoListResult, scope: RunScope) {
   if (repoList.status !== "ok") return [];
   const seen = new Set<string>();
   return repoList.repos.filter((entry) => {
-    if (entry.owner === null || entry.name === null || seen.has(entry.id)) return false;
+    if (seen.has(entry.id)) return false;
     if (scope.kind === "client" && entry.client !== scope.client) return false;
     seen.add(entry.id);
     return true;
   });
+}
+
+/** The repos of the repo list in scope that have a forge name. */
+function reposInScope(repoList: RepoListResult, scope: RunScope) {
+  return entriesInScope(repoList, scope).filter(
+    (entry) => entry.owner !== null && entry.name !== null,
+  );
 }
 
 function reviewHealthOf(
@@ -339,7 +346,7 @@ export function connectionState(
   return states.includes(PARTIAL_STATE) ? PARTIAL_STATE : "connected";
 }
 
-/** The repos in scope, each with its connection state and the times of its newest log line and Control event. */
+/** The repos in scope, named or not, each with its connection state and the times of its newest log line and Control event. */
 function reposOf({ repoList, work, nightLog, controls }: DashSources, scope: RunScope): DashRepo[] {
   const repoOf = repoResolver(repoList);
   const logTimes = new Map<string, number>();
@@ -354,17 +361,21 @@ function reposOf({ repoList, work, nightLog, controls }: DashSources, scope: Run
   }
   const iso = (time: number | undefined): string | null =>
     time === undefined ? null : new Date(time).toISOString();
-  return reposInScope(repoList, scope).map((entry) => {
-    const label = `${entry.owner ?? ""}/${entry.name ?? ""}`;
+  return entriesInScope(repoList, scope).map((entry) => {
+    const named = entry.owner !== null && entry.name !== null;
+    const label =
+      entry.owner !== null && entry.name !== null
+        ? `${entry.owner}/${entry.name}`
+        : folderLabel(entry.path);
     const row = work.repoRows.get(entry.id);
     return {
       repoId: entry.id,
       repo: label,
       client: entry.client,
-      state: connectionState(row),
+      state: named ? connectionState(row) : "not connected: no forge name",
       dataAsOf: row?.lastGoodFetchAt?.toISOString() ?? null,
       lastLogAt: iso(logTimes.get(entry.id)),
-      lastControlAt: iso(controlTimes.get(label.toLowerCase())),
+      lastControlAt: named ? iso(controlTimes.get(label.toLowerCase())) : null,
     };
   });
 }
