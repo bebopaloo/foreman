@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -18,6 +19,16 @@ if control.get("hang"):
     child = subprocess.Popen(["sleep", "60"])
     (here / "child.pid").write_text(str(child.pid))
     time.sleep(60)
+
+if control.get("signal"):
+    os.kill(os.getpid(), signal.SIGKILL)
+
+if control.get("stdout_bytes"):
+    sys.stdout.write("x" * control["stdout_bytes"])
+    sys.stdout.flush()
+if control.get("stderr_bytes"):
+    sys.stderr.write("x" * control["stderr_bytes"])
+    sys.stderr.flush()
 
 if control.get("stderr") is not None:
     sys.stderr.write(control["stderr"])

@@ -146,8 +146,9 @@ function killGroup(pid: number | undefined): void {
   try {
     process.kill(-pid, "SIGKILL");
   } catch (error) {
-    // ESRCH: the group has already ended.
-    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    // ESRCH or EPERM (macOS, for a group that is ending): no process of the group is left to stop.
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code !== "ESRCH" && code !== "EPERM") throw error;
   }
 }
 

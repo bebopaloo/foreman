@@ -260,4 +260,19 @@ describe("error classes", () => {
     const result = await runAdapterCommand(request(["pr", "reviews", "5"]), options);
     expect(result).toMatchObject({ ok: false, errorClass: "other" });
   });
+
+  it("maps an adapter that ends by a signal to other", async () => {
+    await control({ signal: true });
+    const result = await runAdapterCommand(request(["pr", "reviews", "5"]), options);
+    expect(result).toMatchObject({ ok: false, errorClass: "other" });
+  });
+
+  it.each([
+    ["more than 20 MB on standard output", { stdout_bytes: 21 * 1024 * 1024 }],
+    ["more than 64 KB on standard error", { stderr_bytes: 65 * 1024, exit: 1 }],
+  ])("maps %s to other and stops the call", async (_name, controlValue) => {
+    await control(controlValue);
+    const result = await runAdapterCommand(request(["pr", "reviews", "5"]), options);
+    expect(result).toMatchObject({ ok: false, errorClass: "other" });
+  });
 });
