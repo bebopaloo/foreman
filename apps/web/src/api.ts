@@ -7,6 +7,7 @@ import {
   DashResponse,
   HealthResponse,
   LedgerResponse,
+  LimitsResponse,
   ProjectsResponse,
   RefreshStatusResponse,
   ReviewsPullRequestsResponse,
@@ -135,6 +136,13 @@ export const fetchUsageSeries = (
   signal?: AbortSignal,
 ): Promise<SeriesResponse> =>
   getJson(`/api/usage/series?${usageParams(query, { grain })}`, SeriesResponse, signal);
+
+/** The Limit windows are plan-wide, so this query has no client. */
+export const fetchUsageLimits = (
+  query: { from: string; to: string; tz: string },
+  signal?: AbortSignal,
+): Promise<LimitsResponse> =>
+  getJson(`/api/usage/limits?${new URLSearchParams(query).toString()}`, LimitsResponse, signal);
 
 export const fetchUsageProjects = (
   client: string | null,

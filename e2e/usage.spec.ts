@@ -32,6 +32,36 @@ test("the page shows the defaults, the tokens tile and Usage over time", async (
   await expect(page.getByText("Times in Europe/London")).toBeVisible();
 });
 
+test("the limit tiles and the Limit history show the readings of the capture file", async ({
+  page,
+}) => {
+  await useFixture("usage");
+  await page.goto("/usage");
+  const five = tile(page, "5-hour window");
+  await expect(five).toContainText("62%");
+  await expect(five).toContainText("under 70%");
+  await expect(five).toContainText(/resets /);
+  await expect(five).toContainText("latest reading");
+  await expect(five).toContainText("Plan-wide: all clients and Projects");
+  await expect(tile(page, "7-day window")).toContainText("48%");
+  const history = tile(page, "Limit history");
+  await expect(history.getByRole("table", { name: "5-hour windows" })).toBeAttached();
+  await expect(chartRows(page, "5-hour windows")).toHaveCount(2);
+  await expect(chartRows(page, "5-hour windows").last()).toContainText("in progress");
+  await expect(chartRows(page, "5-hour windows").first()).toContainText("90% or more");
+  await expect(history).toContainText("1 of the last 2 5-hour windows reached 90% or more");
+  await expect(history).toContainText("0 of the last 2 7-day windows reached 90% or more");
+  await expect(chartRows(page, "7-day windows").first()).toContainText("70% or more");
+});
+
+test("without a limit reading each limit tile and chart shows No reading", async ({ page }) => {
+  await useFixture("usage-empty");
+  await page.goto("/usage");
+  await expect(tile(page, "5-hour window")).toContainText("No reading");
+  await expect(tile(page, "7-day window")).toContainText("No reading");
+  await expect(tile(page, "Limit history").getByText("No reading")).toHaveCount(2);
+});
+
 test("a client scope shows only its usage and sends no request to /limits", async ({ page }) => {
   await useFixture("usage");
   const limitRequests: string[] = [];
@@ -43,6 +73,8 @@ test("a client scope shows only its usage and sends no request to /limits", asyn
   await expect(
     page.getByText("Limit windows are plan-wide. They show only in the scope All."),
   ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Limit history" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "5-hour window" })).toHaveCount(0);
   await expect(tile(page, "Tokens, last 14 days")).not.toContainText("unpriced");
   expect(limitRequests).toEqual([]);
 });
@@ -88,6 +120,7 @@ test("no usage in the range shows one sentence in each panel", async ({ page }) 
   await useFixture("usage-empty");
   await page.goto("/usage");
   await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(3);
+  await expect(tile(page, "5-hour window")).toContainText("No reading");
 });
 
 test("the By Project table opens a Project page, and a tab shows its table", async ({ page }) => {

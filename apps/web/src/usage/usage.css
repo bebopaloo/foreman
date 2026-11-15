@@ -203,3 +203,24 @@
 .table-skeleton {
   height: 250px;
 }
+
+.limit-under {
+  color: var(--ok);
+}
+
+.limit-warn {
+  color: var(--warn);
+}
+
+.limit-high {
+  color: var(--danger);
+}
+
+.limit-history-window {
+  margin: 0 0 14px;
+}
+
+.limit-history-window h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}

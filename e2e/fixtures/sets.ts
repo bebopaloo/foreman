@@ -25,6 +25,8 @@ export interface FixtureSet {
   adapter?: AdapterData;
   /** True when the set holds transcripts: the Usage index is cleared and read again for it. */
   usage?: boolean;
+  /** The lines of the Limit reading capture file (`limit-readings.jsonl`). With none, there is no file. */
+  limitReadings?(now: Date): string;
 }
 
 const MINUTE_MS = 60_000;
@@ -226,6 +228,39 @@ function transcripts(now: Date, turns: SyntheticTurn[]): Record<string, string> 
     files[file] = `${files[file] ?? ""}${line}\n`;
   });
   return files;
+}
+
+/** One line of the capture file: a reading at `time` with the used percentage and the reset time of each window. */
+function limitLine(
+  time: Date,
+  fiveHour: [number, Date] | null,
+  sevenDay: [number, Date] | null,
+): string {
+  const window = (value: [number, Date] | null) =>
+    value === null
+      ? {}
+      : { used_percentage: value[0], resets_at: Math.floor(value[1].getTime() / 1000) };
+  return JSON.stringify({
+    time: time.toISOString(),
+    session_id: "synthetic-session",
+    rate_limits: {
+      ...(fiveHour === null ? {} : { five_hour: window(fiveHour) }),
+      ...(sevenDay === null ? {} : { seven_day: window(sevenDay) }),
+    },
+  });
+}
+
+/**
+ * Synthetic Limit readings: a 5-hour window that reset 6 hours ago at 91%, a 7-day window that reset
+ * 3 days ago at 72%, and the latest readings of the windows that run now, at 62% and 48%.
+ */
+function limitReadings(now: Date): string {
+  const at = (ms: number) => new Date(now.getTime() + ms);
+  return `${[
+    limitLine(at(-7 * HOUR_MS), [91, at(-6 * HOUR_MS)], null),
+    limitLine(at(-3 * 24 * HOUR_MS - HOUR_MS), null, [72, at(-3 * 24 * HOUR_MS)]),
+    limitLine(at(-2 * MINUTE_MS), [62, at(2 * HOUR_MS)], [48, at(4 * 24 * HOUR_MS)]),
+  ].join("\n")}\n`;
 }
 
 const PRICED = "synthetic-priced-1";
@@ -698,6 +733,7 @@ export const FIXTURE_SETS = {
     files: (now) => ({ "factory/repos.json": repoList(), ...transcripts(now, usageTurns()) }),
     work: CONNECTED_CACHE,
     usage: true,
+    limitReadings,
   },
 
   /** The repo list and no transcript: the Usage index is empty. */
