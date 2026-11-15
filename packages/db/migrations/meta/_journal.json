@@ -71,6 +71,20 @@
       "when": 1794748164442,
       "tag": "0009_shallow_wallow",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794753618410,
+      "tag": "0010_large_silver_surfer",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794756218311,
+      "tag": "0011_needy_slapstick",
+      "breakpoints": true
     }
   ]
 }

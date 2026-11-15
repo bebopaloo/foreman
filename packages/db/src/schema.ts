@@ -4,6 +4,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -281,6 +282,24 @@ export const workForgeReleases = pgTable(
   (table) => [
     primaryKey({ columns: [table.repoId, table.tag] }),
     index("work_forge_releases_repo_id_idx").on(table.repoId),
+  ],
+);
+
+export const workReleaseRecords = pgTable(
+  "work_release_records",
+  {
+    repoId: text("repo_id").notNull(),
+    tag: text("tag").notNull(),
+    assetName: text("asset_name"),
+    size: integer("size"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    state: text("state").notNull(),
+    errorClass: text("error_class"),
+    fields: jsonb("fields"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.tag] }),
+    index("work_release_records_repo_id_idx").on(table.repoId),
   ],
 );
 

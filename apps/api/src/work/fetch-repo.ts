@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import { resolveAdapter, type AdapterRole, type ResolvedAdapter } from "./adapters.ts";
+import { planRecordRead, parseReleaseRecord } from "../controls/release-records.ts";
 import { contractSchemas, prReviewSchema, RELEASE_TAG_PATTERN } from "./contract.ts";
 import type { RepoEntry } from "./repo-list.ts";
 import {
@@ -438,6 +439,8 @@ async function fetchForge(
 
   const forgeRows = await fetchForgeReleases(ctx, repo, caller, releases);
   if (forgeRows.firstError !== null) firstError ??= forgeRows.firstError;
+  const recordRows = await fetchReleaseRecords(ctx, repo, caller, forgeRows.rows);
+  if (recordRows.firstError !== null) firstError ??= recordRows.firstError;
 
   await ctx.db.transaction(async (tx) => {
     for (const part of chunks(rows)) {
@@ -480,6 +483,15 @@ async function fetchForge(
         .onConflictDoUpdate({
           target: [schema.workForgeReleases.repoId, schema.workForgeReleases.tag],
           set: forgeReleaseSet,
+        });
+    }
+    for (const part of chunks(recordRows.rows)) {
+      await tx
+        .insert(schema.workReleaseRecords)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [schema.workReleaseRecords.repoId, schema.workReleaseRecords.tag],
+          set: releaseRecordSet,
         });
     }
   });
@@ -534,6 +546,93 @@ async function fetchForgeReleases(
     } else {
       firstError ??= view.errorClass;
     }
+  }
+  return { rows, firstError };
+}
+
+/**
+ * Reads the Release record of each cached forge release that has no final record yet.
+ * A record that is `ok` or `not_readable` never changes, so a full fetch keeps it too.
+ */
+async function fetchReleaseRecords(
+  ctx: FetchContext,
+  repo: RepoEntry & { owner: string; name: string },
+  caller: Caller,
+  freshReleases: readonly (typeof schema.workForgeReleases.$inferInsert)[],
+): Promise<{ rows: (typeof schema.workReleaseRecords.$inferInsert)[]; firstError: string | null }> {
+  const forgeCached = await ctx.db
+    .select({
+      tag: schema.workForgeReleases.tag,
+      assetNames: schema.workForgeReleases.assetNames,
+      noForgeRelease: schema.workForgeReleases.noForgeRelease,
+    })
+    .from(schema.workForgeReleases)
+    .where(eq(schema.workForgeReleases.repoId, repo.id));
+  const forgeReleases = new Map(forgeCached.map((row) => [row.tag, row]));
+  for (const fresh of freshReleases) {
+    forgeReleases.set(fresh.tag, {
+      tag: fresh.tag,
+      assetNames: fresh.assetNames ?? [],
+      noForgeRelease: fresh.noForgeRelease ?? false,
+    });
+  }
+
+  const recordCached = await ctx.db
+    .select({ tag: schema.workReleaseRecords.tag, state: schema.workReleaseRecords.state })
+    .from(schema.workReleaseRecords)
+    .where(eq(schema.workReleaseRecords.repoId, repo.id));
+  const final = new Set(
+    recordCached
+      .filter((row) => row.state === "ok" || row.state === "not_readable")
+      .map((r) => r.tag),
+  );
+
+  const rows: (typeof schema.workReleaseRecords.$inferInsert)[] = [];
+  let firstError: string | null = null;
+  for (const forgeRelease of forgeReleases.values()) {
+    if (forgeRelease.noForgeRelease || final.has(forgeRelease.tag)) continue;
+    const base = { repoId: repo.id, tag: forgeRelease.tag, fetchedAt: ctx.startedAt };
+    const plan = planRecordRead(forgeRelease.assetNames);
+    if (plan.kind === "no_call") {
+      rows.push({
+        ...base,
+        assetName: null,
+        size: null,
+        state: plan.state,
+        errorClass: null,
+        fields: null,
+      });
+      continue;
+    }
+    const asset = await caller.run(
+      ["release", "asset", forgeRelease.tag, plan.name],
+      contractSchemas.releaseAsset,
+    );
+    if (!asset.ok) {
+      const state =
+        asset.errorClass === "missing_tag" || asset.errorClass === "missing_asset"
+          ? asset.errorClass
+          : "failed";
+      if (state === "failed") firstError ??= asset.errorClass;
+      rows.push({
+        ...base,
+        assetName: plan.name,
+        size: null,
+        state,
+        errorClass: asset.errorClass,
+        fields: null,
+      });
+      continue;
+    }
+    const parsed = parseReleaseRecord(asset.data.content, forgeRelease.tag);
+    rows.push({
+      ...base,
+      assetName: plan.name,
+      size: asset.data.size,
+      state: parsed.ok ? "ok" : "not_readable",
+      errorClass: null,
+      fields: parsed.ok ? parsed.fields : null,
+    });
   }
   return { rows, firstError };
 }
@@ -608,3 +707,12 @@ export async function fetchRepo(
   const forge = await fetchForge(ctx, repo, forgeSetup, tracker.releases);
   return { forge: forge.outcome, tracker: tracker.outcome, calls: tracker.calls + forge.calls };
 }
+
+const releaseRecordSet = {
+  assetName: incoming(schema.workReleaseRecords.assetName),
+  size: incoming(schema.workReleaseRecords.size),
+  fetchedAt: incoming(schema.workReleaseRecords.fetchedAt),
+  state: incoming(schema.workReleaseRecords.state),
+  errorClass: incoming(schema.workReleaseRecords.errorClass),
+  fields: incoming(schema.workReleaseRecords.fields),
+};
