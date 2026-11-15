@@ -159,3 +159,12 @@ describe("the Refresh button", () => {
     expect(await screen.findByText("The refresh request failed. Try again.")).toBeInTheDocument();
   });
 });
+
+describe("the theme button", () => {
+  it("is in the header", async () => {
+    fakeApi();
+    renderApp();
+    const banner = await screen.findByRole("banner");
+    expect(within(banner).getByRole("button", { name: /^Theme: / })).toBeInTheDocument();
+  });
+});
