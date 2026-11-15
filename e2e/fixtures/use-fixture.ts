@@ -11,6 +11,9 @@ import { seedWorkCache } from "./work-seed.ts";
  */
 export const LIVE_CLAUDE_DIR = path.join(import.meta.dirname, "claude");
 
+/** The tokens file that the e2e API reads (`FOREMAN_TOKENS_FILE`). Its tokens are synthetic. */
+export const LIVE_TOKENS_FILE = path.join(import.meta.dirname, "tokens");
+
 const DEV_ONLY = "Fixture sets need the dev servers that Playwright starts. E2E_BASE_URL is set.";
 
 async function waitForFetchIdle(apiPort: string): Promise<void> {
@@ -73,6 +76,7 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
     files(now: Date): Record<string, string>;
     usage?: boolean;
     work?: Parameters<typeof seedWorkCache>[1];
+    tokenOwners?: readonly string[];
   } = FIXTURE_SETS[name];
   await waitForFetchIdle(apiPort);
   if (set.usage === true) {
@@ -86,6 +90,12 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, content);
   }
+  await writeFile(
+    LIVE_TOKENS_FILE,
+    JSON.stringify(
+      Object.fromEntries((set.tokenOwners ?? []).map((owner) => [owner, "synthetic-token"])),
+    ),
+  );
   await seedWorkCache(databaseUrl, set.work, now);
   if (set.usage === true) await refreshUsage(apiPort);
 }

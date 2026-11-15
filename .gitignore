@@ -8,3 +8,4 @@ test-results/
 .env.*
 _context/plans/
 e2e/fixtures/claude/
+e2e/fixtures/tokens
