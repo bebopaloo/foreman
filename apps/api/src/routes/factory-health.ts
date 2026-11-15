@@ -1,19 +1,34 @@
 import type { Database } from "@foreman/db";
+import { schema } from "@foreman/db";
 import {
   FactoryRunsQuery,
   FactoryRunsResponse,
   PluginVersionsQuery,
   PluginVersionsResponse,
+  RuleDriftQuery,
+  RuleDriftResponse,
 } from "@foreman/shared";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { z } from "zod";
+import { connectionState } from "../dash/dash.ts";
 import { readPluginVersions } from "../factory-health/plugins.ts";
+import { readCachedRuleFiles, ruleDriftOf } from "../factory-health/rule-drift.ts";
 import { compareRunRows, readFactoryRuns } from "../factory-health/runs.ts";
+import { createTemplateReader } from "../factory-health/templates.ts";
 import { paginate } from "../paging.ts";
+import { workCompleteness } from "../sessions/work-items.ts";
+import { readRepoList } from "../work/repo-list.ts";
+import { resolveWorkScope } from "../work/scope.ts";
+import { NO_TOKEN_STATE, readTokens } from "../work/tokens.ts";
+
+const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
 export interface FactoryHealthOptions {
   claudeDir: string;
   /** The folder of the one `directory` Marketplace that Foreman may read. */
   marketplaceDir: string | undefined;
+  /** The tokens file. A repo of an owner with no token returns no cached data. */
+  tokensFile: string | undefined;
   db: Database;
   /** Tests pass a fixed clock. */
   now?: () => Date;
@@ -21,7 +36,7 @@ export interface FactoryHealthOptions {
 
 export const factoryHealthRoutes: FastifyPluginCallbackZod<FactoryHealthOptions> = (
   app,
-  { claudeDir, marketplaceDir, db, now = () => new Date() },
+  { claudeDir, marketplaceDir, tokensFile, db, now = () => new Date() },
   done,
 ) => {
   app.get(
@@ -54,6 +69,106 @@ export const factoryHealthRoutes: FastifyPluginCallbackZod<FactoryHealthOptions>
         items: page.items,
         nextCursor: page.nextCursor,
         skipped: { files: versions.skippedFiles.length },
+      };
+    },
+  );
+
+  app.get(
+    "/rule-drift",
+    {
+      config: { public: true },
+      schema: {
+        querystring: RuleDriftQuery,
+        response: { 200: RuleDriftResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, limit, cursor } = request.query;
+      const list = await readRepoList(claudeDir);
+      const entries = list.status === "ok" ? list.repos : [];
+      const tokens = await readTokens(tokensFile);
+      const scope = resolveWorkScope(entries, tokens, client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+
+      const readable = new Set(scope.repos.map((entry) => entry.id));
+      const named = scope.inScope.flatMap((entry) =>
+        entry.owner === null || entry.name === null
+          ? []
+          : [{ id: entry.id, fullName: `${entry.owner}/${entry.name}` }],
+      );
+      const page = paginate(named, {
+        limit,
+        cursor,
+        query: { client, repo },
+        keyOf: (row) => [row.fullName, row.id],
+        compare: (a, b) => {
+          for (const [index, left] of a.entries()) {
+            const right = b[index];
+            if (right === undefined || left === right) continue;
+            return String(left) < String(right) ? -1 : 1;
+          }
+          return 0;
+        },
+      });
+
+      const completeness = await workCompleteness(db, scope.inScope, scope.repos);
+      const ids = page.items.filter((row) => readable.has(row.id)).map((row) => row.id);
+      const cacheRows = await db
+        .select({
+          id: schema.workRepos.id,
+          forgeState: schema.workRepos.forgeState,
+          trackerState: schema.workRepos.trackerState,
+          lastGoodFetchAt: schema.workRepos.lastGoodFetchAt,
+          defaultBranch: schema.workRepos.defaultBranch,
+          fileBranch: schema.workRepos.fileBranch,
+          repoState: schema.workRepos.repoState,
+        })
+        .from(schema.workRepos);
+      const cacheById = new Map(cacheRows.map((row) => [row.id, row]));
+      const files = await readCachedRuleFiles(db, ids);
+      const reader = await createTemplateReader(claudeDir);
+
+      const items = [];
+      for (const row of page.items) {
+        const cached = readable.has(row.id) ? cacheById.get(row.id) : undefined;
+        items.push(
+          await ruleDriftOf(
+            {
+              repoId: row.id,
+              repo: row.fullName,
+              cache: !readable.has(row.id)
+                ? {
+                    defaultBranch: null,
+                    fileBranch: null,
+                    repoState: null,
+                    connection: NO_TOKEN_STATE,
+                    dataAsOf: null,
+                  }
+                : cached === undefined
+                  ? undefined
+                  : {
+                      defaultBranch: cached.defaultBranch,
+                      fileBranch: cached.fileBranch,
+                      repoState: cached.repoState,
+                      connection: connectionState(cached),
+                      dataAsOf: cached.lastGoodFetchAt,
+                    },
+              files: readable.has(row.id) ? files.get(row.id) : undefined,
+            },
+            reader,
+          ),
+        );
+      }
+      request.log.info(
+        { repos: items.length, skippedTemplates: reader.skippedTemplates() },
+        "rule drift read",
+      );
+      return {
+        state: completeness.notConnected ? ("not_connected" as const) : ("ok" as const),
+        items,
+        nextCursor: page.nextCursor,
+        complete: { incompleteRepos: completeness.incompleteRepos },
+        skipped: { templates: reader.skippedTemplates() },
       };
     },
   );
