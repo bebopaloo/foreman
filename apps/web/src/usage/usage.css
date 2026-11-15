@@ -1,0 +1,116 @@
+.filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-end;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+@media (max-width: 640px) {
+  .filter-bar {
+    position: static;
+  }
+}
+
+.filter-bar .field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+
+.filter-bar .metric-field {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.filter-bar legend {
+  padding: 0;
+  float: left;
+  margin-right: 8px;
+}
+
+.filter-bar .radio {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.filter-bar select,
+.filter-bar input[type="date"] {
+  font: inherit;
+  min-height: 36px;
+  padding: 4px 8px;
+  color: var(--ink);
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.filter-bar .usage-status {
+  margin-left: auto;
+}
+
+.filter-bar .usage-status p {
+  margin: 0;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.tile,
+.tile-skeleton {
+  min-height: 170px;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.tile-label {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.tile-value {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.tile p {
+  margin: 0 0 4px;
+}
+
+.unpriced {
+  margin: 0 0 4px;
+  padding-left: 18px;
+}
+
+.panel-body {
+  min-height: 270px;
+}
+
+.skeleton {
+  background: var(--surface-hover);
+  border-radius: 10px;
+}
+
+.chart-skeleton {
+  height: 250px;
+}

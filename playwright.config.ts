@@ -95,6 +95,12 @@ export default defineConfig({
             FOREMAN_CLAUDE_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "claude"),
             FOREMAN_FACTORY_LOGINS: "synthetic-factory[bot]",
             FOREMAN_DATA_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "data"),
+            FOREMAN_PRICE_TABLE: path.join(
+              import.meta.dirname,
+              "e2e",
+              "fixtures",
+              "price-table.json",
+            ),
             FOREMAN_TOKENS_FILE: path.join(import.meta.dirname, "e2e", "fixtures", "no-tokens"),
           },
         },
