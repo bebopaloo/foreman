@@ -131,6 +131,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api/factory-health",
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     marketplaceDir: config.FOREMAN_MARKETPLACE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
     db,
     ...(now === undefined ? {} : { now }),
   });

@@ -348,7 +348,7 @@ describe("no usage in the range", () => {
       series: days().map((bucket) => ({ ...bucket, turns: 0, inputTokens: 0 })),
     });
     renderApp();
-    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(2);
+    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(3);
   });
 });
 
@@ -356,8 +356,9 @@ describe("a panel fails", () => {
   it("shows a status line in the tile and the other panel still shows its data", async () => {
     fakeUsage({ breakdown: 500 });
     renderApp();
-    const status = await screen.findByText("This panel cannot load the data. Try Refresh.");
-    expect(status).toHaveAttribute("role", "status");
+    const statuses = await screen.findAllByText("This panel cannot load the data. Try Refresh.");
+    expect(statuses).toHaveLength(2);
+    for (const status of statuses) expect(status).toHaveAttribute("role", "status");
     expect(await screen.findByRole("table", { name: "Tokens by day" })).toBeInTheDocument();
   });
 

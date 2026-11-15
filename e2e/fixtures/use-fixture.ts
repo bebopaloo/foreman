@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "@playwright/test";
+import { adapterFiles } from "./adapter/index.ts";
 import { FIXTURE_SETS, type FixtureName, type FixtureSet } from "./sets.ts";
 import { clearUsageIndex } from "./usage-seed.ts";
 import { seedWorkCache } from "./work-seed.ts";
@@ -61,6 +62,18 @@ async function refreshUsage(apiPort: string): Promise<void> {
   throw new Error("The usage refresh did not end.");
 }
 
+/** Starts a real fetch through the refresh route, and waits until it ends. */
+async function refreshWork(apiPort: string): Promise<void> {
+  const response = await fetch(`http://127.0.0.1:${apiPort}/api/work/refresh`, {
+    method: "POST",
+    headers: { origin: `http://127.0.0.1:${process.env.E2E_WEB_PORT ?? ""}` },
+  });
+  if (response.status !== 202)
+    throw new Error(`The refresh was refused: ${String(response.status)}.`);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitForFetchIdle(apiPort);
+}
+
 /**
  * Loads a named fixture set: writes its files into the live Claude folder and replaces the Work cache
  * of the e2e database. Call it first in each test, before `page.goto`. The API reads the folder on each
@@ -80,7 +93,11 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
   }
   await rm(LIVE_CLAUDE_DIR, { recursive: true, force: true });
   await mkdir(LIVE_CLAUDE_DIR, { recursive: true });
-  for (const [relative, content] of Object.entries(set.files(now))) {
+  const files = {
+    ...set.files(now),
+    ...(set.adapter === undefined ? {} : adapterFiles(set.adapter)),
+  };
+  for (const [relative, content] of Object.entries(files)) {
     const file = path.join(LIVE_CLAUDE_DIR, relative);
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, content);
@@ -92,5 +109,6 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
     ),
   );
   await seedWorkCache(databaseUrl, typeof set.work === "function" ? set.work(now) : set.work, now);
+  if (set.adapter !== undefined) await refreshWork(apiPort);
   if (set.usage === true) await refreshUsage(apiPort);
 }
