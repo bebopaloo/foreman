@@ -55,6 +55,35 @@ describe("loadConfig", () => {
     ).toBe("/synthetic/prices.json");
   });
 
+  it("uses the ledger defaults and reads the ledger variables", () => {
+    const defaults = loadConfig({ DATABASE_URL });
+    expect(defaults.FOREMAN_LEDGER_TIME_ZONE).toBe("Europe/London");
+    expect(defaults.FOREMAN_LEDGER_IDLE_MINUTES).toBe(15);
+    expect(defaults.FOREMAN_LEDGER_LEAD_IN_MINUTES).toBe(2);
+    const set = loadConfig({
+      DATABASE_URL,
+      FOREMAN_LEDGER_TIME_ZONE: "Asia/Tokyo",
+      FOREMAN_LEDGER_IDLE_MINUTES: "45",
+      FOREMAN_LEDGER_LEAD_IN_MINUTES: "0",
+    });
+    expect(set.FOREMAN_LEDGER_TIME_ZONE).toBe("Asia/Tokyo");
+    expect(set.FOREMAN_LEDGER_IDLE_MINUTES).toBe(45);
+    expect(set.FOREMAN_LEDGER_LEAD_IN_MINUTES).toBe(0);
+  });
+
+  it("names the ledger variable that is not valid", () => {
+    const bad = (env: Record<string, string>) => () => loadConfig({ DATABASE_URL, ...env });
+    expect(bad({ FOREMAN_LEDGER_TIME_ZONE: "Mars/Base" })).toThrow(/FOREMAN_LEDGER_TIME_ZONE/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "0" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "121" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "1.5" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_LEAD_IN_MINUTES: "-1" })).toThrow(/FOREMAN_LEDGER_LEAD_IN_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_LEAD_IN_MINUTES: "20" })).toThrow(/FOREMAN_LEDGER_LEAD_IN_MINUTES/);
+    expect(
+      bad({ FOREMAN_LEDGER_IDLE_MINUTES: "30", FOREMAN_LEDGER_LEAD_IN_MINUTES: "20" }),
+    ).not.toThrow();
+  });
+
   it("fails fast without a database URL", () => {
     expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
   });
