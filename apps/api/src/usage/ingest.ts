@@ -1,7 +1,7 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { type ParsedTurn, parseLine } from "./parse.ts";
+import { type ParsedTurn, type ParsedUserMessage, parseLine } from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
 import {
   type FileCursor,
@@ -41,6 +41,7 @@ export interface IngestResult {
 type CursorRow = typeof schema.fileCursors.$inferInsert;
 type ProjectRow = typeof schema.projects.$inferInsert;
 type AgentRow = typeof schema.agents.$inferInsert;
+type UserMessageRow = typeof schema.userMessages.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
 
 // 16 columns for each row, and Postgres allows 65,535 parameters in a query.
@@ -84,6 +85,18 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
           agentId: sql`excluded.agent_id`,
         },
       });
+  }
+}
+
+async function writeUserMessages(
+  db: Pick<Database, "insert">,
+  messages: UserMessageRow[],
+): Promise<void> {
+  for (let start = 0; start < messages.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.userMessages)
+      .values(messages.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.userMessages.recordId });
   }
 }
 
@@ -144,6 +157,7 @@ async function readSources(options: IngestOptions): Promise<
     projects: ProjectRow[];
     cursors: CursorRow[];
     agents: AgentRow[];
+    userMessages: UserMessageRow[];
   }
 > {
   const { db, claudeDir, dataDir, log } = options;
@@ -155,6 +169,7 @@ async function readSources(options: IngestOptions): Promise<
   const cursors: CursorRow[] = [];
   const byKey = new Map<string, IndexedTurn>();
   const agents = new Map<string, AgentRow>();
+  const messages = new Map<string, ParsedUserMessage>();
   let files = 0;
   let skippedLines = 0;
   let unreadableFiles = 0;
@@ -196,6 +211,11 @@ async function readSources(options: IngestOptions): Promise<
     for (const line of lines) {
       const parsed = parseLine(line);
       if (parsed.kind === "malformed") skipped += 1;
+      if (parsed.kind === "userMessage") {
+        // A user record in a sub-agent transcript is a task prompt, not a real user message.
+        if (file.agent === undefined) messages.set(parsed.userMessage.recordId, parsed.userMessage);
+        continue;
+      }
       if (parsed.kind !== "turn") continue;
       const next = { ...parsed.turn, agentType, agentId: file.agent?.agentId ?? null };
       const known = byKey.get(next.turnKey);
@@ -209,12 +229,21 @@ async function readSources(options: IngestOptions): Promise<
     .selectDistinct({ key: schema.turns.projectKey })
     .from(schema.turns);
   const refs = await resolveProjects(
-    [...new Set([...byKey.values()].map((row) => row.projectKey))],
+    [
+      ...new Set([
+        ...[...byKey.values()].map((row) => row.projectKey),
+        ...[...messages.values()].map((message) => message.projectKey),
+      ]),
+    ],
     knownProjects.map((row) => row.key),
   );
   const rows = [...byKey.values()].map((row) => ({
     ...row,
     projectKey: refs.get(row.projectKey)?.key ?? row.projectKey,
+  }));
+  const userMessages = [...messages.values()].map((message) => ({
+    ...message,
+    projectKey: refs.get(message.projectKey)?.key ?? message.projectKey,
   }));
   const projects = new Map<string, ProjectRow>();
   for (const ref of refs.values()) {
@@ -230,6 +259,7 @@ async function readSources(options: IngestOptions): Promise<
     projects: [...projects.values()],
     cursors,
     agents: [...agents.values()],
+    userMessages,
   };
 }
 
@@ -245,16 +275,18 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, cursors, agents, ...result } = await readSources(options);
+    const { rows, projects, cursors, agents, userMessages, ...result } = await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) {
         await tx.delete(schema.turns);
         await tx.delete(schema.agents);
+        await tx.delete(schema.userMessages);
         await tx.delete(schema.fileCursors);
       }
       await writeTurns(tx, rows);
       await writeCursors(tx, cursors);
       await writeAgents(tx, agents);
+      await writeUserMessages(tx, userMessages);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)

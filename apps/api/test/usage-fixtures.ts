@@ -47,6 +47,41 @@ export function assistantLine(
   });
 }
 
+/** One synthetic real user message. It holds fake text so tests can check that it never reaches the index. */
+export function userLine(
+  recordId: string,
+  options: { time?: string; cwd?: string; session?: string } = {},
+): string {
+  return JSON.stringify({
+    type: "user",
+    uuid: recordId,
+    sessionId: options.session ?? "session-1",
+    timestamp: options.time ?? "2026-11-01T10:00:00.000Z",
+    cwd: options.cwd ?? "/synthetic/a/app",
+    gitBranch: "feature-x",
+    message: { role: "user", content: "SYNTHETIC-PROMPT-TEXT" },
+  });
+}
+
+/** One synthetic user record that holds only a tool result. */
+export function toolResultLine(
+  recordId: string,
+  options: { time?: string; cwd?: string; session?: string } = {},
+): string {
+  return JSON.stringify({
+    type: "user",
+    uuid: recordId,
+    sessionId: options.session ?? "session-1",
+    timestamp: options.time ?? "2026-11-01T10:00:00.000Z",
+    cwd: options.cwd ?? "/synthetic/a/app",
+    gitBranch: "feature-x",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "t1", content: "SYNTHETIC-TOOL-OUTPUT" }],
+    },
+  });
+}
+
 export async function writeTranscript(
   claudeDir: string,
   relativePath: string,

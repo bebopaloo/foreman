@@ -50,8 +50,50 @@ export interface ParsedTurn {
   branch: string | null;
 }
 
+export interface ParsedUserMessage {
+  recordId: string;
+  sessionId: string;
+  time: Date;
+  projectKey: string;
+  branch: string | null;
+}
+
 export type ParsedLine =
-  { kind: "turn"; turn: ParsedTurn } | { kind: "ignore" } | { kind: "malformed" };
+  | { kind: "turn"; turn: ParsedTurn }
+  | { kind: "userMessage"; userMessage: ParsedUserMessage }
+  | { kind: "ignore" }
+  | { kind: "malformed" };
+
+// The schema has no field for the message content, so no prompt can reach the index.
+const UserRecordSchema = z.object({
+  type: z.literal("user"),
+  uuid: z.string().min(1),
+  sessionId: z.string().min(1),
+  timestamp: z.iso.datetime(),
+  cwd: z.string().min(1),
+  gitBranch: z.string().nullish(),
+});
+
+function isRealUserRecord(record: unknown): boolean {
+  if (typeof record !== "object" || record === null) return false;
+  if (!("type" in record) || record.type !== "user") return false;
+  if ("isMeta" in record && record.isMeta === true) return false;
+  if (!("message" in record) || typeof record.message !== "object" || record.message === null) {
+    return false;
+  }
+  const content = "content" in record.message ? record.message.content : undefined;
+  if (typeof content === "string") return true;
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (block: unknown) =>
+      !(
+        typeof block === "object" &&
+        block !== null &&
+        "type" in block &&
+        block.type === "tool_result"
+      ),
+  );
+}
 
 const SYNTHETIC_MODEL = "<synthetic>";
 
@@ -75,13 +117,27 @@ function isSyntheticModel(record: unknown): boolean {
   );
 }
 
-/** Maps one transcript line to a turn, to nothing, or to a malformed line. */
+/** Maps one transcript line to a turn, a real user message, to nothing, or to a malformed line. */
 export function parseLine(line: string): ParsedLine {
   let record: unknown;
   try {
     record = JSON.parse(line);
   } catch {
     return { kind: "malformed" };
+  }
+  if (isRealUserRecord(record)) {
+    const user = UserRecordSchema.safeParse(record);
+    if (!user.success) return { kind: "malformed" };
+    return {
+      kind: "userMessage",
+      userMessage: {
+        recordId: user.data.uuid,
+        sessionId: user.data.sessionId,
+        time: new Date(user.data.timestamp),
+        projectKey: user.data.cwd,
+        branch: user.data.gitBranch ?? null,
+      },
+    };
   }
   if (!isAssistantWithUsage(record) || isSyntheticModel(record)) return { kind: "ignore" };
   const parsed = AssistantRecordSchema.safeParse(record);

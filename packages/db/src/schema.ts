@@ -46,6 +46,23 @@ export const agents = pgTable("agents", {
   startToolCallId: text("start_tool_call_id"),
 });
 
+// The time of each real user message of a main session file. It has no text:
+// the Engagement ledger and skill attribution only need the times.
+export const userMessages = pgTable(
+  "user_messages",
+  {
+    recordId: text("record_id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    time: timestamp("time", { withTimezone: true }).notNull(),
+    projectKey: text("project_key").notNull(),
+    branch: text("branch"),
+  },
+  (table) => [
+    index("user_messages_time_idx").on(table.time),
+    index("user_messages_session_id_idx").on(table.sessionId),
+  ],
+);
+
 // One row for each Project key. The key is a path, never a transcript text.
 export const projects = pgTable("projects", {
   projectKey: text("project_key").primaryKey(),

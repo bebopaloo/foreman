@@ -11,6 +11,8 @@ import {
   recordingLog,
   writeArchived,
   writeMeta,
+  toolResultLine,
+  userLine,
   writeTranscript,
 } from "./usage-fixtures.ts";
 
@@ -26,7 +28,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table turns, agents, projects, refresh_runs, file_cursors`,
+    sql`truncate table turns, agents, projects, refresh_runs, file_cursors, user_messages`,
   );
 });
 
@@ -62,6 +64,48 @@ describe("ingestTranscripts", () => {
     });
     expect(JSON.stringify(rows)).not.toContain("SYNTHETIC");
     expect(result).toMatchObject({ state: "idle", files: 1, turns: 3 });
+  });
+
+  it("stores the times of the 3 real user messages, and none from a sub-agent", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "-synthetic-a-app/session-1.jsonl", [
+      userLine("u1", { time: "2026-11-01T10:00:00.000Z" }),
+      assistantLine("m1", { time: "2026-11-01T10:00:30.000Z" }),
+      toolResultLine("r1", { time: "2026-11-01T10:01:00.000Z" }),
+      userLine("u2", { time: "2026-11-01T10:02:00.000Z" }),
+      toolResultLine("r2", { time: "2026-11-01T10:03:00.000Z" }),
+      userLine("u3", { time: "2026-11-01T10:04:00.000Z" }),
+    ]);
+    await writeTranscript(folder.claudeDir, "-synthetic-a-app/session-1/subagents/agent-a1.jsonl", [
+      userLine("task", { time: "2026-11-01T10:00:10.000Z" }),
+      assistantLine("sub1"),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db
+      .select()
+      .from(schema.userMessages)
+      .orderBy(schema.userMessages.time);
+    expect(rows.map((row) => row.recordId)).toEqual(["u1", "u2", "u3"]);
+    expect(rows[0]).toMatchObject({
+      sessionId: "session-1",
+      time: new Date("2026-11-01T10:00:00.000Z"),
+      projectKey: "/synthetic/a/app",
+      branch: "feature-x",
+    });
+    expect(JSON.stringify(rows)).not.toContain("SYNTHETIC");
+  });
+
+  it("stores a user message once when a later refresh reads the file again", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [userLine("u1")]);
+    await refresh(folder);
+    await database.db.execute(sql`truncate table file_cursors`);
+
+    await refresh(folder);
+
+    expect(await database.db.select().from(schema.userMessages)).toHaveLength(1);
   });
 
   it("keeps one turn for a message on 3 lines, with the largest counts", async () => {
