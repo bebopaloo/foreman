@@ -10,6 +10,7 @@ import {
 import type { Config } from "./config.ts";
 import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
+import { controlsRoutes } from "./routes/controls.ts";
 import { dashRoutes } from "./routes/dash.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { ledgerRoutes } from "./routes/ledger.ts";
@@ -140,6 +141,13 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     allowedOrigins: config.CORS_ORIGINS,
     ...(now === undefined ? {} : { now }),
   });
+  await app.register(controlsRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
+    ...(now === undefined ? {} : { now }),
+  });
   await app.register(dashRoutes, {
     prefix: "/api",
     db,
@@ -153,6 +161,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     tokensFile: config.FOREMAN_TOKENS_FILE,
     factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    usageDataAsOf: async () => (await activeRefresher.status()).dataAsOf,
     ...(now === undefined ? {} : { now }),
   });
   await app.register(usageRoutes, {
