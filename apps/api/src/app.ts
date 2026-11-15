@@ -123,6 +123,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     schedule: activeFetcher,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
     allowedOrigins: config.CORS_ORIGINS,
   });
   await app.register(usageRoutes, {
