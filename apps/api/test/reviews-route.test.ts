@@ -282,6 +282,10 @@ describe("GET /api/reviews merges, rounds and findings", () => {
 describe("GET /api/reviews repos with no Control events", () => {
   const OFF = {
     mainBranch: null,
+    rules: { state: "ok", value: [] },
+    compliance: { state: "ok", value: [] },
+    stackPack: { state: "ok", value: null },
+    factoryCoreVersion: { state: "ok", value: null },
     controls: { state: "ok", profile: "p", modules: ["risk_tiers"] },
     releases: null,
   };
