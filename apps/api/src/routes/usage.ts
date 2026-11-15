@@ -2,6 +2,8 @@ import { type Database, schema } from "@foreman/db";
 import {
   BreakdownQuery,
   BreakdownResponse,
+  LimitsQuery,
+  LimitsResponse,
   MAX_SERIES_BUCKETS,
   ProjectsQuery,
   ProjectsResponse,
@@ -13,6 +15,7 @@ import { eq, max, min } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { originGuard } from "../host-check.ts";
+import { queryLimits } from "../usage/limits.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
 import { bucketStarts, findProjectKey, queryBreakdown, querySeries } from "../usage/queries.ts";
 import type { PriceTable } from "../usage/prices.ts";
@@ -131,6 +134,15 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       }
       return queryBreakdown(db, priceTable, range, dimension, limit, projectKey);
     },
+  );
+
+  app.get(
+    "/limits",
+    {
+      config: { public: true },
+      schema: { querystring: LimitsQuery, response: { 200: LimitsResponse } },
+    },
+    (request) => queryLimits(db, request.query),
   );
 
   /** The Project key for an ID, null for no filter, undefined for an unknown ID. */

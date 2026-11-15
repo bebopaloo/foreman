@@ -1,9 +1,11 @@
 import {
   bigint,
   boolean,
+  doublePrecision,
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -94,6 +96,24 @@ export const userMessages = pgTable(
   (table) => [
     index("user_messages_time_idx").on(table.time),
     index("user_messages_session_id_idx").on(table.sessionId),
+  ],
+);
+
+// One reading of a Limit window from the capture file: the used percentage and
+// the time that the window resets. It holds no text.
+export const limitReadings = pgTable(
+  "limit_readings",
+  {
+    sessionId: text("session_id").notNull(),
+    time: timestamp("time", { withTimezone: true }).notNull(),
+    window: text("window").notNull(),
+    usedPercentage: doublePrecision("used_percentage").notNull(),
+    resetsAt: timestamp("resets_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.time, table.window] }),
+    index("limit_readings_resets_at_idx").on(table.resetsAt),
+    index("limit_readings_time_idx").on(table.time),
   ],
 );
 
