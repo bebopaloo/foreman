@@ -224,3 +224,19 @@
   margin: 0 0 4px;
   font-size: 14px;
 }
+
+.panel-body.small-body {
+  min-height: 90px;
+}
+
+.panel-body.calendar-body {
+  min-height: 180px;
+}
+
+.calendar-skeleton {
+  height: 170px;
+}
+
+.cache-skeleton {
+  height: 80px;
+}
