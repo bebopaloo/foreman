@@ -11,11 +11,14 @@ SCRIPT = ROOT / "scripts" / "local-up.sh"
 COMPOSE = (ROOT / "compose.local.yaml").read_text() if (ROOT / "compose.local.yaml").exists() else ""
 
 
-def run_script(home, extra_env=None, args=(), keychain=None):
+def run_script(home, extra_env=None, args=(), tokens_json=None):
     """Run local-up.sh with a fake docker that records its arguments.
 
-    keychain is a dict of account -> value for a fake `security` command. The
-    real Keychain is never read: the fake `security` shadows it on PATH.
+    tokens_json is what the token step (keychain-tokens.ts) prints. A fake
+    `node` prints it, so the test needs no Node version or workspace
+    dependencies: the Keychain reading itself is tested in keychain-tokens.test.ts.
+    With no tokens_json, the real token step runs. A fake `security` on PATH
+    shadows the real one, so no test reads the real Keychain.
     """
     fake_bin = pathlib.Path(home) / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -27,21 +30,23 @@ def run_script(home, extra_env=None, args=(), keychain=None):
         'echo "TOKENS=${FOREMAN_TOKENS_JSON-unset}" >> "$DOCKER_LOG"\n'
     )
     docker.chmod(0o755)
-    cases = "".join(
-        f'  "{account}") printf "%s\\n" "{value}" ;;\n' for account, value in (keychain or {}).items()
-    )
     security = fake_bin / "security"
-    security.write_text(
-        "#!/usr/bin/env bash\n"
-        'case "$5" in\n' + cases + '  *) echo "item not found" >&2; exit 44 ;;\n'
-        "esac\n"
-    )
+    security.write_text('#!/usr/bin/env bash\necho "item not found" >&2\nexit 44\n')
     security.chmod(0o755)
-    # A version-manager shim of node can be slow without a full environment, so use the real binary.
-    node = subprocess.run(
-        ["node", "-p", "process.execPath"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-    node_dir = str(pathlib.Path(node).parent)
+    if tokens_json is None:
+        # A version-manager shim of node can be slow without a full environment, so use the real binary.
+        try:
+            node = subprocess.run(
+                ["node", "-p", "process.execPath"], capture_output=True, text=True, check=True
+            ).stdout.strip()
+            node_dir = str(pathlib.Path(node).parent)
+        except (OSError, subprocess.CalledProcessError):
+            node_dir = str(fake_bin)
+    else:
+        fake_node = fake_bin / "node"
+        fake_node.write_text(f"#!/usr/bin/env bash\nprintf '%s' '{tokens_json}'\n")
+        fake_node.chmod(0o755)
+        node_dir = str(fake_bin)
     env = {
         "PATH": f"{fake_bin}:{node_dir}:/usr/bin:/bin",
         "HOME": home,
@@ -115,11 +120,12 @@ def write_repo_list(home, *repos):
 
 class Tokens(unittest.TestCase):
     TOKEN = "github_pat_synthetic_value"
+    TOKENS = '{"github.com/acme":"github_pat_synthetic_value"}'
 
     def test_passes_the_keychain_token_to_compose_for_the_up_command_only(self):
         with tempfile.TemporaryDirectory() as home:
             write_repo_list(home, "acme/app")
-            result, log = run_script(home, keychain={"github.com/acme": self.TOKEN})
+            result, log = run_script(home, tokens_json=self.TOKENS)
             self.assertEqual(result.returncode, 0, result.stderr)
             up_line = next(line for line in log.splitlines() if " up " in line)
             self.assertIn("--build", up_line)
@@ -144,13 +150,13 @@ class Tokens(unittest.TestCase):
     def test_the_smoke_test_and_reindex_get_no_token(self):
         with tempfile.TemporaryDirectory() as home:
             write_repo_list(home, "acme/app")
-            _, log = run_script(home, keychain={"github.com/acme": self.TOKEN})
+            _, log = run_script(home, tokens_json=self.TOKENS)
             exec_at = log.index("exec -T api")
             self.assertNotIn(self.TOKEN, log[exec_at:])
         with tempfile.TemporaryDirectory() as home:
             write_repo_list(home, "acme/app")
             _, reindex_log = run_script(
-                home, keychain={"github.com/acme": self.TOKEN}, args=("reindex",)
+                home, tokens_json=self.TOKENS, args=("reindex",)
             )
             self.assertNotIn(self.TOKEN, reindex_log)
 
