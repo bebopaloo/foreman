@@ -67,6 +67,37 @@ describe("ingestTranscripts", () => {
     expect(result).toMatchObject({ state: "idle", files: 1, turns: 3 });
   });
 
+  it("stores the worktree name of a turn and gives a sibling worktree the Project of its repo", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      assistantLine("m1", { cwd: "/synthetic/acme/app" }),
+      assistantLine("m2", { cwd: "/synthetic/acme/app.worktrees/212-add-refunds/src" }),
+      assistantLine("m3", { cwd: "/synthetic/acme/app/.claude/worktrees/brave-otter" }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.turnKey);
+    expect(rows.map((row) => [row.turnKey, row.projectKey, row.worktreeName])).toEqual([
+      ["m1", "/synthetic/acme/app", null],
+      ["m2", "/synthetic/acme/app", "212-add-refunds"],
+      ["m3", "/synthetic/acme/app", "brave-otter"],
+    ]);
+  });
+
+  it("stores the worktree name of a sub-agent turn in a sibling worktree", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "-x-foreman/session-1/subagents/agent-a1.jsonl", [
+      assistantLine("s1", { cwd: "/x/foreman.worktrees/12-foo" }),
+    ]);
+
+    await refresh(folder);
+
+    const rows = await database.db.select().from(schema.turns);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ projectKey: "/x/foreman", worktreeName: "12-foo" });
+  });
+
   it("stores the times of the 3 real user messages, and none from a sub-agent", async () => {
     const folder = await makeConfigFolder();
     await writeTranscript(folder.claudeDir, "-synthetic-a-app/session-1.jsonl", [

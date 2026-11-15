@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { labelProjects, projectId, resolveProjects } from "./projects.ts";
+import { labelProjects, projectId, resolveProjects, worktreeName } from "./projects.ts";
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", ...args], {
@@ -39,6 +39,20 @@ describe("resolveProjects", () => {
     ]);
     expect(result.get("/synthetic/a/app/.claude/worktrees/x")?.key).toBe("/synthetic/a/app");
     expect(result.get("/synthetic/b/app/.worktrees/y/src")?.key).toBe("/synthetic/b/app");
+  });
+
+  it("maps a missing sibling worktree folder to its repo folder", async () => {
+    const result = await resolveProjects([
+      "/x/foreman.worktrees/12-foo",
+      "/x/foreman.worktrees/12-foo/src/deep",
+    ]);
+    expect(result.get("/x/foreman.worktrees/12-foo")?.key).toBe("/x/foreman");
+    expect(result.get("/x/foreman.worktrees/12-foo/src/deep")?.key).toBe("/x/foreman");
+  });
+
+  it("does not match a sibling worktree folder with an empty prefix", async () => {
+    const result = await resolveProjects(["/x/.worktrees/12-foo"]);
+    expect(result.get("/x/.worktrees/12-foo")?.key).toBe("/x");
   });
 
   it("maps a missing folder below a known key to the longest known key, in any order", async () => {
@@ -77,5 +91,20 @@ describe("projectId", () => {
   it("is the first 12 hex characters of the SHA-256 of the key", () => {
     expect(projectId("/synthetic/a/app")).toMatch(/^[0-9a-f]{12}$/);
     expect(projectId("/synthetic/a/app")).not.toBe(projectId("/synthetic/b/app"));
+  });
+});
+
+describe("worktreeName", () => {
+  it.each([
+    ["/synthetic/acme/app.worktrees/212-add-refunds/src", "212-add-refunds"],
+    ["/synthetic/acme/app.worktrees/212-add-refunds", "212-add-refunds"],
+    ["/synthetic/acme/app/.worktrees/x/src", "x"],
+    ["/synthetic/acme/app/.claude/worktrees/brave-otter", "brave-otter"],
+    ["/synthetic/acme/app", null],
+    ["/synthetic/acme/app/src", null],
+    ["/synthetic/acme/app.worktrees", null],
+    ["/synthetic/acme/app.worktreesx/y", null],
+  ])("reads %s as %s", (cwd, expected) => {
+    expect(worktreeName(cwd)).toBe(expected);
   });
 });

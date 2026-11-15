@@ -1,8 +1,9 @@
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { runReindex } from "../src/reindex.ts";
+import { FetchRunningError, runReindex } from "../src/reindex.ts";
 import { withRefreshLock } from "../src/usage/ingest.ts";
+import { withFetchLock } from "../src/work/lock.ts";
 import { openTestDatabase } from "./database.ts";
 import {
   assistantLine,
@@ -23,7 +24,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table turns, agents, refresh_runs, user_messages, skill_calls, agent_starts`,
+    sql`truncate table turns, agents, refresh_runs, user_messages, skill_calls, agent_starts, work_repos, work_fetch_runs`,
   );
 });
 
@@ -112,5 +113,51 @@ describe("runReindex", () => {
     }
 
     expect(await database.db.select().from(schema.turns)).toEqual([]);
+  });
+});
+
+describe("runReindex and the work cache", () => {
+  async function seedWork() {
+    await database.db.insert(schema.workRepos).values({
+      id: "aaaaaaaaaaaa",
+      host: "github.com",
+      owner: "acme",
+      name: "app",
+    });
+    await database.db.insert(schema.workFetchRuns).values({
+      startedAt: new Date("2026-03-01T10:00:00Z"),
+      endedAt: new Date("2026-03-01T10:01:00Z"),
+      kind: "full",
+      state: "idle",
+    });
+  }
+
+  it("empties the work cache, so that the next fetch is a full fetch", async () => {
+    const folder = await makeConfigFolder();
+    await seedWork();
+
+    await runReindex({ db: database.db, ...folder, log: recordingLog().log });
+
+    expect(await database.db.select().from(schema.workRepos)).toEqual([]);
+    expect(await database.db.select().from(schema.workFetchRuns)).toEqual([]);
+  });
+
+  it("stops with a fetch running message and keeps the work cache while a fetch runs", async () => {
+    const folder = await makeConfigFolder();
+    await seedWork();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holder = withFetchLock(database.db, () => held);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const attempt = runReindex({ db: database.db, ...folder, log: recordingLog().log });
+    await expect(attempt).rejects.toThrow(FetchRunningError);
+    await expect(attempt).rejects.toThrow("A fetch is running.");
+    release();
+    await holder;
+
+    expect(await database.db.select().from(schema.workRepos)).toHaveLength(1);
   });
 });

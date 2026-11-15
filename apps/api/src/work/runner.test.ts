@@ -276,3 +276,66 @@ describe("error classes", () => {
     expect(result).toMatchObject({ ok: false, errorClass: "other" });
   });
 });
+
+const SHA_A = "a".repeat(40);
+const SHA_B = "b".repeat(40);
+
+describe("the status command", () => {
+  const statusOutput = {
+    sha: SHA_A,
+    context: "factory/machine-gate",
+    state: "pass",
+    description: "",
+  };
+
+  it.each(["factory/machine-gate", "factory/release-review"])(
+    "accepts status get for %s",
+    async (context) => {
+      await control({ stdout: JSON.stringify({ ...statusOutput, context }) });
+      const result = await runAdapterCommand(request(["status", "get", SHA_A, context]), options);
+      expect(result).toMatchObject({ ok: true, data: { state: "pass", context } });
+    },
+  );
+
+  it.each([
+    ["a short sha", ["status", "get", "abc123", "factory/machine-gate"]],
+    ["another context", ["status", "get", SHA_A, "factory/other"]],
+    ["status set", ["status", "set", SHA_A, "factory/machine-gate", "pass"]],
+    ["an extra argument", ["status", "get", SHA_A, "factory/machine-gate", "x"]],
+    ["an upper case sha", ["status", "get", SHA_A.toUpperCase(), "factory/machine-gate"]],
+  ])("refuses %s and starts no subprocess", async (_name, command) => {
+    await expect(runAdapterCommand(request(command), options)).rejects.toBeInstanceOf(
+      CommandRefusedError,
+    );
+    expect(await exists(path.join(folder, "record.json"))).toBe(false);
+  });
+
+  it.each([
+    ["another sha", { sha: SHA_B }],
+    ["another context", { context: "factory/release-review" }],
+    ["the state green", { state: "green" }],
+    ["an unknown key", { extra: 1 }],
+  ])("rejects output with %s as invalid_output", async (_name, over) => {
+    await control({ stdout: JSON.stringify({ ...statusOutput, ...over }) });
+    const result = await runAdapterCommand(
+      request(["status", "get", SHA_A, "factory/machine-gate"]),
+      options,
+    );
+    expect(result).toEqual({
+      ok: false,
+      errorClass: "invalid_output",
+      state: "invalid adapter output",
+    });
+  });
+
+  it("refuses pr list output in which only some pull requests have a head_sha", async () => {
+    await control({
+      stdout: JSON.stringify([
+        { ...pr, head_sha: SHA_A },
+        { ...pr, number: 4 },
+      ]),
+    });
+    const result = await runAdapterCommand(request(["pr", "list", "--state", "all"]), options);
+    expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
+  });
+});
