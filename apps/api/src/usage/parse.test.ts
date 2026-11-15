@@ -18,6 +18,56 @@ function assistant(overrides: Record<string, unknown> = {}, usage: Record<string
   });
 }
 
+function user(overrides: Record<string, unknown> = {}, content: unknown = "SECRET PROMPT") {
+  return JSON.stringify({
+    type: "user",
+    uuid: "u1",
+    sessionId: "s1",
+    timestamp: "2026-11-01T10:00:00.000Z",
+    cwd: "/synthetic/a/app",
+    gitBranch: "main",
+    message: { role: "user", content },
+    ...overrides,
+  });
+}
+
+describe("parseLine user messages", () => {
+  it("maps a real user message to a time with no text", () => {
+    const result = parseLine(user());
+    expect(result).toEqual({
+      kind: "userMessage",
+      userMessage: {
+        recordId: "u1",
+        sessionId: "s1",
+        time: new Date("2026-11-01T10:00:00.000Z"),
+        projectKey: "/synthetic/a/app",
+        branch: "main",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("counts a message with text blocks, and a message with text next to a tool result", () => {
+    const blocks = [
+      { type: "tool_result", tool_use_id: "t1", content: "x" },
+      { type: "text", text: "SECRET" },
+    ];
+    expect(parseLine(user({}, blocks)).kind).toBe("userMessage");
+    expect(parseLine(user({}, [{ type: "text", text: "SECRET" }])).kind).toBe("userMessage");
+  });
+
+  it("ignores a user message that has only tool results, or that is meta", () => {
+    expect(parseLine(user({}, [{ type: "tool_result", tool_use_id: "t1", content: "x" }]))).toEqual(
+      { kind: "ignore" },
+    );
+    expect(parseLine(user({ isMeta: true }))).toEqual({ kind: "ignore" });
+  });
+
+  it("reports a real user message that has no record ID as malformed", () => {
+    expect(parseLine(user({ uuid: undefined }))).toEqual({ kind: "malformed" });
+  });
+});
+
 describe("parseLine", () => {
   it("maps an assistant record to a turn with no text", () => {
     const result = parseLine(assistant());
@@ -75,10 +125,10 @@ describe("parseLine", () => {
     });
   });
 
-  it("ignores user records and synthetic models", () => {
-    expect(parseLine(JSON.stringify({ type: "user", message: { content: "hi" } }))).toEqual({
-      kind: "ignore",
-    });
+  it("ignores user records that are not real messages, and synthetic models", () => {
+    expect(
+      parseLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result" }] } })),
+    ).toEqual({ kind: "ignore" });
     const synthetic = JSON.parse(assistant()) as { message: Record<string, unknown> };
     synthetic.message.model = "<synthetic>";
     expect(parseLine(JSON.stringify(synthetic))).toEqual({ kind: "ignore" });
