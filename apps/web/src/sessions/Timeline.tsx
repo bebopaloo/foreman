@@ -163,37 +163,40 @@ export function Timeline({ detail, list, timeZone }: TimelineProps) {
           </li>
         ))}
       </ul>
-      <table className="sr-only">
-        <caption>
-          Spans of the session, {formatNumber(list.rows.length)} of {formatNumber(detail.spanTotal)}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Agent type</th>
-            <th scope="col">Skill</th>
-            <th scope="col">Start</th>
-            <th scope="col">End</th>
-            <th scope="col">Models</th>
-            <th scope="col">Work item</th>
-            <th scope="col">Turns</th>
-            <th scope="col">Tokens</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.rows.map((span) => (
-            <tr key={span.key}>
-              <th scope="row">{span.agentType}</th>
-              <td>{skillText(span)}</td>
-              <td>{formatTime(span.start, timeZone)}</td>
-              <td>{formatTime(span.end, timeZone)}</td>
-              <td>{modelsText(span.models)}</td>
-              <td>{workItemText(span.workItem)}</td>
-              <td>{formatNumber(span.turns)}</td>
-              <td>{formatNumber(span.tokens)}</td>
+      <div className="sr-only">
+        <table>
+          <caption>
+            Spans of the session, {formatNumber(list.rows.length)} of{" "}
+            {formatNumber(detail.spanTotal)}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Agent type</th>
+              <th scope="col">Skill</th>
+              <th scope="col">Start</th>
+              <th scope="col">End</th>
+              <th scope="col">Models</th>
+              <th scope="col">Work item</th>
+              <th scope="col">Turns</th>
+              <th scope="col">Tokens</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {list.rows.map((span) => (
+              <tr key={span.key}>
+                <th scope="row">{span.agentType}</th>
+                <td>{skillText(span)}</td>
+                <td>{formatTime(span.start, timeZone)}</td>
+                <td>{formatTime(span.end, timeZone)}</td>
+                <td>{modelsText(span.models)}</td>
+                <td>{workItemText(span.workItem)}</td>
+                <td>{formatNumber(span.turns)}</td>
+                <td>{formatNumber(span.tokens)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

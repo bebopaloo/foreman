@@ -1,3 +1,4 @@
+import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
 
 /** A fixture set: the files of a synthetic Claude folder and the Work cache. All data is synthetic. */
@@ -350,6 +351,13 @@ export const FIXTURE_SETS = {
   /** The repo list and no transcript: the Usage index is empty. */
   "usage-empty": {
     files: () => ({ "factory/repos.json": repoList() }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The repo list and the transcripts of 3 sessions on the day before `now`. */
+  sessions: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...sessionTranscripts(now) }),
     work: CONNECTED_CACHE,
     usage: true,
   },
