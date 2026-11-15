@@ -22,12 +22,12 @@ const compareByName = (a: CursorKey, b: CursorKey): number =>
   byText(String(a[0]), String(b[0])) || byText(String(b[1]), String(a[1]));
 
 /** The link check runs again on read, against the host of the repo, so that no stored value skips it. */
-function linkFor(link: string | null, repo: ScopedRepo | undefined): string | null {
+export function linkFor(link: string | null, repo: ScopedRepo | undefined): string | null {
   return link === null || repo === undefined ? null : safeLink(link, repo.host);
 }
 
 /** An item is stale when the last listing of its repo did not include it. */
-function newestListing(rows: readonly { repoId: string; lastListedAt: Date }[]) {
+export function newestListing(rows: readonly { repoId: string; lastListedAt: Date }[]) {
   const newest = new Map<string, number>();
   for (const row of rows) {
     const time = row.lastListedAt.getTime();

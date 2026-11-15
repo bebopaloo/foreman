@@ -137,6 +137,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     schedule: activeFetcher,
     tokensFile: config.FOREMAN_TOKENS_FILE,
     allowedOrigins: config.CORS_ORIGINS,
+    ...(now === undefined ? {} : { now }),
   });
   await app.register(dashRoutes, {
     prefix: "/api",

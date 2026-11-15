@@ -5,6 +5,8 @@ import {
   WorkClientsResponse,
   WorkIssuesQuery,
   WorkIssuesResponse,
+  WorkItemsQuery,
+  WorkItemsResponse,
   WorkPullRequestsQuery,
   WorkPullRequestsResponse,
   WorkReleasesQuery,
@@ -14,7 +16,10 @@ import {
 } from "@foreman/shared";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { readControlEvents } from "../dash/control-events.ts";
 import { originGuard } from "../host-check.ts";
+import { buildGateSignals } from "../work/gate-signals.ts";
+import { listWorkItems, type ItemsRepo } from "../work/items.ts";
 import { listClients } from "../work/clients.ts";
 import { listIssues, listPullRequests, listReleases } from "../work/lists.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
@@ -33,6 +38,8 @@ export interface WorkOptions {
   tokensFile: string | undefined;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
+  /** Tests pass a fixed clock for the 30-day window of the Control events. */
+  now?: () => Date;
 }
 
 async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
@@ -42,7 +49,7 @@ async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
 
 export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   app,
-  { db, claudeDir, schedule, tokensFile, allowedOrigins },
+  { db, claudeDir, schedule, tokensFile, allowedOrigins, now = () => new Date() },
   done,
 ) => {
   app.get(
@@ -111,6 +118,49 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
         { issue_state, state },
         { limit, cursor, query: { client, repo, issue_state, state } },
       );
+    },
+  );
+
+  app.get(
+    "/work/items",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkItemsQuery,
+        response: { 200: WorkItemsResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, issue_state, type, priority, sort, limit, cursor } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      const entries = new Map(scope.inScope.map((entry) => [entry.id, entry]));
+      const repos: ItemsRepo[] = scope.repos.flatMap((scoped) => {
+        const entry = entries.get(scoped.id);
+        return entry?.owner == null || entry.name == null
+          ? []
+          : [{ ...scoped, fullName: `${entry.owner}/${entry.name}`, client: entry.client }];
+      });
+      const controls = await readControlEvents(claudeDir, now());
+      for (const { file, lines } of controls.reports) {
+        request.log.warn(
+          { folder: "controls", file, skippedLines: lines },
+          lines === 0 ? "work items skipped a file" : "work items skipped lines",
+        );
+      }
+      const result = await listWorkItems(db, {
+        repos,
+        inScope: scope.inScope,
+        signals: buildGateSignals(controls.events),
+        filters: { issue_state, type, priority, sort },
+        limit,
+        cursor,
+        cursorQuery: { client, repo, issue_state, type, priority, sort },
+      });
+      return {
+        ...result,
+        skipped: { controlEvents: controls.skippedLines, files: controls.skippedFiles },
+      };
     },
   );
 
