@@ -207,7 +207,7 @@ export interface RunnerOptions {
   /** The hosts that an adapter may call, in lower case. */
   allowedHosts: readonly string[];
   timeoutMs?: number;
-  log?: { warn(message: string): void };
+  log?: { warn(message: string): void; info?(message: string): void };
 }
 
 export interface AdapterRequest {

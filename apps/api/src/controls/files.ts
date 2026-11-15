@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parse as parseToml, TomlDate } from "smol-toml";
 import { z } from "zod";
 
@@ -40,10 +41,34 @@ const releasesSchema = z
   })
   .strict();
 
-/** The fields of the repo config that Foreman keeps. Spec 71 adds its keys here. */
+const RULE_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const VERSION = /^[0-9A-Za-z.+-]{1,64}$/;
+const RULE_LIST_MAX = 50;
+
+/** The input of a rule list: at most 50 names that the rule path pattern accepts. */
+const nameListSchema = z.array(z.string().regex(RULE_NAME)).max(RULE_LIST_MAX);
+
+/** The `stack_pack` key: `null`, or the name and the version of the Stack pack. */
+const stackPackInputSchema = z
+  .object({ name: z.string().regex(RULE_NAME), version: z.string().regex(VERSION) })
+  .nullable();
+
+/** A key that Foreman validates alone: its value, or the state that it failed. */
+function keyOf<T extends z.ZodType>(value: T) {
+  return z.discriminatedUnion("state", [
+    z.object({ state: z.literal("ok"), value }).strict(),
+    z.object({ state: z.literal("not_valid") }).strict(),
+  ]);
+}
+
+/** The fields of the repo config that Foreman keeps. */
 export const repoConfigFieldsSchema = z
   .object({
     mainBranch: z.string().nullable(),
+    rules: keyOf(nameListSchema),
+    compliance: keyOf(nameListSchema),
+    stackPack: keyOf(stackPackInputSchema),
+    factoryCoreVersion: keyOf(z.string().regex(VERSION).nullable()),
     controls: z.discriminatedUnion("state", [
       z.object({ state: z.literal("none") }).strict(),
       z.object({ state: z.literal("not_valid") }).strict(),
@@ -64,6 +89,37 @@ export const repoConfigFieldsSchema = z
 
 export type RepoConfigFields = z.infer<typeof repoConfigFieldsSchema>;
 export type ControlsState = RepoConfigFields["controls"];
+export type RuleKind = "rule" | "compliance";
+
+/** The path of the rule file of a name. */
+export function rulePath(name: string): string {
+  return `.claude/rules/${name}.md`;
+}
+
+/** True when the path is the path of a rule file. */
+export function isRulePath(path: string): boolean {
+  return RULE_PATH.test(path);
+}
+
+const RULE_PATH = /^\.claude\/rules\/[a-z0-9][a-z0-9-]*\.md$/;
+
+/** The rule names that a valid repo config lists, each once, with its kind. `rules` comes first. */
+export function listedRules(fields: RepoConfigFields): { name: string; kind: RuleKind }[] | null {
+  if (fields.rules.state !== "ok" || fields.compliance.state !== "ok") return null;
+  const seen = new Set<string>();
+  const listed: { name: string; kind: RuleKind }[] = [];
+  for (const [names, kind] of [
+    [fields.rules.value, "rule"],
+    [fields.compliance.value, "compliance"],
+  ] as const) {
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      listed.push({ name, kind });
+    }
+  }
+  return listed;
+}
 
 export type RepoConfigResult = { ok: true; fields: RepoConfigFields } | { ok: false };
 
@@ -103,7 +159,76 @@ export function parseRepoConfig(content: string): RepoConfigResult {
       }
     : null;
 
-  return { ok: true, fields: { mainBranch, controls, releases } };
+  // A missing key is an empty list or null. A key that fails its schema fails alone.
+  const keyed = <T extends z.ZodType>(name: string, schema: T, absent: z.infer<T>) => {
+    if (!(name in json)) return { state: "ok" as const, value: absent };
+    const parsed = schema.safeParse(json[name]);
+    return parsed.success
+      ? { state: "ok" as const, value: parsed.data }
+      : { state: "not_valid" as const };
+  };
+  const rules = keyed("rules", nameListSchema, []);
+  const compliance = keyed("compliance", nameListSchema, []);
+  const stackPack = keyed("stack_pack", stackPackInputSchema, null);
+  const factoryCoreVersion = keyed(
+    "factory_core_version",
+    z.string().regex(VERSION).nullable(),
+    null,
+  );
+
+  return {
+    ok: true,
+    fields: {
+      mainBranch,
+      rules,
+      compliance,
+      stackPack,
+      factoryCoreVersion,
+      controls,
+      releases,
+    },
+  };
+}
+
+/** The parsed fields of a rule file. They never hold the text. */
+export const ruleFileFieldsSchema = z
+  .object({
+    kind: z.enum(["rule", "compliance"]),
+    stampPlugin: z.string().nullable(),
+    stampVersion: z.string().nullable(),
+    stampName: z.string().nullable(),
+    textHash: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict();
+export type RuleFileFields = z.infer<typeof ruleFileFieldsSchema>;
+
+const STAMP_LINE =
+  /^<!-- ([a-z0-9][a-z0-9-]*) ([0-9A-Za-z.+-]{1,64}): from Rule template ([a-z0-9][a-z0-9-]*)\. The team owns this file\. -->$/;
+
+/**
+ * Reads a rule file as `context-init` writes it. The stamp is the first line, or the line after
+ * the front matter. It counts only when its template name is the rule name. The hash is the
+ * SHA-256 of the text without the stamp line, or of the whole text when no stamp counts.
+ */
+export function parseRuleFile(name: string, kind: RuleKind, text: string): RuleFileFields {
+  let start = 0;
+  if (text.startsWith("---\n")) {
+    const end = text.indexOf("\n---\n", 4);
+    if (end !== -1) start = end + "\n---\n".length;
+  }
+  const lineEnd = text.indexOf("\n", start);
+  const stop = lineEnd === -1 ? text.length : lineEnd + 1;
+  const line = text.slice(start, lineEnd === -1 ? text.length : lineEnd);
+  const match = STAMP_LINE.exec(line);
+  const stamp = match !== null && match[3] === name ? match : null;
+  const body = stamp === null ? text : text.slice(0, start) + text.slice(stop);
+  return {
+    kind,
+    stampPlugin: stamp?.[1] ?? null,
+    stampVersion: stamp?.[2] ?? null,
+    stampName: stamp?.[3] ?? null,
+    textHash: createHash("sha256").update(body, "utf8").digest("hex"),
+  };
 }
 
 // The module files. Each parser follows the factory script that checks its file, keeps only the
