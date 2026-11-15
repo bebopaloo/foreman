@@ -184,7 +184,7 @@ export async function querySeries(
   };
 }
 
-export type BreakdownDimension = "project" | "model" | "agentType" | "branch" | "session";
+export type BreakdownDimension = "project" | "model" | "agentType" | "branch" | "session" | "skill";
 
 function dimensionKey(dimension: BreakdownDimension): SQL<string> {
   switch (dimension) {
@@ -198,7 +198,34 @@ function dimensionKey(dimension: BreakdownDimension): SQL<string> {
       return sql<string>`coalesce(${schema.turns.branch}, '(no branch)')`;
     case "session":
       return sql<string>`${schema.turns.sessionId}`;
+    case "skill":
+      return sql<string>`coalesce(${schema.turns.skillName}, '(no skill)')`;
   }
+}
+
+const skillSums = {
+  exactTurns: sql<number>`count(*) filter (where ${schema.turns.skillBasis} = 'exact')::float8`,
+  estimatedTurns: sql<number>`count(*) filter (where ${schema.turns.skillBasis} = 'estimate')::float8`,
+};
+
+/** The number of skill calls of each skill in the range. */
+async function querySkillCalls(
+  db: Database,
+  range: UsageRange,
+  projectKey: string | null,
+): Promise<Map<string, number>> {
+  const day = sql`(${schema.skillCalls.time} at time zone ${range.tz})`;
+  const filters: SQL[] = [
+    sql`${day}::date >= ${range.from}::date`,
+    sql`${day}::date <= ${range.to}::date`,
+  ];
+  if (projectKey !== null) filters.push(sql`${schema.skillCalls.projectKey} = ${projectKey}`);
+  const rows = await db
+    .select({ skill: schema.skillCalls.skillName, calls: sql<number>`count(*)::float8` })
+    .from(schema.skillCalls)
+    .where(sql.join(filters, sql` and `))
+    .groupBy(schema.skillCalls.skillName);
+  return new Map(rows.map((row) => [row.skill, row.calls]));
 }
 
 const total = (row: TokenCounts) =>
@@ -209,6 +236,8 @@ interface DimensionGroup {
   projectKey: string;
   first: Date;
   last: Date;
+  exactTurns: number;
+  estimatedTurns: number;
 }
 
 export async function queryBreakdown(
@@ -228,6 +257,7 @@ export async function queryBreakdown(
       last: sql<Date>`max(${schema.turns.time})`.mapWith((value: string) => new Date(value)),
       ...sums,
       ...priceSums,
+      ...skillSums,
     })
     .from(schema.turns)
     .where(rangeFilter(range, projectKey))
@@ -250,13 +280,34 @@ export async function queryBreakdown(
       projectKey: row.projectKey,
       first: row.first,
       last: row.last,
+      exactTurns: 0,
+      estimatedTurns: 0,
     };
+    group.exactTurns += row.exactTurns;
+    group.estimatedTurns += row.estimatedTurns;
     group.accumulator.add(table, row, unpriced);
     // The totals row counts each group once, so the unpriced models are not counted twice.
     everything.add(table, row, new Map());
     if (row.first < group.first) group.first = row.first;
     if (row.last > group.last) group.last = row.last;
     byKey.set(row.key, group);
+  }
+
+  const calls = dimension === "skill" ? await querySkillCalls(db, range, projectKey) : null;
+  if (calls !== null) {
+    // A skill that was called in the range shows a row even when no turn belongs to it.
+    for (const skill of calls.keys()) {
+      if (!byKey.has(skill)) {
+        byKey.set(skill, {
+          accumulator: new Accumulator(),
+          projectKey: "",
+          first: new Date(0),
+          last: new Date(0),
+          exactTurns: 0,
+          estimatedTurns: 0,
+        });
+      }
+    }
   }
 
   const rows = [...byKey].map(([groupKey, group]) => {
@@ -271,6 +322,16 @@ export async function queryBreakdown(
         ...figures,
         firstTurnAt: group.first.toISOString(),
         lastTurnAt: group.last.toISOString(),
+      };
+    }
+    if (calls !== null) {
+      return {
+        key: groupKey,
+        label: groupKey,
+        ...figures,
+        calls: calls.get(groupKey) ?? 0,
+        exactTurns: group.exactTurns,
+        estimatedTurns: group.estimatedTurns,
       };
     }
     return { key: groupKey, label: groupKey, ...figures };

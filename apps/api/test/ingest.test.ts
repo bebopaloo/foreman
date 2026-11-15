@@ -7,6 +7,7 @@ import { ingestTranscripts, withRefreshLock } from "../src/usage/ingest.ts";
 import { openTestDatabase } from "./database.ts";
 import {
   assistantLine,
+  commandLine,
   makeConfigFolder,
   recordingLog,
   writeArchived,
@@ -28,7 +29,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table turns, agents, projects, refresh_runs, file_cursors, user_messages`,
+    sql`truncate table turns, agents, projects, refresh_runs, file_cursors, user_messages, skill_calls, agent_starts`,
   );
 });
 
@@ -733,5 +734,153 @@ describe("ingestTranscripts archive", () => {
     expect((await database.db.select().from(schema.turns)).map((row) => row.turnKey)).toEqual([
       "m1",
     ]);
+  });
+});
+
+const skillCall = (id: string, skill: string) => ({ id, name: "Skill", input: { skill } });
+
+async function skillOfTurns() {
+  const rows = await database.db.select().from(schema.turns).orderBy(schema.turns.time);
+  return rows.map((row) => [row.turnKey, row.skillName, row.skillBasis]);
+}
+
+describe("ingestTranscripts skill attribution", () => {
+  it("counts a Skill call and gives its sub-agent turns to the skill as exact turns", async () => {
+    const folder = await makeConfigFolder();
+    const dir = "p/session-1";
+    await writeTranscript(folder.claudeDir, `${dir}.jsonl`, [
+      userLine("u1", { time: "2026-11-01T10:00:00.000Z" }),
+      assistantLine("m1", {
+        time: "2026-11-01T10:00:10.000Z",
+        toolUses: [skillCall("toolu_skill", "to-code")],
+      }),
+      assistantLine("m2", {
+        time: "2026-11-01T10:00:20.000Z",
+        toolUses: [{ id: "toolu_agent", name: "Agent", input: { prompt: "SYNTHETIC-PROMPT" } }],
+      }),
+    ]);
+    await writeTranscript(folder.claudeDir, `${dir}/subagents/agent-a1.jsonl`, [
+      assistantLine("s1", { time: "2026-11-01T10:00:30.000Z" }),
+      assistantLine("s2", { time: "2026-11-01T10:00:40.000Z" }),
+    ]);
+    await writeMeta(folder.claudeDir, `${dir}/subagents/agent-a1.meta.json`, {
+      agentType: "software-developer",
+      toolUseId: "toolu_agent",
+    });
+
+    await refresh(folder);
+
+    const calls = await database.db.select().from(schema.skillCalls);
+    expect(calls.map((call) => [call.callId, call.skillName, call.agentId])).toEqual([
+      ["toolu_skill", "to-code", null],
+    ]);
+    const starts = await database.db.select().from(schema.agentStarts);
+    expect(starts.map((start) => [start.callId, start.agentId])).toEqual([["toolu_agent", null]]);
+    expect(JSON.stringify([calls, starts])).not.toContain("SYNTHETIC");
+    expect(await skillOfTurns()).toEqual([
+      ["m1", null, null],
+      ["m2", "to-code", "estimate"],
+      ["s1", "to-code", "exact"],
+      ["s2", "to-code", "exact"],
+    ]);
+  });
+
+  it("estimates the main turns of a slash command up to the next real user message", async () => {
+    const folder = await makeConfigFolder();
+    const lines = [commandLine("c1", "review-spec", { time: "2026-11-01T10:00:00.000Z" })];
+    for (let index = 1; index <= 4; index += 1) {
+      lines.push(
+        assistantLine(`a${String(index)}`, { time: `2026-11-01T10:0${String(index)}:00.000Z` }),
+      );
+    }
+    lines.push(toolResultLine("r1", { time: "2026-11-01T10:05:00.000Z" }));
+    for (let index = 5; index <= 6; index += 1) {
+      lines.push(
+        assistantLine(`a${String(index)}`, { time: `2026-11-01T10:0${String(index + 1)}:00.000Z` }),
+      );
+    }
+    lines.push(userLine("u2", { time: "2026-11-01T10:09:00.000Z" }));
+    lines.push(assistantLine("a7", { time: "2026-11-01T10:10:00.000Z" }));
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", lines);
+
+    await refresh(folder);
+
+    const rows = await skillOfTurns();
+    expect(rows.filter((row) => row[1] === "review-spec" && row[2] === "estimate")).toHaveLength(6);
+    expect(rows.at(-1)).toEqual(["a7", null, null]);
+    const calls = await database.db.select().from(schema.skillCalls);
+    expect(calls.map((call) => [call.callId, call.skillName])).toEqual([["c1", "review-spec"]]);
+    expect(JSON.stringify(calls)).not.toContain("SYNTHETIC");
+  });
+
+  it("adds no call for a built-in command and marks a span after two calls as ambiguous", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      commandLine("c1", "compact", { time: "2026-11-01T10:00:00.000Z" }),
+      assistantLine("m1", { time: "2026-11-01T10:01:00.000Z" }),
+      assistantLine("m2", {
+        time: "2026-11-01T10:02:00.000Z",
+        toolUses: [skillCall("k1", "first"), skillCall("k2", "second")],
+      }),
+      assistantLine("m3", { time: "2026-11-01T10:03:00.000Z" }),
+    ]);
+
+    await refresh(folder);
+
+    const calls = await database.db
+      .select()
+      .from(schema.skillCalls)
+      .orderBy(schema.skillCalls.callId);
+    expect(calls.map((call) => call.skillName)).toEqual(["first", "second"]);
+    expect(await skillOfTurns()).toEqual([
+      ["m1", null, null],
+      ["m2", null, null],
+      ["m3", "(ambiguous)", "estimate"],
+    ]);
+  });
+
+  it("gives the sub-agent turns to the skill when the parent lines come in a later refresh", async () => {
+    const folder = await makeConfigFolder();
+    const dir = "p/session-1";
+    const parent = await writeTranscript(folder.claudeDir, `${dir}.jsonl`, [
+      userLine("u1", { time: "2026-11-01T10:00:00.000Z" }),
+    ]);
+    await writeTranscript(folder.claudeDir, `${dir}/subagents/agent-a1.jsonl`, [
+      assistantLine("s1", { time: "2026-11-01T10:00:30.000Z" }),
+    ]);
+    await writeMeta(folder.claudeDir, `${dir}/subagents/agent-a1.meta.json`, {
+      agentType: "software-developer",
+      toolUseId: "toolu_skill",
+    });
+    await refresh(folder);
+    expect(await skillOfTurns()).toEqual([["s1", null, null]]);
+
+    await appendFile(
+      parent,
+      assistantLine("m1", {
+        time: "2026-11-01T10:00:10.000Z",
+        toolUses: [skillCall("toolu_skill", "to-code")],
+      }) + "\n",
+    );
+    await refresh(folder);
+
+    expect(await skillOfTurns()).toEqual([
+      ["m1", null, null],
+      ["s1", "to-code", "exact"],
+    ]);
+  });
+
+  it("keeps the skill of a turn when the same files are read again", async () => {
+    const folder = await makeConfigFolder();
+    await writeTranscript(folder.claudeDir, "p/session-1.jsonl", [
+      commandLine("c1", "review-spec", { time: "2026-11-01T10:00:00.000Z" }),
+      assistantLine("m1", { time: "2026-11-01T10:01:00.000Z" }),
+    ]);
+    await refresh(folder);
+    await database.db.execute(sql`truncate table file_cursors`);
+    await refresh(folder);
+
+    expect(await skillOfTurns()).toEqual([["m1", "review-spec", "estimate"]]);
+    expect(await database.db.select().from(schema.skillCalls)).toHaveLength(1);
   });
 });

@@ -18,7 +18,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table turns, agents, projects, refresh_runs, file_cursors`,
+    sql`truncate table turns, agents, projects, refresh_runs, file_cursors, skill_calls, agent_starts`,
   );
 });
 

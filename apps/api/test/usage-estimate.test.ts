@@ -19,7 +19,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, projects, refresh_runs`);
+  await database.db.execute(sql`truncate table turns, projects, refresh_runs, skill_calls`);
 });
 
 interface Seed {

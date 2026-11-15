@@ -30,6 +30,9 @@ export const turns = pgTable(
     branch: text("branch"),
     agentType: text("agent_type").notNull(),
     agentId: text("agent_id"),
+    // The skill that Skill attribution gives the turn, and whether it is exact or an estimate.
+    skillName: text("skill_name"),
+    skillBasis: text("skill_basis"),
   },
   (table) => [
     index("turns_time_idx").on(table.time),
@@ -45,6 +48,37 @@ export const agents = pgTable("agents", {
   agentType: text("agent_type").notNull(),
   startToolCallId: text("start_tool_call_id"),
 });
+
+// One row for each skill call: a Skill tool call or a slash command. The ID is the tool call ID,
+// or the record ID of a slash command. The message ID groups the calls of one assistant message.
+export const skillCalls = pgTable(
+  "skill_calls",
+  {
+    callId: text("call_id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    agentId: text("agent_id"),
+    messageId: text("message_id"),
+    time: timestamp("time", { withTimezone: true }).notNull(),
+    skillName: text("skill_name").notNull(),
+    projectKey: text("project_key").notNull(),
+  },
+  (table) => [
+    index("skill_calls_session_id_idx").on(table.sessionId),
+    index("skill_calls_time_idx").on(table.time),
+  ],
+);
+
+// One row for each tool call that starts a sub-agent. It keeps no tool input.
+export const agentStarts = pgTable(
+  "agent_starts",
+  {
+    callId: text("call_id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    agentId: text("agent_id"),
+    time: timestamp("time", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("agent_starts_session_id_idx").on(table.sessionId)],
+);
 
 // The time of each real user message of a main session file. It has no text:
 // the Engagement ledger and skill attribution only need the times.

@@ -1,8 +1,15 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { type ParsedTurn, type ParsedUserMessage, parseLine } from "./parse.ts";
+import {
+  type ParsedAgentStart,
+  type ParsedSkillCall,
+  type ParsedTurn,
+  type ParsedUserMessage,
+  parseLine,
+} from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
+import { attributeSessions, isBuiltInCommand } from "./skills.ts";
 import {
   type FileCursor,
   readAgentMeta,
@@ -42,6 +49,8 @@ type CursorRow = typeof schema.fileCursors.$inferInsert;
 type ProjectRow = typeof schema.projects.$inferInsert;
 type AgentRow = typeof schema.agents.$inferInsert;
 type UserMessageRow = typeof schema.userMessages.$inferInsert;
+type SkillCallRow = typeof schema.skillCalls.$inferInsert;
+type AgentStartRow = typeof schema.agentStarts.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
 
 // 16 columns for each row, and Postgres allows 65,535 parameters in a query.
@@ -55,6 +64,14 @@ const COUNT_COLUMNS = [
   ["cache_read_tokens", "cacheReadTokens"],
   ["web_search_count", "webSearchCount"],
 ] as const;
+
+function toSkillCallRow(call: ParsedSkillCall, agentId: string | null) {
+  return { ...call, agentId };
+}
+
+function toAgentStartRow(start: ParsedAgentStart, agentId: string | null): AgentStartRow {
+  return { ...start, agentId };
+}
 
 function keepLargestCounts(known: IndexedTurn, next: IndexedTurn): IndexedTurn {
   const merged = { ...known };
@@ -97,6 +114,27 @@ async function writeUserMessages(
       .insert(schema.userMessages)
       .values(messages.slice(start, start + INSERT_BATCH_SIZE))
       .onConflictDoNothing({ target: schema.userMessages.recordId });
+  }
+}
+
+async function writeSkillCalls(db: Pick<Database, "insert">, calls: SkillCallRow[]): Promise<void> {
+  for (let start = 0; start < calls.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.skillCalls)
+      .values(calls.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.skillCalls.callId });
+  }
+}
+
+async function writeAgentStarts(
+  db: Pick<Database, "insert">,
+  starts: AgentStartRow[],
+): Promise<void> {
+  for (let start = 0; start < starts.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.agentStarts)
+      .values(starts.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.agentStarts.callId });
   }
 }
 
@@ -158,6 +196,8 @@ async function readSources(options: IngestOptions): Promise<
     cursors: CursorRow[];
     agents: AgentRow[];
     userMessages: UserMessageRow[];
+    skillCalls: SkillCallRow[];
+    agentStarts: AgentStartRow[];
   }
 > {
   const { db, claudeDir, dataDir, log } = options;
@@ -170,6 +210,8 @@ async function readSources(options: IngestOptions): Promise<
   const byKey = new Map<string, IndexedTurn>();
   const agents = new Map<string, AgentRow>();
   const messages = new Map<string, ParsedUserMessage>();
+  const calls = new Map<string, SkillCallRow & { agentId: string | null }>();
+  const starts = new Map<string, AgentStartRow>();
   let files = 0;
   let skippedLines = 0;
   let unreadableFiles = 0;
@@ -213,10 +255,31 @@ async function readSources(options: IngestOptions): Promise<
       if (parsed.kind === "malformed") skipped += 1;
       if (parsed.kind === "userMessage") {
         // A user record in a sub-agent transcript is a task prompt, not a real user message.
-        if (file.agent === undefined) messages.set(parsed.userMessage.recordId, parsed.userMessage);
+        if (file.agent === undefined) {
+          const message = parsed.userMessage;
+          messages.set(message.recordId, message);
+          if (message.command !== undefined && !isBuiltInCommand(message.command)) {
+            calls.set(message.recordId, {
+              callId: message.recordId,
+              sessionId: message.sessionId,
+              agentId: null,
+              messageId: null,
+              time: message.time,
+              skillName: message.command,
+              projectKey: message.projectKey,
+            });
+          }
+        }
         continue;
       }
       if (parsed.kind !== "turn") continue;
+      const callingAgent = file.agent?.agentId ?? null;
+      for (const call of parsed.skillCalls) {
+        calls.set(call.callId, toSkillCallRow(call, callingAgent));
+      }
+      for (const start of parsed.agentStarts) {
+        starts.set(start.callId, toAgentStartRow(start, callingAgent));
+      }
       const next = { ...parsed.turn, agentType, agentId: file.agent?.agentId ?? null };
       const known = byKey.get(next.turnKey);
       byKey.set(next.turnKey, known ? keepLargestCounts(known, next) : next);
@@ -233,6 +296,7 @@ async function readSources(options: IngestOptions): Promise<
       ...new Set([
         ...[...byKey.values()].map((row) => row.projectKey),
         ...[...messages.values()].map((message) => message.projectKey),
+        ...[...calls.values()].map((call) => call.projectKey),
       ]),
     ],
     knownProjects.map((row) => row.key),
@@ -244,6 +308,10 @@ async function readSources(options: IngestOptions): Promise<
   const userMessages = [...messages.values()].map((message) => ({
     ...message,
     projectKey: refs.get(message.projectKey)?.key ?? message.projectKey,
+  }));
+  const skillCalls = [...calls.values()].map((call) => ({
+    ...call,
+    projectKey: refs.get(call.projectKey)?.key ?? call.projectKey,
   }));
   const projects = new Map<string, ProjectRow>();
   for (const ref of refs.values()) {
@@ -260,6 +328,8 @@ async function readSources(options: IngestOptions): Promise<
     cursors,
     agents: [...agents.values()],
     userMessages,
+    skillCalls,
+    agentStarts: [...starts.values()],
   };
 }
 
@@ -275,18 +345,32 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, cursors, agents, userMessages, ...result } = await readSources(options);
+    const { rows, projects, cursors, agents, userMessages, skillCalls, agentStarts, ...result } =
+      await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) {
         await tx.delete(schema.turns);
         await tx.delete(schema.agents);
         await tx.delete(schema.userMessages);
+        await tx.delete(schema.skillCalls);
+        await tx.delete(schema.agentStarts);
         await tx.delete(schema.fileCursors);
       }
       await writeTurns(tx, rows);
       await writeCursors(tx, cursors);
       await writeAgents(tx, agents);
       await writeUserMessages(tx, userMessages);
+      await writeSkillCalls(tx, skillCalls);
+      await writeAgentStarts(tx, agentStarts);
+      await attributeSessions(tx, [
+        ...new Set([
+          ...rows.map((row) => row.sessionId),
+          ...agents.map((agent) => agent.sessionId),
+          ...userMessages.map((message) => message.sessionId),
+          ...skillCalls.map((call) => call.sessionId),
+          ...agentStarts.map((start) => start.sessionId),
+        ]),
+      ]);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)

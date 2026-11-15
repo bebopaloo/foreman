@@ -20,6 +20,17 @@ const UsageSchema = z.object({
 
 // Only the fields that Foreman uses. The schema drops all other fields, so
 // no prompt, reply, tool input or tool output can reach the index.
+const ToolUseSchema = z.object({
+  type: z.literal("tool_use"),
+  id: z.string().min(1),
+  name: z.string(),
+  input: z.object({ skill: z.string().min(1).optional() }).optional(),
+});
+
+const SKILL_TOOL = "Skill";
+// The tool that starts a sub-agent is "Agent" in a current transcript and "Task" in an older one.
+const AGENT_TOOLS: readonly string[] = ["Agent", "Task"];
+
 const AssistantRecordSchema = z.object({
   type: z.literal("assistant"),
   sessionId: z.string().min(1),
@@ -30,6 +41,7 @@ const AssistantRecordSchema = z.object({
     id: z.string().min(1),
     model: z.string().min(1),
     usage: UsageSchema,
+    content: z.array(z.unknown()).optional(),
   }),
 });
 
@@ -50,16 +62,39 @@ export interface ParsedTurn {
   branch: string | null;
 }
 
+export interface ParsedSkillCall {
+  callId: string;
+  sessionId: string;
+  /** The ID of the assistant message that made the call, or null for a slash command. */
+  messageId: string | null;
+  time: Date;
+  skillName: string;
+  projectKey: string;
+}
+
+export interface ParsedAgentStart {
+  callId: string;
+  sessionId: string;
+  time: Date;
+}
+
 export interface ParsedUserMessage {
   recordId: string;
   sessionId: string;
   time: Date;
   projectKey: string;
   branch: string | null;
+  /** The name of a slash command in the message, with no leading "/". */
+  command?: string;
 }
 
 export type ParsedLine =
-  | { kind: "turn"; turn: ParsedTurn }
+  | {
+      kind: "turn";
+      turn: ParsedTurn;
+      skillCalls: ParsedSkillCall[];
+      agentStarts: ParsedAgentStart[];
+    }
   | { kind: "userMessage"; userMessage: ParsedUserMessage }
   | { kind: "ignore" }
   | { kind: "malformed" };
@@ -73,6 +108,28 @@ const UserRecordSchema = z.object({
   cwd: z.string().min(1),
   gitBranch: z.string().nullish(),
 });
+
+const COMMAND_PATTERN =
+  /^\s*(?:<command-message>[^<]*<\/command-message>\s*)?<command-name>\s*\/?([A-Za-z0-9][A-Za-z0-9:_.-]*)\s*<\/command-name>/;
+
+/** The slash command name of a user record, or undefined. The text itself never leaves this function. */
+function commandName(record: unknown): string | undefined {
+  if (typeof record !== "object" || record === null || !("message" in record)) return undefined;
+  const message = record.message;
+  if (typeof message !== "object" || message === null || !("content" in message)) return undefined;
+  const { content } = message;
+  const texts: unknown[] = Array.isArray(content) ? content.map(blockText) : [content];
+  for (const text of texts) {
+    if (typeof text !== "string") continue;
+    const match = COMMAND_PATTERN.exec(text);
+    if (match?.[1] !== undefined) return match[1];
+  }
+  return undefined;
+}
+
+function blockText(block: unknown): unknown {
+  return typeof block === "object" && block !== null && "text" in block ? block.text : undefined;
+}
 
 function isRealUserRecord(record: unknown): boolean {
   if (typeof record !== "object" || record === null) return false;
@@ -128,6 +185,7 @@ export function parseLine(line: string): ParsedLine {
   if (isRealUserRecord(record)) {
     const user = UserRecordSchema.safeParse(record);
     if (!user.success) return { kind: "malformed" };
+    const command = commandName(record);
     return {
       kind: "userMessage",
       userMessage: {
@@ -136,6 +194,7 @@ export function parseLine(line: string): ParsedLine {
         time: new Date(user.data.timestamp),
         projectKey: user.data.cwd,
         branch: user.data.gitBranch ?? null,
+        ...(command === undefined ? {} : { command }),
       },
     };
   }
@@ -145,12 +204,34 @@ export function parseLine(line: string): ParsedLine {
   const { message } = parsed.data;
   const { usage } = message;
   const split = usage.cache_creation;
+  const time = new Date(parsed.data.timestamp);
+  const skillCalls: ParsedSkillCall[] = [];
+  const agentStarts: ParsedAgentStart[] = [];
+  for (const block of message.content ?? []) {
+    const toolUse = ToolUseSchema.safeParse(block);
+    if (!toolUse.success) continue;
+    const { id, name, input } = toolUse.data;
+    if (name === SKILL_TOOL && input?.skill !== undefined) {
+      skillCalls.push({
+        callId: id,
+        sessionId: parsed.data.sessionId,
+        messageId: message.id,
+        time,
+        skillName: input.skill.replace(/^\//, ""),
+        projectKey: parsed.data.cwd,
+      });
+    } else if (AGENT_TOOLS.includes(name)) {
+      agentStarts.push({ callId: id, sessionId: parsed.data.sessionId, time });
+    }
+  }
   return {
     kind: "turn",
+    skillCalls,
+    agentStarts,
     turn: {
       turnKey: message.id,
       sessionId: parsed.data.sessionId,
-      time: new Date(parsed.data.timestamp),
+      time,
       model: message.model,
       speed: usage.speed ?? null,
       serviceTier: usage.service_tier ?? null,

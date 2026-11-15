@@ -73,6 +73,8 @@ describe("parseLine", () => {
     const result = parseLine(assistant());
     expect(result).toEqual({
       kind: "turn",
+      skillCalls: [],
+      agentStarts: [],
       turn: {
         turnKey: "msg_1",
         sessionId: "s1",
@@ -166,5 +168,67 @@ describe("parseAgentMeta", () => {
 
   it("returns no Agent type when it is empty", () => {
     expect(parseAgentMeta(JSON.stringify({ agentType: "" }))).toEqual({});
+  });
+});
+
+describe("parseLine skill calls and agent starts", () => {
+  const toolUse = (id: string, name: string, input: Record<string, unknown>) => ({
+    type: "tool_use",
+    id,
+    name,
+    input,
+  });
+
+  function turnOf(content: unknown[]) {
+    const result = parseLine(
+      assistant({}, {}).replace(/"content":\[[^\]]*\]/, `"content":${JSON.stringify(content)}`),
+    );
+    if (result.kind !== "turn") throw new Error("not a turn");
+    return result;
+  }
+
+  it("keeps the call ID and the skill name of a Skill call, and nothing else of its input", () => {
+    const result = turnOf([
+      toolUse("t1", "Skill", { skill: "/factory-core:to-code", args: "SECRET" }),
+    ]);
+    expect(result.skillCalls).toEqual([
+      {
+        callId: "t1",
+        sessionId: "s1",
+        messageId: "msg_1",
+        time: new Date("2026-11-01T10:00:00.000Z"),
+        skillName: "factory-core:to-code",
+        projectKey: "/synthetic/a/app",
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("keeps the call ID of an Agent call and of a Task call", () => {
+    const result = turnOf([
+      toolUse("t1", "Agent", { prompt: "SECRET" }),
+      toolUse("t2", "Task", { prompt: "SECRET" }),
+      toolUse("t3", "Bash", { command: "SECRET" }),
+      toolUse("t4", "Skill", {}),
+    ]);
+    expect(result.agentStarts.map((start) => start.callId)).toEqual(["t1", "t2"]);
+    expect(result.skillCalls).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("reads the name of a slash command and keeps no text", () => {
+    const command =
+      "<command-message>x</command-message>\n<command-name>/review-spec</command-name>\n<command-args>SECRET</command-args>";
+    const result = parseLine(user({}, command));
+    expect(result).toMatchObject({ userMessage: { command: "review-spec" } });
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+    const blocks = parseLine(user({}, [{ type: "text", text: command }, { type: "image" }]));
+    expect(blocks).toMatchObject({ userMessage: { command: "review-spec" } });
+  });
+
+  it("reads no command from a prompt that only mentions the tag", () => {
+    const result = parseLine(user({}, "please explain <command-name>/x</command-name>"));
+    expect(result).toMatchObject({ kind: "userMessage" });
+    expect(JSON.stringify(result)).not.toContain("command");
   });
 });

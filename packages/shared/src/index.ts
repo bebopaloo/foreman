@@ -125,7 +125,14 @@ export const SeriesQuery = z
   .refine(fromNotAfterTo, "from is after to");
 export type SeriesQuery = z.infer<typeof SeriesQuery>;
 
-export const BREAKDOWN_DIMENSIONS = ["project", "model", "agentType", "branch", "session"] as const;
+export const BREAKDOWN_DIMENSIONS = [
+  "project",
+  "model",
+  "agentType",
+  "branch",
+  "session",
+  "skill",
+] as const;
 
 export const BreakdownQuery = z
   .object({
@@ -176,6 +183,10 @@ export const BreakdownResponse = z
           ...estimateFields,
           firstTurnAt: z.iso.datetime().optional(),
           lastTurnAt: z.iso.datetime().optional(),
+          // Skill rows only.
+          calls: z.number().int().optional(),
+          exactTurns: z.number().int().optional(),
+          estimatedTurns: z.number().int().optional(),
         })
         .strict(),
     ),
