@@ -44,6 +44,8 @@ export interface Run {
   lanes: number;
   skips: number;
   blockedAtSelection: number;
+  /** The highest count of builds at one time in the run. A build that starts when another ends does not overlap it. */
+  peak: number;
 }
 
 interface ScopedLine {
@@ -83,6 +85,22 @@ function assignLanes(builds: Omit<RunBuild, "lane">[]): RunBuild[] {
     laneEnds[index] = build.end.getTime();
     return { ...build, lane: index + 1 };
   });
+}
+
+function peakOf(builds: readonly RunBuild[]): number {
+  const edges = builds.flatMap((build) => [
+    { time: build.start.getTime(), change: 1 },
+    { time: build.end.getTime(), change: -1 },
+  ]);
+  // At one time, the ends come before the starts.
+  edges.sort((a, b) => a.time - b.time || a.change - b.change);
+  let open = 0;
+  let peak = 0;
+  for (const edge of edges) {
+    open += edge.change;
+    peak = Math.max(peak, open);
+  }
+  return peak;
 }
 
 function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
@@ -168,13 +186,16 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
     lanes: laned.reduce((most, build) => Math.max(most, build.lane), 0),
     skips,
     blockedAtSelection,
+    peak: peakOf(laned),
   };
 }
 
 /**
- * The runs of the lines, for one scope, newest first. A run is the lines of one `run_id`. In a client
- * scope, a run uses only the lines of that client's repos, and a run with no such line is not a run
- * of the scope. The dash takes the first run.
+ * Every run of the window in one scope, newest first. A run is the lines of one `run_id`, with its
+ * builds (start, end, result and lane), its skips, its count blocked at selection and its peak. In a
+ * client scope, a run uses only the lines of that client's repos, and a run with no such line is not
+ * a run of the scope. The dash takes the first run. The Reviews view and the Factory health view
+ * take every run.
  */
 export function runsInWindow(input: RunsInput): Run[] {
   const groups = new Map<string, ScopedLine[]>();
