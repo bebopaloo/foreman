@@ -34,6 +34,7 @@ const WORK_TABLES = [
   schema.workReleases,
   schema.workForgeReleases,
   schema.workReleaseRecords,
+  schema.workForgeFiles,
   schema.workFetchRuns,
   schema.workRepos,
 ] as const;

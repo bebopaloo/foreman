@@ -122,6 +122,8 @@ describe("the first fetch", () => {
     );
     expect(sorted(await adapters.calls("forge"))).toEqual(
       sorted([
+        "repo",
+        "file get .claude/factory.json --ref main",
         "pr list --state all",
         "pr list --state open",
         "pr reviews 4",
@@ -151,7 +153,7 @@ describe("the first fetch", () => {
     const { result } = await firstFetch();
     expect(result).toMatchObject({ state: "idle", repos: 1 });
     const [run] = await database.db.select().from(schema.workFetchRuns);
-    expect(run).toMatchObject({ kind: "full", state: "idle", reposRead: 1, adapterCalls: 11 });
+    expect(run).toMatchObject({ kind: "full", state: "idle", reposRead: 1, adapterCalls: 13 });
   });
 
   it("writes the repo states and the 'data as of' time", async () => {

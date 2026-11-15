@@ -7,11 +7,13 @@ export interface ScopedRepo {
 }
 
 export type WorkScope =
-  { ok: true; repos: ScopedRepo[] } | { ok: false; error: "Unknown client" | "Unknown repo" };
+  | { ok: true; repos: ScopedRepo[]; inScope: readonly RepoEntry[] }
+  | { ok: false; error: "Unknown client" | "Unknown repo" };
 
 /**
  * The repos that a list route may read: the repos of the client (or all repos), minus the repos
- * of an owner with no token and the repos with no forge name. A repo ID outside the client is refused.
+ * of an owner with no token and the repos with no forge name. `inScope` holds all entries of the
+ * client and repo values, the skipped ones too. A repo ID outside the client is refused.
  */
 export function resolveWorkScope(
   entries: readonly RepoEntry[],
@@ -25,6 +27,7 @@ export function resolveWorkScope(
   if (repo !== undefined && !inClient.some((entry) => entry.id === repo)) {
     return { ok: false, error: "Unknown repo" };
   }
+  const inScope = repo === undefined ? inClient : inClient.filter((entry) => entry.id === repo);
   const repos: ScopedRepo[] = [];
   for (const entry of inClient) {
     if (entry.owner === null || entry.name === null) continue;
@@ -32,5 +35,5 @@ export function resolveWorkScope(
     if (!resolveToken(tokens, entry.host, entry.owner, { tokenPrefix: "" }).ok) continue;
     repos.push({ id: entry.id, host: entry.host });
   }
-  return { ok: true, repos };
+  return { ok: true, repos, inScope };
 }

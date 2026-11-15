@@ -21,8 +21,11 @@ export interface FetchScheduleOptions {
 }
 
 export interface FetchSchedule {
-  /** Starts a fetch, or returns the fetch in progress. */
-  trigger(): Promise<void>;
+  /**
+   * Starts a fetch, or returns the fetch in progress. A refresh request makes the fetch
+   * read the forge files, which the 15-minute timer fetch reads only once an hour.
+   */
+  trigger(request?: { refresh?: boolean }): Promise<void>;
   state(): FetchState;
   start(): void;
   stop(): Promise<void>;
@@ -41,14 +44,18 @@ export function createFetchSchedule(options: FetchScheduleOptions): FetchSchedul
   let current: Promise<void> | null = null;
   let failed = false;
   let timer: NodeJS.Timeout | null = null;
+  let refreshRequested = false;
 
   async function run(): Promise<void> {
+    const refresh = refreshRequested;
+    refreshRequested = false;
     try {
       const locked = await withFetchLock(db, () =>
         fetchWork({
           db,
           claudeDir,
           log,
+          refresh,
           ...(options.tokensFile === undefined ? {} : { tokensFile: options.tokensFile }),
           ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
           ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
@@ -65,7 +72,8 @@ export function createFetchSchedule(options: FetchScheduleOptions): FetchSchedul
     }
   }
 
-  function trigger(): Promise<void> {
+  function trigger(request?: { refresh?: boolean }): Promise<void> {
+    if (request?.refresh === true) refreshRequested = true;
     if (current !== null) return current;
     const started = run().finally(() => {
       current = null;

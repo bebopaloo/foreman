@@ -263,6 +263,7 @@ export const LimitsResponse = z
 export type LimitsResponse = z.infer<typeof LimitsResponse>;
 
 export * from "./paging.ts";
+export * from "./work.ts";
 
 const WORK_PAGE = { defaultLimit: 100, maxLimit: 500 };
 const RepoId = z.string().regex(/^[0-9a-f]{12}$/);
