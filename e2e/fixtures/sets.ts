@@ -86,6 +86,88 @@ function threeBuilds(now: Date): NightLogLine[] {
   }));
 }
 
+const HOUR_MS = 60 * MINUTE_MS;
+
+interface Step {
+  repo: string;
+  issue: number;
+  from: string;
+  to: string;
+  reason: string;
+  /** Minutes after the start of the run. */
+  at: number;
+}
+
+const START = "IN PROGRESS";
+const step = (
+  repo: string,
+  issue: number,
+  at: number,
+  to: string,
+  reason: string,
+  from = START,
+) => ({
+  repo,
+  issue,
+  from,
+  to,
+  reason,
+  at,
+});
+
+function runLines(runId: string, start: Date, steps: Step[]): NightLogLine[] {
+  return steps.map(({ repo, at, ...rest }) => ({
+    run_id: runId,
+    repo: repoFolder(repo),
+    ...rest,
+    time: new Date(start.getTime() + at * MINUTE_MS),
+  }));
+}
+
+const APP = "acme/app";
+const TOOLS = "bebopaloo/tools";
+
+/** The slot timeline: builds A to D, 9 skips, one issue blocked at selection and one parent issue. */
+function lastRunLines(now: Date): NightLogLine[] {
+  const start = new Date(now.getTime() - 8 * HOUR_MS);
+  return runLines("run-synthetic-2", start, [
+    step(APP, 21, 0, START, "build started", "READY"),
+    step(APP, 22, 10, START, "build started", "READY"),
+    step(APP, 24, 20, START, "build started", "READY"),
+    step(APP, 30, 25, START, "build started", "READY"),
+    ...Array.from({ length: 9 }, (_, index) =>
+      step(APP, 40 + index, 40, "READY", "blocked by #3", "READY"),
+    ),
+    step(APP, 15, 45, "BLOCKED", "no token", "READY"),
+    step(APP, 21, 120, "DONE", "merged #50", "IN REVIEW"),
+    step(APP, 23, 150, START, "build started", "READY"),
+    step(APP, 22, 180, "IN REVIEW", "merge-ready #51"),
+    step(APP, 23, 240, "BLOCKED", "gate failed"),
+  ]);
+}
+
+/** An older run of `acme` and `bebopaloo` builds, and a newer run of `bebopaloo` builds only. */
+function clientRunLines(now: Date): NightLogLine[] {
+  const older = new Date(now.getTime() - 30 * HOUR_MS);
+  const newer = new Date(now.getTime() - 6 * HOUR_MS);
+  return [
+    ...runLines("run-synthetic-old", older, [
+      step(TOOLS, 3, 0, START, "build started", "READY"),
+      step(APP, 11, 10, START, "build started", "READY"),
+      step(TOOLS, 4, 20, START, "build started", "READY"),
+      step(APP, 12, 30, START, "build started", "READY"),
+      step(TOOLS, 3, 150, "DONE", "merged #7", "IN REVIEW"),
+      step(TOOLS, 4, 150, "DONE", "merged #8", "IN REVIEW"),
+      step(APP, 11, 100, "DONE", "merged #9", "IN REVIEW"),
+      step(APP, 12, 120, "DONE", "merged #10", "IN REVIEW"),
+    ]),
+    ...runLines("run-synthetic-new", newer, [
+      step(TOOLS, 3, 0, START, "build started", "READY"),
+      step(TOOLS, 3, 60, "DONE", "merged #11", "IN REVIEW"),
+    ]),
+  ];
+}
+
 export const FIXTURE_SETS = {
   /** No repo list and no factory folder: Foreman has no client and no data. */
   empty: { files: () => ({}) },
@@ -98,6 +180,28 @@ export const FIXTURE_SETS = {
       "factory/repos.json": repoList(),
       ...runLock("run-synthetic-1", new Date(now.getTime() - 4 * MINUTE_MS)),
       ...nightLog(threeBuilds(now)),
+    }),
+    work: CONNECTED_CACHE,
+  },
+
+  "last-run": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...nightLog(lastRunLines(now)),
+    }),
+    work: {
+      ...CONNECTED_CACHE,
+      issues: [
+        ...(CONNECTED_CACHE.issues ?? []),
+        { repo: APP, number: 30, title: "A parent", issueState: "IN PROGRESS", children: [31] },
+      ],
+    },
+  },
+
+  "last-run-clients": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...nightLog(clientRunLines(now)),
     }),
     work: CONNECTED_CACHE,
   },
