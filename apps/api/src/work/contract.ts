@@ -87,6 +87,44 @@ const forgeReleaseSchema = z
   })
   .strict();
 
+export const FILE_MAX_BYTES = 1_048_576;
+export const ASSET_MAX_BYTES = 5 * 1_048_576;
+
+const textWithin = (maxBytes: number) =>
+  z.string().refine((text) => Buffer.byteLength(text, "utf8") <= maxBytes);
+
+/** The output of `repo`. An empty `default_branch` is valid: the fetch records "no default branch". */
+const repoInfoSchema = z
+  .object({
+    host: z.string(),
+    owner: z.string(),
+    name: z.string(),
+    url: z.string(),
+    default_branch: z.string(),
+  })
+  .strict();
+
+/** The output of `file get`. The runner also checks that `path` and `ref` match the request. */
+const fileGetSchema = z
+  .object({
+    path: z.string(),
+    ref: z.string(),
+    sha: z.string().regex(SHA_PATTERN),
+    size: z.number().int().min(0).max(FILE_MAX_BYTES),
+    content: textWithin(FILE_MAX_BYTES),
+  })
+  .strict();
+
+/** The output of `release asset`. The runner also checks that `tag` and `name` match the request. */
+const releaseAssetSchema = z
+  .object({
+    tag: z.string().regex(RELEASE_TAG_PATTERN),
+    name: z.string(),
+    size: z.number().int().min(0).max(ASSET_MAX_BYTES),
+    content: textWithin(ASSET_MAX_BYTES),
+  })
+  .strict();
+
 export const contractSchemas = {
   issueList: z.array(issueSchema),
   issueRelations: relationsSchema,
@@ -100,6 +138,9 @@ export const contractSchemas = {
   commitStatus: commitStatusSchema,
   prReviews: z.array(z.unknown()),
   releaseView: forgeReleaseSchema,
+  repoInfo: repoInfoSchema,
+  fileGet: fileGetSchema,
+  releaseAsset: releaseAssetSchema,
 };
 
 export type ContractName = keyof typeof contractSchemas;

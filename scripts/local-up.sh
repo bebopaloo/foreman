@@ -4,7 +4,11 @@
 #
 # FOREMAN_CLAUDE_DIR is the config folder (default ~/.claude-bebopaloo) and
 # FOREMAN_DATA_DIR is the Foreman data folder (default ~/.foreman). Compose
-# mounts both read-only. LOCAL_PORT sets the web port (default 47100) and
+# mounts both read-only. FOREMAN_MARKETPLACE_DIR is optional: the absolute path
+# of the folder of one `directory` Marketplace (for example the checkout of the
+# factory repo). Compose mounts it read-only at the same path in the API
+# container. With no value, Foreman reads no `directory` Marketplace.
+# LOCAL_PORT sets the web port (default 47100) and
 # LOCAL_PROJECT sets the Compose project name (default foreman-local).
 #
 # "up" reads one Keychain item for each host and owner in the repo list
@@ -18,6 +22,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 command="${1:-up}"
 export FOREMAN_CLAUDE_DIR="${FOREMAN_CLAUDE_DIR:-$HOME/.claude-bebopaloo}"
 export FOREMAN_DATA_DIR="${FOREMAN_DATA_DIR:-$HOME/.foreman}"
+export FOREMAN_MARKETPLACE_DIR="${FOREMAN_MARKETPLACE_DIR:-}"
 compose=(docker compose -f compose.local.yaml -p "${LOCAL_PROJECT:-foreman-local}")
 
 case "$command" in
@@ -26,6 +31,19 @@ case "$command" in
     if [ "$claude_dir" = "$HOME/.claude" ] || [ "$claude_dir" -ef "$HOME/.claude" ]; then
       echo "FOREMAN_CLAUDE_DIR must not be ~/.claude." >&2
       exit 1
+    fi
+    if [ -n "$FOREMAN_MARKETPLACE_DIR" ]; then
+      case "$FOREMAN_MARKETPLACE_DIR" in
+        /*) ;;
+        *)
+          echo "FOREMAN_MARKETPLACE_DIR must be an absolute path." >&2
+          exit 1
+          ;;
+      esac
+      if [ ! -d "$FOREMAN_MARKETPLACE_DIR" ]; then
+        echo "FOREMAN_MARKETPLACE_DIR is not a folder." >&2
+        exit 1
+      fi
     fi
     if [ ! -d "$FOREMAN_DATA_DIR" ]; then
       mkdir -p "$(dirname "$FOREMAN_DATA_DIR")"
