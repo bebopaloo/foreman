@@ -169,6 +169,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api/sessions",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
   });
 
   return app;
