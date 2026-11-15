@@ -181,3 +181,18 @@ export function forgeScenario(
   }
   return scenario;
 }
+
+export const STATUS_DESCRIPTION = "synthetic status text that the cache must not keep";
+
+/** The scenario key of one `status get` call. */
+export function statusKey(sha: string, context: string): string {
+  return `status get ${sha} ${context}`;
+}
+
+/** The answer of `status get` for one head commit and context. */
+export function statusAnswer(sha: string, context: string, state: string) {
+  return { sha, context, state, description: STATUS_DESCRIPTION };
+}
+
+/** A 40 character sha made from one hex digit. */
+export const sha = (digit: string) => digit.repeat(40);

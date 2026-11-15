@@ -30,6 +30,7 @@ const WORK_TABLES = [
   schema.workIssues,
   schema.workPullRequests,
   schema.workReviews,
+  schema.workCommitStatuses,
   schema.workReleases,
   schema.workForgeReleases,
   schema.workReleaseRecords,
