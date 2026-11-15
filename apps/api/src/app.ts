@@ -8,6 +8,7 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import type { Config } from "./config.ts";
+import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
@@ -39,13 +40,11 @@ export interface AppOptions {
   fetcher?: FetchSchedule;
 }
 
-const REDACTED_KEYS = ["req.headers.authorization", "req.headers.cookie", "*.password", "*.token"];
-
 export async function buildApp({ config, db, logger, refresher, fetcher }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
-    logger: logger ?? { level: config.LOG_LEVEL, redact: REDACTED_KEYS },
+    logger: logger ?? loggerOptions(config.LOG_LEVEL),
   }).withTypeProvider<ZodTypeProvider>();
 
   const activeRefresher =
