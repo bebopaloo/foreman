@@ -6,6 +6,8 @@ export interface FixtureSet {
   files(now: Date): Record<string, string>;
   /** The Work cache. With none, the cache is empty. */
   work?: WorkSeed;
+  /** True when the set holds transcripts: the Usage index is cleared and read again for it. */
+  usage?: boolean;
 }
 
 const MINUTE_MS = 60_000;
@@ -168,6 +170,77 @@ function clientRunLines(now: Date): NightLogLine[] {
   ];
 }
 
+const DAY_MS = 24 * HOUR_MS;
+
+interface SyntheticTurn {
+  project: string;
+  model: string;
+  /** Whole days before `now`. */
+  daysAgo: number;
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+/** One transcript file for each project: only the fields that the Usage index reads. */
+function transcripts(now: Date, turns: SyntheticTurn[]): Record<string, string> {
+  const files: Record<string, string> = {};
+  turns.forEach((turn, index) => {
+    const folder = turn.project.replace(/[^A-Za-z0-9]/g, "-");
+    const file = `projects/${folder}/session-${folder}.jsonl`;
+    const line = JSON.stringify({
+      type: "assistant",
+      sessionId: `session-${folder}`,
+      timestamp: new Date(now.getTime() - turn.daysAgo * DAY_MS).toISOString(),
+      cwd: turn.project,
+      gitBranch: "main",
+      message: {
+        id: `msg-${index.toString()}`,
+        model: turn.model,
+        usage: {
+          input_tokens: turn.input,
+          output_tokens: turn.output,
+          cache_creation_input_tokens: turn.cacheWrite,
+          cache_read_input_tokens: turn.cacheRead,
+        },
+      },
+    });
+    files[file] = `${files[file] ?? ""}${line}\n`;
+  });
+  return files;
+}
+
+const PRICED = "synthetic-priced-1";
+const UNPRICED = "synthetic-model-x";
+const APP_PROJECT = repoFolder("acme/app");
+const TOOLS_PROJECT = repoFolder("bebopaloo/tools");
+const SPIKE_PROJECT = "/synthetic/spike-cli";
+
+const turn = (
+  project: string,
+  model: string,
+  daysAgo: number,
+  [input, output, cacheWrite, cacheRead]: [number, number, number, number],
+): SyntheticTurn => ({ project, model, daysAgo, input, output, cacheWrite, cacheRead });
+
+/**
+ * Usage in the last 14 days: 8M tokens in `acme/app`, 3M in `bebopaloo/tools` and 0.4M in a project
+ * that no repo list entry matches, which also has 2 turns of a model with no price. One turn of
+ * `acme/app` is 20 days old: it shows in the range of 30 days and not in the range of 14 days.
+ */
+function usageTurns(): SyntheticTurn[] {
+  const acme: [number, number, number, number] = [300_000, 100_000, 200_000, 1_400_000];
+  const tools: [number, number, number, number] = [250_000, 50_000, 200_000, 1_000_000];
+  const spike: [number, number, number, number] = [50_000, 10_000, 40_000, 100_000];
+  return [
+    ...[1, 2, 5, 9].map((day) => turn(APP_PROJECT, PRICED, day, acme)),
+    ...[3, 6].map((day) => turn(TOOLS_PROJECT, PRICED, day, tools)),
+    ...[2, 7].map((day) => turn(SPIKE_PROJECT, UNPRICED, day, spike)),
+    turn(APP_PROJECT, PRICED, 20, [100_000, 0, 0, 0]),
+  ];
+}
+
 const FACTORY = "synthetic-factory[bot]";
 
 const controlFile = (time: Date): string =>
@@ -265,6 +338,20 @@ export const FIXTURE_SETS = {
       [controlFile(new Date(now.getTime() - 20 * MINUTE_MS))]: controlLines(now),
     }),
     work: REVIEW_HEALTH_CACHE,
+  },
+
+  /** The repo list and transcripts of three projects, with a price for one model. */
+  usage: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...transcripts(now, usageTurns()) }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The repo list and no transcript: the Usage index is empty. */
+  "usage-empty": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: CONNECTED_CACHE,
+    usage: true,
   },
 
   /** No repo list and no factory folder: Foreman has no client and no data. */

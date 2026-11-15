@@ -32,6 +32,10 @@ export interface RunBuild {
   start: Date;
   end: Date;
   result: BuildResult;
+  /** The build has a line with `to` IN PROGRESS in its run. Otherwise `start` is the start of the run. */
+  started: boolean;
+  /** The reasons of the lines of the build, oldest first. */
+  reasons: string[];
   lane: number;
 }
 
@@ -159,6 +163,8 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
         start: buildStart,
         end: ending.entry.time,
         result: endResult(ending.entry) ?? "stopped at run end",
+        started: started !== undefined,
+        reasons: issueLines.map((line) => line.entry.reason),
       });
       continue;
     }
@@ -168,6 +174,8 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
       issue: head.entry.issue,
       start: buildStart,
       end,
+      started: started !== undefined,
+      reasons: issueLines.map((line) => line.entry.reason),
       result: running
         ? "running"
         : lastLine?.entry.to === "IN REVIEW"
