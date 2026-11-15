@@ -6,6 +6,7 @@ import {
   ControlsWaiversResponse,
   DashResponse,
   HealthResponse,
+  LedgerResponse,
   LimitsResponse,
   ProjectsResponse,
   RefreshStatusResponse,
@@ -253,3 +254,27 @@ export const fetchControlsRegister = (
   signal?: AbortSignal,
 ): Promise<ControlsRegisterResponse> =>
   getJson(scopedPath("/api/controls/register", client, cursor), ControlsRegisterResponse, signal);
+
+export interface LedgerRange {
+  /** The first day of the range, `YYYY-MM-DD`, in the ledger time zone. */
+  from: string;
+  to: string;
+}
+
+/** One page of the ledger. With no range, the API chooses this month. */
+export const fetchLedger = (
+  range: LedgerRange | null,
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<LedgerResponse> => {
+  const params = new URLSearchParams();
+  if (range !== null) {
+    params.set("from", range.from);
+    params.set("to", range.to);
+  }
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return getJson(`/api/ledger${text === "" ? "" : `?${text}`}`, LedgerResponse, signal);
+};
