@@ -1,0 +1,138 @@
+.controls-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.controls-view .card {
+  margin: 0;
+}
+
+.controls-view .note {
+  flex-basis: auto;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.controls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.controls-section h2,
+.controls-section h3,
+.controls-section p {
+  margin: 0;
+}
+
+.controls-section h3 {
+  font-size: 13px;
+}
+
+.controls-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.controls-plain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.controls-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.controls-table th,
+.controls-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.controls-table tbody tr:last-child th,
+.controls-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.controls-names,
+.controls-path {
+  overflow-wrap: anywhere;
+}
+
+.controls-names {
+  display: block;
+}
+
+.controls-sub {
+  display: block;
+  font-size: 12px;
+}
+
+.controls-section ul[aria-label="Waivers"],
+.controls-section ul[aria-label="Releases"],
+.controls-section ul[aria-label="Control register"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.controls-section ul[aria-label="Waivers"] > li,
+.controls-section ul[aria-label="Releases"] > li,
+.controls-section ul[aria-label="Control register"] > li {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.controls-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.controls-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.controls-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.controls-artefact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.controls-artefact ul > li {
+  padding: 2px 0;
+}
