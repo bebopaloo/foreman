@@ -20,7 +20,10 @@ function renderNav(views = VIEWS) {
 describe("Nav", () => {
   it("links only the views that exist", () => {
     renderNav();
-    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual(["Foreman dash"]);
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Foreman dash",
+      "Sessions",
+    ]);
   });
 
   it("marks the current view and keeps the Client scope in the link", () => {

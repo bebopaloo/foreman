@@ -2,6 +2,8 @@ import {
   DashResponse,
   HealthResponse,
   RefreshStatusResponse,
+  SessionResponse,
+  SessionsResponse,
   WorkClientsResponse,
   WorkReposResponse,
   WorkStatusResponse,
@@ -23,10 +25,21 @@ interface Schema<T> {
   parse(data: unknown): T;
 }
 
+/** A request that the API answered with a status other than the expected one. */
+export class ApiStatusError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number) {
+    super(`${path} failed with status ${status.toString()}`);
+    this.name = "ApiStatusError";
+    this.status = status;
+  }
+}
+
 async function getJson<T>(path: string, schema: Schema<T>, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiUrl(path), signal ? { signal } : {});
   if (response.status !== 200) {
-    throw new Error(`${path} failed with status ${response.status.toString()}`);
+    throw new ApiStatusError(path, response.status);
   }
   return schema.parse(await response.json());
 }
@@ -61,5 +74,39 @@ export const fetchDash = (client: string | null, signal?: AbortSignal): Promise<
   getJson(
     client === null ? "/api/dash" : `/api/dash?${new URLSearchParams({ client }).toString()}`,
     DashResponse,
+    signal,
+  );
+
+export interface SessionsQuery {
+  /** A calendar day, `YYYY-MM-DD`, in the time zone `tz`. */
+  day: string;
+  tz: string;
+  /** The Client scope. Null is "All". */
+  client: string | null;
+}
+
+function sessionsParams(query: SessionsQuery, cursor: string | null): string {
+  const params = new URLSearchParams({ day: query.day, tz: query.tz });
+  if (query.client !== null) params.set("client", query.client);
+  if (cursor !== null) params.set("cursor", cursor);
+  return params.toString();
+}
+
+export const fetchSessions = (
+  query: SessionsQuery,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<SessionsResponse> =>
+  getJson(`/api/sessions?${sessionsParams(query, cursor)}`, SessionsResponse, signal);
+
+export const fetchSession = (
+  sessionId: string,
+  query: SessionsQuery,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<SessionResponse> =>
+  getJson(
+    `/api/sessions/${encodeURIComponent(sessionId)}?${sessionsParams(query, cursor)}`,
+    SessionResponse,
     signal,
   );
