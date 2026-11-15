@@ -1,6 +1,6 @@
 import { schema } from "@foreman/db";
 import { asc, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runReindex } from "../src/reindex.ts";
 import { runFetch } from "../src/work/fetch.ts";
 import { repoId } from "../src/work/repo-list.ts";
@@ -17,6 +17,13 @@ import {
   trackerScenario,
   writeTokens,
 } from "./work-fetch-fixtures.ts";
+
+// Each fetch runs one real `uv run` subprocess per adapter call, and a test makes
+// up to five fetches of several calls. A cold `uv` start takes 0.2 to 0.5 s when
+// other test runs share the machine, so such a test can pass the 5 s default of
+// Vitest. 30 s is well above the worst time seen under load. A hung adapter call
+// still ends at its own 20 s timeout, so a real hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
 
 let database: Awaited<ReturnType<typeof openTestDatabase>>;
 
