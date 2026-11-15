@@ -167,8 +167,8 @@ describe("createRefresher", () => {
     });
   });
 
-  it("runs a refresh at start and each 24 hours, and stops the timer", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  it("runs a refresh at start and each 15 minutes, and stops the timer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let calls = 0;
     const refresher = makeRefresher(() => {
       calls += 1;
@@ -179,13 +179,71 @@ describe("createRefresher", () => {
     await vi.waitFor(() => {
       expect(calls).toBe(1);
     });
-    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 1);
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
     await vi.waitFor(() => {
       expect(calls).toBe(2);
     });
     await refresher.stop();
-    await vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
 
     expect(calls).toBe(2);
+  });
+
+  it("waits the interval after the end of the last refresh", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fake = controlledIngest();
+    const refresher = makeRefresher(fake.ingest, { intervalMs: 1000 });
+
+    refresher.start();
+    await vi.waitFor(() => {
+      expect(fake.calls).toHaveLength(1);
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fake.calls).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+    fake.pending[0]?.finish();
+    await vi.waitFor(() => {
+      expect(vi.getTimerCount()).toBe(1);
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fake.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => {
+      expect(fake.calls).toHaveLength(2);
+    });
+    fake.pending[1]?.finish();
+    await refresher.stop();
+  });
+
+  it("skips the timer refresh while another process holds the refresh lock", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const fake = controlledIngest();
+    const refresher = makeRefresher(fake.ingest, { intervalMs: 1000 });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered: () => void = () => undefined;
+    const inside = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const other = withRefreshLock(database.db, async () => {
+      entered();
+      await held;
+    });
+    await inside;
+
+    try {
+      refresher.start();
+      await vi.advanceTimersByTimeAsync(3500);
+      await refresher.stop();
+    } finally {
+      release();
+      await other;
+    }
+
+    expect(fake.calls).toHaveLength(0);
   });
 });

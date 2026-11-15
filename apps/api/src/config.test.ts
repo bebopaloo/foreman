@@ -39,6 +39,24 @@ describe("loadConfig", () => {
     expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(30);
   });
 
+  it("refreshes the usage each 15 minutes by default and reads 1 to 1,440 minutes", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_USAGE_REFRESH_MINUTES).toBe(15);
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: "1" })
+        .FOREMAN_USAGE_REFRESH_MINUTES,
+    ).toBe(1);
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: "1440" })
+        .FOREMAN_USAGE_REFRESH_MINUTES,
+    ).toBe(1440);
+  });
+
+  it.each(["0", "1441", "1.5", "abc"])("rejects %s as the usage refresh minutes", (value) => {
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: value })).toThrow(
+      "FOREMAN_USAGE_REFRESH_MINUTES",
+    );
+  });
+
   it("reads the tokens file from the Compose secret by default and from a variable", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_FILE).toBe("/run/secrets/foreman_tokens");
     expect(
