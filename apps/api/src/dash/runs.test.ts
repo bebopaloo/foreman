@@ -204,6 +204,98 @@ describe("runsInWindow", () => {
     expect(run?.builds[0]?.repo).toMatchObject({ id: null, label: "spike-cli" });
   });
 
+  it("gives each run of the window its own builds, lanes, skips and peak", () => {
+    const result = runs([
+      line({ runId: "a", issue: 1, clock: "01:00" }),
+      line({ runId: "a", issue: 2, clock: "01:10" }),
+      line({ runId: "a", issue: 3, clock: "01:20" }),
+      line({
+        runId: "a",
+        issue: 1,
+        clock: "02:00",
+        from: "IN PROGRESS",
+        to: "DONE",
+        reason: "merged #1",
+      }),
+      line({
+        runId: "a",
+        issue: 2,
+        clock: "02:30",
+        from: "IN PROGRESS",
+        to: "DONE",
+        reason: "merged #2",
+      }),
+      line({
+        runId: "a",
+        issue: 3,
+        clock: "02:40",
+        from: "IN PROGRESS",
+        to: "DONE",
+        reason: "merged #3",
+      }),
+      line({ runId: "a", issue: 9, clock: "02:50", from: "READY", to: "READY", reason: "skipped" }),
+      line({ runId: "b", issue: 4, clock: "01:00", day: "2026-11-15" }),
+      line({
+        runId: "b",
+        issue: 4,
+        clock: "02:00",
+        day: "2026-11-15",
+        from: "IN PROGRESS",
+        to: "DONE",
+        reason: "merged #4",
+      }),
+      line({
+        runId: "b",
+        issue: 5,
+        clock: "02:10",
+        day: "2026-11-15",
+        from: "READY",
+        to: "BLOCKED",
+        reason: "blocked",
+      }),
+    ]);
+    expect(result.map((run) => run.runId)).toEqual(["b", "a"]);
+    const [newer, older] = result;
+    expect([older?.builds.length, older?.lanes, older?.peak, older?.skips]).toEqual([3, 3, 3, 1]);
+    expect([newer?.builds.length, newer?.lanes, newer?.peak, newer?.blockedAtSelection]).toEqual([
+      1, 1, 1, 1,
+    ]);
+  });
+
+  it("gives a peak of builds at one time, and counts a build that starts when another ends once", () => {
+    const [run] = runs([
+      line({ issue: 1, clock: "01:00" }),
+      line({ issue: 2, clock: "01:10" }),
+      line({ issue: 1, clock: "02:00", from: "IN PROGRESS", to: "DONE", reason: "merged #1" }),
+      line({ issue: 3, clock: "02:00" }),
+      line({ issue: 2, clock: "03:00", from: "IN PROGRESS", to: "DONE", reason: "merged #2" }),
+      line({ issue: 3, clock: "03:30", from: "IN PROGRESS", to: "DONE", reason: "merged #3" }),
+    ]);
+    expect(run?.peak).toBe(2);
+  });
+
+  it("has a peak of 0 for a run with no build", () => {
+    const [run] = runs([
+      line({ issue: 1, clock: "01:00", from: "READY", to: "READY", reason: "skipped" }),
+    ]);
+    expect(run?.peak).toBe(0);
+  });
+
+  it("counts only the builds of the client in the peak of a client scope", () => {
+    const [run] = runs(
+      [
+        line({ issue: 1, clock: "01:00" }),
+        line({ issue: 2, clock: "01:05", repo: "/s/globex/portal" }),
+        line({ issue: 3, clock: "01:10", repo: "/s/globex/portal" }),
+        line({ issue: 4, clock: "01:15" }),
+        line({ issue: 1, clock: "02:00", from: "IN PROGRESS", to: "DONE", reason: "merged #1" }),
+        line({ issue: 4, clock: "02:10", from: "IN PROGRESS", to: "DONE", reason: "merged #4" }),
+      ],
+      { scope: { kind: "client", client: "acme" } },
+    );
+    expect(run?.peak).toBe(2);
+  });
+
   it("returns no run for no line", () => {
     expect(runs([])).toEqual([]);
   });

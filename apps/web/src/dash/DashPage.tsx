@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchDash } from "../api.ts";
 import { useScope } from "../scope/index.ts";
 import { LastRun } from "./LastRun.tsx";
+import { ReviewHealth } from "./ReviewHealth.tsx";
 import { summariseNow } from "./run-state.ts";
 
 /** The dash asks again each 60 seconds while the tab is visible. The query pauses in a hidden tab. */
@@ -54,9 +55,13 @@ export function DashPage() {
       </section>
       <section className="card" aria-labelledby="dash-review">
         <h2 id="dash-review">Review health</h2>
-        <p className="muted">
-          {reviewUnreadable ? "cannot read the factory folder" : "Not shown yet."}
-        </p>
+        {dash.data === undefined ? (
+          <p className="muted">No data yet.</p>
+        ) : reviewUnreadable ? (
+          <p className="muted">cannot read the factory folder</p>
+        ) : (
+          <ReviewHealth health={dash.data.reviewHealth} />
+        )}
       </section>
       <section className="card" aria-labelledby="dash-repos">
         <h2 id="dash-repos">Repos</h2>

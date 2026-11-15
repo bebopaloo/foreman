@@ -6,13 +6,15 @@ import { buildDash, readDashSources } from "../dash/dash.ts";
 export interface DashOptions {
   db: Database;
   claudeDir: string;
+  /** The Factory identity logins of the config. */
+  factoryLogins?: readonly string[];
   /** Tests pass a fixed clock. */
   now?: () => Date;
 }
 
 export const dashRoutes: FastifyPluginCallbackZod<DashOptions> = (
   app,
-  { db, claudeDir, now = () => new Date() },
+  { db, claudeDir, factoryLogins = [], now = () => new Date() },
   done,
 ) => {
   // Public for the same reason as the Usage routes: Foreman binds to 127.0.0.1 and has no sign-in.
@@ -26,7 +28,7 @@ export const dashRoutes: FastifyPluginCallbackZod<DashOptions> = (
       const at = now();
       const { client } = request.query;
       const { response, reports } = buildDash(
-        await readDashSources(claudeDir, at, db),
+        await readDashSources(claudeDir, at, db, factoryLogins),
         client === undefined ? { kind: "all" } : { kind: "client", client },
         at,
       );

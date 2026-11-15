@@ -93,6 +93,7 @@ export default defineConfig({
             CORS_ORIGINS: devURL,
             DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
             FOREMAN_CLAUDE_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "claude"),
+            FOREMAN_FACTORY_LOGINS: "synthetic-factory[bot]",
             FOREMAN_DATA_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "data"),
             FOREMAN_PRICE_TABLE: path.join(
               import.meta.dirname,

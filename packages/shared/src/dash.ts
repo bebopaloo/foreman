@@ -52,6 +52,56 @@ export const LastRun = z
   .strict();
 export type LastRun = z.infer<typeof LastRun>;
 
+const TierRate = z
+  .object({
+    /** The Risk tier, or null for "no tier". */
+    tier: z.string().nullable(),
+    passed: z.number().int().min(0),
+    total: z.number().int().min(1),
+    /** A whole percent. */
+    rate: z.number().int().min(0).max(100),
+  })
+  .strict();
+
+/** A connected repo with no Control event in 30 days, and its counts of factory pull requests. */
+const RepoWithoutControls = z
+  .object({
+    repoId: z.string(),
+    repo: z.string(),
+    /** Null when no Factory identity login is set, or when the Work cache has no data for the repo. */
+    reviewed: z.number().int().min(0).nullable(),
+    unreviewed: z.number().int().min(0).nullable(),
+  })
+  .strict();
+
+export const ReviewHealth = z
+  .object({
+    firstRound: z
+      .object({
+        /** Null with no `gate` decision of round 1 in 30 days. */
+        rate: z.number().int().min(0).max(100).nullable(),
+        passed: z.number().int().min(0),
+        total: z.number().int().min(0),
+        tiers: z.array(TierRate),
+      })
+      .strict(),
+    /** The count of pull requests by their highest round. */
+    rounds: z
+      .object({
+        one: z.number().int().min(0),
+        two: z.number().int().min(0),
+        three: z.number().int().min(0),
+      })
+      .strict(),
+    escalations: z.number().int().min(0),
+    waiversInUse: z.number().int().min(0),
+    /** False with no `FOREMAN_FACTORY_LOGINS` value. */
+    factoryLoginSet: z.boolean(),
+    reposWithoutControls: z.array(RepoWithoutControls),
+  })
+  .strict();
+export type ReviewHealth = z.infer<typeof ReviewHealth>;
+
 export const DashResponse = z
   .object({
     run: z
@@ -67,6 +117,7 @@ export const DashResponse = z
       .strict(),
     /** The newest run in scope, or null with no run in the last 30 days. */
     lastRun: LastRun.nullable(),
+    reviewHealth: ReviewHealth,
     /** The state of the two factory folders. */
     sources: z.object({ runs: FolderState, controls: FolderState }).strict(),
     skipped: z
