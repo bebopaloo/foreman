@@ -3,6 +3,7 @@ import {
   HealthResponse,
   RefreshStatusResponse,
   WorkClientsResponse,
+  WorkItemsResponse,
   WorkReposResponse,
   WorkStatusResponse,
 } from "@foreman/shared";
@@ -63,3 +64,15 @@ export const fetchDash = (client: string | null, signal?: AbortSignal): Promise<
     DashResponse,
     signal,
   );
+
+/** One page of the joined work rows. `query` holds the filter values and the sort, as URL values. */
+export const fetchWorkItems = (
+  query: Record<string, string>,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<WorkItemsResponse> => {
+  const params = new URLSearchParams(query);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return getJson(`/api/work/items${text === "" ? "" : `?${text}`}`, WorkItemsResponse, signal);
+};

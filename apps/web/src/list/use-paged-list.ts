@@ -5,10 +5,14 @@ export interface ListPage<Row> {
   nextCursor: string | null;
 }
 
-export interface PagedListOptions<Row> {
+export interface PagedListOptions<Row, Page extends ListPage<Row> = ListPage<Row>> {
   queryKey: QueryKey;
   /** Loads one page. A null cursor asks for the first page. The caller validates the response. */
-  fetchPage: (cursor: string | null, signal: AbortSignal) => Promise<ListPage<Row>>;
+  fetchPage: (cursor: string | null, signal: AbortSignal) => Promise<Page>;
+  /** False holds all requests, for a view that is not ready to ask. The default is true. */
+  enabled?: boolean;
+  /** A live update: ask again each so many milliseconds while the tab is visible. */
+  refetchMs?: number;
 }
 
 /**
@@ -16,9 +20,17 @@ export interface PagedListOptions<Row> {
  * cursor, then for as many more pages as were loaded, each with the new
  * `nextCursor`. The old rows stay on show until all of those pages arrive.
  */
-export function usePagedList<Row>({ queryKey, fetchPage }: PagedListOptions<Row>) {
+export function usePagedList<Row, Page extends ListPage<Row> = ListPage<Row>>({
+  queryKey,
+  fetchPage,
+  enabled = true,
+  refetchMs,
+}: PagedListOptions<Row, Page>) {
   const query = useInfiniteQuery({
     queryKey,
+    enabled,
+    refetchInterval: refetchMs ?? false,
+    refetchIntervalInBackground: false,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) => fetchPage(pageParam, signal),
     getNextPageParam: (last) => last.nextCursor,
@@ -38,6 +50,8 @@ export function usePagedList<Row>({ queryKey, fetchPage }: PagedListOptions<Row>
 
   return {
     rows,
+    /** The newest first page, which can hold more than the rows: counts and notes of the view. */
+    firstPage: query.data?.pages[0],
     hasMore: query.hasNextPage,
     isPending: query.isPending,
     isError: query.isError,
@@ -47,4 +61,6 @@ export function usePagedList<Row>({ queryKey, fetchPage }: PagedListOptions<Row>
   };
 }
 
-export type PagedList<Row> = ReturnType<typeof usePagedList<Row>>;
+export type PagedList<Row, Page extends ListPage<Row> = ListPage<Row>> = ReturnType<
+  typeof usePagedList<Row, Page>
+>;
