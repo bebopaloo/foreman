@@ -16,7 +16,17 @@ export const MAX_STDERR_BYTES = 64 * 1024;
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
 export type ErrorClass =
-  "auth" | "not_found" | "rate_limit" | "timeout" | "invalid_output" | "other" | "host_not_allowed";
+  | "auth"
+  | "not_found"
+  | "rate_limit"
+  | "timeout"
+  | "invalid_output"
+  | "other"
+  | "host_not_allowed"
+  | "missing_file"
+  | "missing_ref"
+  | "missing_tag"
+  | "missing_asset";
 
 /** The state that the status shows for each error class. */
 export const ERROR_CLASS_STATE: Record<ErrorClass, string> = {
@@ -27,7 +37,19 @@ export const ERROR_CLASS_STATE: Record<ErrorClass, string> = {
   invalid_output: "invalid adapter output",
   other: "adapter error",
   host_not_allowed: "host not allowed",
+  missing_file: "missing file",
+  missing_ref: "missing ref",
+  missing_tag: "missing tag",
+  missing_asset: "missing asset",
 };
+
+/** The fixed message prefixes of `file get` and `release asset` errors. They join the factory contract. */
+const ERROR_PREFIXES: readonly (readonly [string, ErrorClass])[] = [
+  ["file not found:", "missing_file"],
+  ["ref not found:", "missing_ref"],
+  ["release not found:", "missing_tag"],
+  ["asset not found:", "missing_asset"],
+];
 
 /** The runner refuses a command that is not on the allow-list. No subprocess starts. */
 export class CommandRefusedError extends Error {
@@ -44,9 +66,45 @@ interface AllowedCommand {
 
 const POSITIVE_INTEGER = /^[1-9]\d{0,8}$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
+const REF_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9._/+-]*$/;
+const ASSET_NAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,250}\.json$/;
+const RULE_FILE_PATTERN = /^\.claude\/rules\/[a-z0-9][a-z0-9-]*\.md$/;
+
+/** The paths that `file get` may read. A path never comes from adapter output. */
+const FORGE_FILE_PATHS: ReadonlySet<string> = new Set([
+  ".claude/factory.json",
+  "_context/controls/risk-map.toml",
+  "_context/controls/controls.toml",
+  "_context/controls/waivers.toml",
+  "_context/threat-model.md",
+]);
+
+function isForgeFilePath(file: string): boolean {
+  return FORGE_FILE_PATHS.has(file) || RULE_FILE_PATTERN.test(file);
+}
+
+function isRef(ref: string): boolean {
+  return REF_PATTERN.test(ref) && !ref.includes("..");
+}
 
 /** Matches an argument list against the allow-list. Any other shape returns `undefined`. */
 function matchAllowed(command: readonly string[]): AllowedCommand | undefined {
+  if (command.length === 1 && command[0] === "repo") {
+    return { role: "forge", contract: "repoInfo" };
+  }
+  if (command.length === 5 && command[0] === "file" && command[1] === "get") {
+    const [, , file, option, ref] = command;
+    if (
+      file !== undefined &&
+      ref !== undefined &&
+      option === "--ref" &&
+      isForgeFilePath(file) &&
+      isRef(ref)
+    ) {
+      return { role: "forge", contract: "fileGet" };
+    }
+    return undefined;
+  }
   const [group, verb, first, second, ...rest] = command;
   if (rest.length > 0) return undefined;
   const isState = (value: string | undefined, allowed: readonly string[]) =>
@@ -99,6 +157,16 @@ function matchAllowed(command: readonly string[]): AllowedCommand | undefined {
     return { role: "forge", contract: "releaseView" };
   }
   if (
+    group === "release" &&
+    verb === "asset" &&
+    first !== undefined &&
+    second !== undefined &&
+    RELEASE_TAG_PATTERN.test(first) &&
+    ASSET_NAME_PATTERN.test(second)
+  ) {
+    return { role: "forge", contract: "releaseAsset" };
+  }
+  if (
     group === "status" &&
     verb === "get" &&
     first !== undefined &&
@@ -118,6 +186,11 @@ const LOGGED_ARGUMENTS = new Set(["--state", "all", "open"]);
 /** The command for a log line: its words and fixed options, without an issue number or a tag. */
 function commandNameOf(command: readonly string[]): string {
   return command.filter((word, index) => index < 2 || LOGGED_ARGUMENTS.has(word)).join(" ");
+}
+
+/** Maps the fixed prefix of a `file get` or `release asset` error. Any other message gives `undefined`. */
+function classifyPrefix(text: string): ErrorClass | undefined {
+  return ERROR_PREFIXES.find(([prefix]) => text.startsWith(prefix))?.[1];
 }
 
 /** Maps the free text of an adapter error to an error class. */
@@ -300,7 +373,11 @@ export async function runAdapterCommand(
     if (end.code === 1) {
       try {
         const parsed = errorObjectSchema.parse(JSON.parse(end.stderr));
-        return failure(classifyAdapterError(parsed.error));
+        const byPrefix =
+          allowed.contract === "fileGet" || allowed.contract === "releaseAsset"
+            ? classifyPrefix(parsed.error)
+            : undefined;
+        return failure(byPrefix ?? classifyAdapterError(parsed.error));
       } catch {
         return failure("other");
       }
@@ -322,6 +399,20 @@ export async function runAdapterCommand(
     if (allowed.contract === "commitStatus") {
       const status = contractSchemas.commitStatus.parse(parsed.data);
       if (status.sha !== request.command[2] || status.context !== request.command[3]) {
+        options.log?.warn(`invalid adapter output for "${commandText}"`);
+        return failure("invalid_output");
+      }
+    }
+    if (allowed.contract === "fileGet") {
+      const file = contractSchemas.fileGet.parse(parsed.data);
+      if (file.path !== request.command[2] || file.ref !== request.command[4]) {
+        options.log?.warn(`invalid adapter output for "${commandText}"`);
+        return failure("invalid_output");
+      }
+    }
+    if (allowed.contract === "releaseAsset") {
+      const asset = contractSchemas.releaseAsset.parse(parsed.data);
+      if (asset.tag !== request.command[2] || asset.name !== request.command[3]) {
         options.log?.warn(`invalid adapter output for "${commandText}"`);
         return failure("invalid_output");
       }

@@ -65,6 +65,26 @@ describe("loadConfig", () => {
     ).toBe("/synthetic/tokens.json");
   });
 
+  it("has no Marketplace folder by default and reads an absolute one", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_MARKETPLACE_DIR).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "" }).FOREMAN_MARKETPLACE_DIR).toBe(
+      undefined,
+    );
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "/synthetic/factory" })
+        .FOREMAN_MARKETPLACE_DIR,
+    ).toBe("/synthetic/factory");
+  });
+
+  it("stops for a Marketplace folder that is not an absolute path", () => {
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "factory" })).toThrow(
+      "FOREMAN_MARKETPLACE_DIR",
+    );
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "~/factory" })).toThrow(
+      "FOREMAN_MARKETPLACE_DIR",
+    );
+  });
+
   it("reads the price table of the repo by default and from a variable", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_PRICE_TABLE).toMatch(/data\/price-table\.json$/);
     expect(

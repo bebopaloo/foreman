@@ -35,3 +35,12 @@ export function clientProjectKeys(repos: readonly RepoEntry[], client: string): 
   const own = repos.filter((repo) => repo.client === client);
   return own.length === 0 ? null : [...new Set(own.map((repo) => repo.path))];
 }
+
+/** The client of each Project key, from the paths of the repo list entries that have a client. */
+export function clientsByProjectKey(repos: readonly RepoEntry[]): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const repo of repos) {
+    if (repo.client !== null && !result.has(repo.path)) result.set(repo.path, repo.client);
+  }
+  return result;
+}
