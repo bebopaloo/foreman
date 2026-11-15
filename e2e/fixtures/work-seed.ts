@@ -6,7 +6,7 @@ export interface SeedRepo {
   fullName: string;
   /** The Client of the repo list entry. Null: no client. */
   client: string | null;
-  /** The state of the forge and the tracker role. The default is `connected`. */
+  /** The state of the forge and the tracker role. The default is `ok`, the state of a clean fetch. */
   state?: string;
 }
 
@@ -69,7 +69,7 @@ export async function seedWorkCache(
       if (seed === undefined) return;
       for (const repo of seed.repos) {
         const [owner = "", name = ""] = repo.fullName.split("/");
-        const state = repo.state ?? "connected";
+        const state = repo.state ?? "ok";
         await tx.insert(schema.workRepos).values({
           id: idOf(repo.fullName),
           host: "github.com",
@@ -80,7 +80,7 @@ export async function seedWorkCache(
           trackerPlugin: "factory-github",
           forgeState: state,
           trackerState: state,
-          lastGoodFetchAt: state === "connected" ? now : null,
+          lastGoodFetchAt: state === "ok" || state === "partial" ? now : null,
         });
       }
       for (const issue of seed.issues ?? []) {

@@ -1,4 +1,5 @@
 import type { PipelineCounts } from "@foreman/shared";
+import { OK_STATE, PARTIAL_STATE } from "../work/fetch-repo.ts";
 
 /** The most builds that the factory runs at one time. */
 export const BUILD_SLOTS = 5;
@@ -18,6 +19,14 @@ export interface CachedPullRequest {
 }
 
 const PRODUCTION = "production";
+
+/** The states that a fetch writes when a role of a repo has cache rows: a clean fetch and a partial one. */
+export const CONNECTED_STATES: readonly string[] = [OK_STATE, PARTIAL_STATE];
+
+/** The one rule for a connected repo: its last fetch of the role did not fail. */
+export function isConnectedState(state: string | null | undefined): boolean {
+  return state != null && CONNECTED_STATES.includes(state);
+}
 
 const isOpen = (issue: CachedIssue): boolean => issue.state === "open";
 const mergeReady = (issue: CachedIssue): boolean => issue.labels.includes("merge-ready");

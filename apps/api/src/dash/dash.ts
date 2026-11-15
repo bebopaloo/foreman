@@ -8,6 +8,8 @@ import type { SkippedFile } from "./jsonl-window.ts";
 import { readNightLog, readRunLock, type NightLogRead, type RunLockRead } from "./night-log.ts";
 import {
   BUILD_SLOTS,
+  CONNECTED_STATES,
+  isConnectedState,
   pipelineCounts,
   runningBuilds,
   waitsTotal,
@@ -94,7 +96,7 @@ async function readConnected(
   const rows = await db
     .select({ id: schema.workRepos.id })
     .from(schema.workRepos)
-    .where(eq(schema.workRepos.forgeState, "connected"));
+    .where(inArray(schema.workRepos.forgeState, [...CONNECTED_STATES]));
   const connected: DashSources["connected"] = new Map(rows.map((row) => [row.id, null]));
   if (logins.size === 0 || rows.length === 0) return connected;
   const ids = rows.map((row) => row.id);
@@ -254,7 +256,7 @@ function workOf(
   runState: DashResponse["run"]["state"],
 ): Pick<DashResponse, "tiles" | "running" | "pipeline" | "complete"> {
   const entries = reposInScope(repoList, scope);
-  const connected = entries.filter((entry) => hasCacheRows(work.trackerStates.get(entry.id)));
+  const connected = entries.filter((entry) => isConnectedState(work.trackerStates.get(entry.id)));
   const ids = new Set(connected.map((entry) => entry.id));
   const complete = {
     connectedRepos: connected.length,
@@ -279,11 +281,6 @@ function workOf(
 }
 
 const noTiles = { builds: null, peak: null, merged: null, waits: null };
-
-/** A repo has cache rows after a fetch that did not fail. */
-function hasCacheRows(state: string | null | undefined): boolean {
-  return state === "ok" || state === "partial" || state === "connected";
-}
 
 function runOf(lock: RunLockRead): DashResponse["run"] {
   if (lock.state === "unreadable") {
