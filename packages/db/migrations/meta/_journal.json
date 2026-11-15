@@ -43,6 +43,13 @@
       "when": 1794745742621,
       "tag": "0005_third_puff_adder",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794746042472,
+      "tag": "0006_whole_eternity",
+      "breakpoints": true
     }
   ]
 }

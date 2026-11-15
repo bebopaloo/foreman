@@ -22,7 +22,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, agents, refresh_runs, user_messages`);
+  await database.db.execute(
+    sql`truncate table turns, agents, refresh_runs, user_messages, skill_calls, agent_starts`,
+  );
 });
 
 describe("runReindex", () => {
