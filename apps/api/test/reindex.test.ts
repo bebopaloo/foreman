@@ -24,7 +24,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table turns, agents, refresh_runs, user_messages, skill_calls, agent_starts, work_repos, work_fetch_runs`,
+    sql`truncate table turns, agents, refresh_runs, user_messages, skill_calls, agent_starts, work_repos, work_commit_statuses, work_fetch_runs`,
   );
 });
 
@@ -130,6 +130,14 @@ describe("runReindex and the work cache", () => {
       kind: "full",
       state: "idle",
     });
+    await database.db.insert(schema.workCommitStatuses).values({
+      repoId: "aaaaaaaaaaaa",
+      pullRequestNumber: 1,
+      context: "factory/machine-gate",
+      sha: "a".repeat(40),
+      state: "pass",
+      fetchedAt: new Date("2026-03-01T10:00:30Z"),
+    });
   }
 
   it("empties the work cache, so that the next fetch is a full fetch", async () => {
@@ -140,6 +148,7 @@ describe("runReindex and the work cache", () => {
 
     expect(await database.db.select().from(schema.workRepos)).toEqual([]);
     expect(await database.db.select().from(schema.workFetchRuns)).toEqual([]);
+    expect(await database.db.select().from(schema.workCommitStatuses)).toEqual([]);
   });
 
   it("stops with a fetch running message and keeps the work cache while a fetch runs", async () => {
