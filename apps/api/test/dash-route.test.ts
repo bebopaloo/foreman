@@ -88,6 +88,7 @@ describe("GET /api/dash", () => {
       tiles: { builds: null, peak: null, merged: null, waits: null },
       running: null,
       pipeline: null,
+      waits: null,
       complete: { connectedRepos: 0, missingRepos: 0 },
       sources: { runs: "missing", controls: "missing" },
       skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
