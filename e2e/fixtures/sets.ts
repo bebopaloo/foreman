@@ -130,7 +130,6 @@ function runLines(runId: string, start: Date, steps: Step[]): NightLogLine[] {
 
 const APP = "acme/app";
 const TOOLS = "bebopaloo/tools";
-const SITE = "acme/site";
 
 /** The slot timeline: builds A to D, 9 skips, one issue blocked at selection and one parent issue. */
 function lastRunLines(now: Date): NightLogLine[] {
@@ -306,6 +305,8 @@ function controlLines(now: Date): string {
   ].join("\n")}\n`;
 }
 
+const SITE = "acme/site";
+
 /**
  * Review health: Control events for `acme/app` and `acme/site`, and no event for `bebopaloo/tools`,
  * which has 4 pull requests of the Factory identity (3 reviewed by it) and 1 of the Operator.
@@ -329,6 +330,46 @@ const REVIEW_HEALTH_CACHE: WorkSeed = {
     { repo: TOOLS, pullRequest: 3, author: FACTORY },
     { repo: TOOLS, pullRequest: 5, author: FACTORY },
   ],
+};
+
+const issuesOf = (
+  repo: string,
+  count: number,
+  issueState: string,
+  first: number,
+  rest: { state?: "open" | "closed"; labels?: string[] } = {},
+): NonNullable<WorkSeed["issues"]> =>
+  Array.from({ length: count }, (_, index) => ({
+    repo,
+    number: first + index,
+    title: `Synthetic issue ${(first + index).toString()}`,
+    issueState,
+    ...rest,
+  }));
+
+/**
+ * The pipeline strip of `acme/app`: 2 TODO without `spec-approved`, 1 TODO with it, 1 TODO with
+ * `issues-approved`, 1 with `finding`, 3 READY, 2 IN PROGRESS, 2 IN REVIEW (1 `merge-ready`), 1 BLOCKED,
+ * 5 DONE, 2 closed with no state, and 1 pull request into `production`. `bebopaloo/tools` has 1 IN PROGRESS.
+ */
+const PIPELINE_CACHE: WorkSeed = {
+  ...CONNECTED_CACHE,
+  issues: [
+    ...issuesOf(APP, 2, "TODO", 100),
+    ...issuesOf(APP, 1, "TODO", 110, { labels: ["spec-approved"] }),
+    ...issuesOf(APP, 1, "TODO", 111, { labels: ["spec-approved", "issues-approved"] }),
+    ...issuesOf(APP, 1, "TODO", 112, { labels: ["spec-approved", "finding"] }),
+    ...issuesOf(APP, 3, "READY", 120),
+    ...issuesOf(APP, 2, "IN PROGRESS", 130),
+    ...issuesOf(APP, 1, "IN REVIEW", 140),
+    ...issuesOf(APP, 1, "IN REVIEW", 141, { labels: ["merge-ready"] }),
+    ...issuesOf(APP, 1, "BLOCKED", 150),
+    ...issuesOf(APP, 4, "DONE", 160, { state: "closed" }),
+    ...issuesOf(APP, 1, "DONE", 164, { state: "closed", labels: ["merge-ready"] }),
+    ...issuesOf(APP, 2, "", 170, { state: "closed" }),
+    ...issuesOf(TOOLS, 1, "IN PROGRESS", 3),
+  ],
+  pullRequests: [{ repo: APP, number: 200, title: "Release", base: "production" }],
 };
 
 /** Owners with a synthetic token in the e2e tokens file. The API reads only repos of such owners. */
@@ -477,6 +518,35 @@ export const FIXTURE_SETS = {
     files: () => ({ "factory/repos.json": repoList() }),
     work: CONNECTED_CACHE,
     usage: true,
+  },
+
+  /** A run in progress with 3 builds, and the pipeline strip of the Spec scenario in the Work cache. */
+  pipeline: {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...runLock("run-synthetic-1", new Date(now.getTime() - 4 * MINUTE_MS)),
+      ...nightLog(threeBuilds(now)),
+    }),
+    work: PIPELINE_CACHE,
+  },
+
+  /** The pipeline cache with no run: the leaf issues in IN PROGRESS wait for the next run. */
+  "pipeline-idle": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: PIPELINE_CACHE,
+  },
+
+  /** 4 repos in scope, of which `acme/site` has no cache rows because it has no token. */
+  "pipeline-incomplete": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: {
+      ...PIPELINE_CACHE,
+      repos: REPOS.map(({ repo, client }) => ({
+        fullName: repo,
+        client,
+        ...(repo === "acme/site" ? { state: "not connected: no token" } : {}),
+      })),
+    },
   },
 
   /** No repo list and no factory folder: Foreman has no client and no data. */
