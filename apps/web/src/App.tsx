@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api.ts";
 import { DashPage } from "./dash/index.ts";
 import { Header } from "./Header.tsx";
-import { UsagePage } from "./usage/index.ts";
+import { ProjectPage, UsagePage, projectIdOf } from "./usage/index.ts";
 import { useScope } from "./scope/index.ts";
 import { WorkPage } from "./work/index.ts";
 import { SessionsPage } from "./sessions/index.ts";
 import { ReviewsPage } from "./reviews/index.ts";
+import { ControlsPage } from "./controls/index.ts";
 
 export function App() {
   const { unknownClient, clientsSettled } = useScope();
@@ -27,10 +28,14 @@ export function App() {
           <WorkPage />
         ) : window.location.pathname === "/usage" ? (
           <UsagePage />
+        ) : projectIdOf(window.location.pathname) !== null ? (
+          <ProjectPage projectId={projectIdOf(window.location.pathname) ?? ""} />
         ) : window.location.pathname === "/sessions" ? (
           <SessionsPage />
         ) : window.location.pathname === "/reviews" ? (
           <ReviewsPage />
+        ) : window.location.pathname === "/controls" ? (
+          <ControlsPage />
         ) : (
           <>
             <h1>Page not found</h1>

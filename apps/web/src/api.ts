@@ -1,7 +1,12 @@
 import {
   BreakdownResponse,
+  ControlsRegisterResponse,
+  ControlsReleasesResponse,
+  ControlsResponse,
+  ControlsWaiversResponse,
   DashResponse,
   HealthResponse,
+  ProjectsResponse,
   RefreshStatusResponse,
   ReviewsPullRequestsResponse,
   ReviewsResponse,
@@ -100,11 +105,14 @@ export interface UsageQuery {
   tz: string;
   /** The Client scope. Null is "All". */
   client: string | null;
+  /** A Project ID. It limits the usage to this Project. */
+  project?: string;
 }
 
 function usageParams(query: UsageQuery, extra: Record<string, string>): string {
   const params = new URLSearchParams({ from: query.from, to: query.to, tz: query.tz, ...extra });
   if (query.client !== null) params.set("client", query.client);
+  if (query.project !== undefined) params.set("project", query.project);
   return params.toString();
 }
 
@@ -126,6 +134,16 @@ export const fetchUsageSeries = (
   signal?: AbortSignal,
 ): Promise<SeriesResponse> =>
   getJson(`/api/usage/series?${usageParams(query, { grain })}`, SeriesResponse, signal);
+
+export const fetchUsageProjects = (
+  client: string | null,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<ProjectsResponse> => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (client !== null) params.set("client", client);
+  return getJson(`/api/usage/projects?${params.toString()}`, ProjectsResponse, signal);
+};
 
 export interface SessionsQuery {
   /** A calendar day, `YYYY-MM-DD`, in the time zone `tz`. */
@@ -188,3 +206,42 @@ export const fetchReviewsPullRequests = (
     signal,
   );
 };
+
+const scopedPath = (path: string, client: string | null, cursor: string | null = null): string => {
+  const params = new URLSearchParams();
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return text === "" ? path : `${path}?${text}`;
+};
+
+/** The Controls document. */
+export const fetchControls = (
+  client: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsResponse> =>
+  getJson(scopedPath("/api/controls", client), ControlsResponse, signal);
+
+/** One page of the Waiver rows of the Controls view. */
+export const fetchControlsWaivers = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsWaiversResponse> =>
+  getJson(scopedPath("/api/controls/waivers", client, cursor), ControlsWaiversResponse, signal);
+
+/** One page of the Release rows of the Controls view. */
+export const fetchControlsReleases = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsReleasesResponse> =>
+  getJson(scopedPath("/api/controls/releases", client, cursor), ControlsReleasesResponse, signal);
+
+/** One page of the Control register list of the Controls view. */
+export const fetchControlsRegister = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsRegisterResponse> =>
+  getJson(scopedPath("/api/controls/register", client, cursor), ControlsRegisterResponse, signal);
