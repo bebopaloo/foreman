@@ -1,7 +1,11 @@
 import { ADAPTER_PLUGINS, SYNTHETIC_HOST, type AdapterData } from "./adapter/index.ts";
 import { controlsFiles, controlsWork } from "./controls-files.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
-import { sessionTranscripts } from "./session-transcripts.ts";
+import {
+  manySessionTranscripts,
+  partnerTranscripts,
+  sessionTranscripts,
+} from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
 
 /** A fixture set: the files of a synthetic Claude folder and the Work cache. All data is synthetic. */
@@ -595,6 +599,30 @@ const FETCHED_APP: AdapterData[string] = {
   ],
 };
 
+const SESSION_ISSUES: AdapterData[string] = {
+  issues: [
+    { number: 11, title: "Add the export", issueState: "IN PROGRESS" },
+    { number: 12, title: HOSTILE_TITLE, issueState: "READY" },
+  ],
+};
+
+/** The sessions with a real fetch of the synthetic adapter: every repo of the list has a token. */
+const SESSIONS_CONNECTED = {
+  files: (now: Date) => ({
+    "factory/repos.json": adapterRepoList([
+      { repo: "acme/app", client: "acme" },
+      { repo: "bebopaloo/tools", client: "bebopaloo" },
+    ]),
+    ...sessionTranscripts(now),
+  }),
+  tokenOwners: [`${SYNTHETIC_HOST}/acme`, `${SYNTHETIC_HOST}/bebopaloo`],
+  adapter: {
+    "acme/app": SESSION_ISSUES,
+    "bebopaloo/tools": { issues: [{ number: 3, title: "Fetched guide", issueState: "TODO" }] },
+  },
+  usage: true,
+} as const satisfies FixtureSet;
+
 const REVIEWS_OWNERS = [...OWNERS, "github.com/misc"] as const;
 
 /** All four repos connected, with the pull requests 40, 41 and 46 of `acme/app` in the cache. */
@@ -777,6 +805,43 @@ export const FIXTURE_SETS = {
   /** The repo list and the transcripts of 3 sessions on the day before `now`. */
   sessions: {
     files: (now) => ({ "factory/repos.json": repoList(), ...sessionTranscripts(now) }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The sessions with a real fetch: both repos connected, so the work items have titles and links. */
+  "sessions-connected": SESSIONS_CONNECTED,
+
+  /** Partly connected: `partner/web` of the client `acme` has no token, and one sub-agent works in it. */
+  "sessions-partial": {
+    files: (now) => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "partner/web", client: "acme" },
+        { repo: "bebopaloo/tools", client: "bebopaloo" },
+      ]),
+      ...sessionTranscripts(now),
+      ...partnerTranscripts(now),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`, `${SYNTHETIC_HOST}/bebopaloo`],
+    adapter: {
+      "acme/app": SESSION_ISSUES,
+      "partner/web": { issues: [{ number: 7, title: "Fetched menu", issueState: "TODO" }] },
+      "bebopaloo/tools": { issues: [{ number: 3, title: "Fetched guide", issueState: "TODO" }] },
+    },
+    usage: true,
+  },
+
+  /** No token for any repo: the sessions show, and the work items show their numbers only. */
+  "sessions-not-connected": {
+    files: SESSIONS_CONNECTED.files,
+    adapter: SESSIONS_CONNECTED.adapter,
+    usage: true,
+  },
+
+  /** 51 sessions on one day: the list needs Show more sessions. */
+  "sessions-many": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...manySessionTranscripts(now, 51) }),
     work: CONNECTED_CACHE,
     usage: true,
   },
