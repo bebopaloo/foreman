@@ -111,3 +111,31 @@ export function parseLine(line: string): ParsedLine {
     },
   };
 }
+
+// Only the two fields that Foreman uses. The schema drops the task description and all other fields.
+const AgentMetaSchema = z.object({
+  agentType: z.string().min(1).optional(),
+  toolUseId: z.string().min(1).optional(),
+});
+
+export interface AgentMeta {
+  agentType?: string;
+  startToolCallId?: string;
+}
+
+/** Reads the Agent type and the start tool call ID from the text of a meta file. */
+export function parseAgentMeta(text: string): AgentMeta {
+  let record: unknown;
+  try {
+    record = JSON.parse(text);
+  } catch {
+    return {};
+  }
+  const parsed = AgentMetaSchema.safeParse(record);
+  if (!parsed.success) return {};
+  const { agentType, toolUseId } = parsed.data;
+  return {
+    ...(agentType === undefined ? {} : { agentType }),
+    ...(toolUseId === undefined ? {} : { startToolCallId: toolUseId }),
+  };
+}

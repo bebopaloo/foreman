@@ -1,9 +1,16 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { type ParsedTurn, parseLine } from "./parse.ts";
 import { resolveProjects } from "./projects.ts";
-import { type FileCursor, readArchiveLines, readNewLines, scanSources } from "./sources.ts";
+import {
+  type FileCursor,
+  readAgentMeta,
+  readArchiveLines,
+  readNewLines,
+  scanSources,
+  UNKNOWN_SUB_AGENT_TYPE,
+} from "./sources.ts";
 
 export interface IngestLog {
   info(message: string): void;
@@ -33,9 +40,10 @@ export interface IngestResult {
 
 type CursorRow = typeof schema.fileCursors.$inferInsert;
 type ProjectRow = typeof schema.projects.$inferInsert;
-type IndexedTurn = ParsedTurn & { agentType: string };
+type AgentRow = typeof schema.agents.$inferInsert;
+type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
 
-// 15 columns for each row, and Postgres allows 65,535 parameters in a query.
+// 16 columns for each row, and Postgres allows 65,535 parameters in a query.
 const INSERT_BATCH_SIZE = 500;
 
 const COUNT_COLUMNS = [
@@ -72,6 +80,8 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
           cacheWrite1hTokens: sql`greatest(${schema.turns.cacheWrite1hTokens}, excluded.cache_write_1h_tokens)`,
           cacheReadTokens: sql`greatest(${schema.turns.cacheReadTokens}, excluded.cache_read_tokens)`,
           webSearchCount: sql`greatest(${schema.turns.webSearchCount}, excluded.web_search_count)`,
+          agentType: sql`excluded.agent_type`,
+          agentId: sql`excluded.agent_id`,
         },
       });
   }
@@ -95,9 +105,47 @@ async function writeCursors(db: Pick<Database, "insert">, cursors: CursorRow[]):
   }
 }
 
-async function readSources(
-  options: IngestOptions,
-): Promise<IngestResult & { rows: IndexedTurn[]; projects: ProjectRow[]; cursors: CursorRow[] }> {
+async function writeAgents(
+  db: Pick<Database, "insert" | "update">,
+  agents: AgentRow[],
+): Promise<void> {
+  for (let start = 0; start < agents.length; start += INSERT_BATCH_SIZE) {
+    const batch = agents.slice(start, start + INSERT_BATCH_SIZE);
+    await db
+      .insert(schema.agents)
+      .values(batch)
+      .onConflictDoUpdate({
+        target: schema.agents.agentId,
+        set: {
+          agentType: sql`case when excluded.agent_type = ${UNKNOWN_SUB_AGENT_TYPE} then ${schema.agents.agentType} else excluded.agent_type end`,
+          startToolCallId: sql`coalesce(excluded.start_tool_call_id, ${schema.agents.startToolCallId})`,
+        },
+      });
+    // A meta file can appear or change after a refresh stored the turns of its agent.
+    await db
+      .update(schema.turns)
+      .set({ agentType: schema.agents.agentType })
+      .from(schema.agents)
+      .where(
+        and(
+          eq(schema.turns.agentId, schema.agents.agentId),
+          inArray(
+            schema.agents.agentId,
+            batch.map((agent) => agent.agentId),
+          ),
+        ),
+      );
+  }
+}
+
+async function readSources(options: IngestOptions): Promise<
+  IngestResult & {
+    rows: IndexedTurn[];
+    projects: ProjectRow[];
+    cursors: CursorRow[];
+    agents: AgentRow[];
+  }
+> {
   const { db, claudeDir, dataDir, log } = options;
   const scan = await scanSources(claudeDir, dataDir);
   for (const source of scan.missing) log.warn(`missing source: ${source}`);
@@ -106,6 +154,7 @@ async function readSources(
   const known = new Map<string, FileCursor>(stored.map((row) => [row.path, row]));
   const cursors: CursorRow[] = [];
   const byKey = new Map<string, IndexedTurn>();
+  const agents = new Map<string, AgentRow>();
   let files = 0;
   let skippedLines = 0;
   let unreadableFiles = 0;
@@ -128,12 +177,27 @@ async function readSources(
     }
     files += 1;
     if (lines.length > 0) log.info(`read ${plural(lines.length, "new line")} in ${file.path}`);
+    let agentType = file.agentType;
+    if (file.agent !== undefined) {
+      const meta = await readAgentMeta(file);
+      agentType = meta.agentType ?? agentType;
+      const earlier = agents.get(file.agent.agentId);
+      if (agentType === UNKNOWN_SUB_AGENT_TYPE && earlier !== undefined) {
+        agentType = earlier.agentType;
+      }
+      agents.set(file.agent.agentId, {
+        agentId: file.agent.agentId,
+        sessionId: file.agent.sessionId,
+        agentType,
+        startToolCallId: meta.startToolCallId ?? earlier?.startToolCallId ?? null,
+      });
+    }
     let skipped = 0;
     for (const line of lines) {
       const parsed = parseLine(line);
       if (parsed.kind === "malformed") skipped += 1;
       if (parsed.kind !== "turn") continue;
-      const next = { ...parsed.turn, agentType: file.agentType };
+      const next = { ...parsed.turn, agentType, agentId: file.agent?.agentId ?? null };
       const known = byKey.get(next.turnKey);
       byKey.set(next.turnKey, known ? keepLargestCounts(known, next) : next);
     }
@@ -165,6 +229,7 @@ async function readSources(
     rows,
     projects: [...projects.values()],
     cursors,
+    agents: [...agents.values()],
   };
 }
 
@@ -180,14 +245,16 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, cursors, ...result } = await readSources(options);
+    const { rows, projects, cursors, agents, ...result } = await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) {
         await tx.delete(schema.turns);
+        await tx.delete(schema.agents);
         await tx.delete(schema.fileCursors);
       }
       await writeTurns(tx, rows);
       await writeCursors(tx, cursors);
+      await writeAgents(tx, agents);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)

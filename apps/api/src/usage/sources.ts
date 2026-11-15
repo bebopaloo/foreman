@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { type FileHandle, open, readdir, stat } from "node:fs/promises";
+import { type FileHandle, open, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
+import { type AgentMeta, parseAgentMeta } from "./parse.ts";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -12,6 +13,8 @@ export interface TranscriptFile {
   agentType: string;
   /** True for a gzip file of the Transcript archive. */
   compressed: boolean;
+  /** For a sub-agent file only: the agent ID and the session ID that its path gives. */
+  agent?: { agentId: string; sessionId: string };
 }
 
 export interface SourceScan {
@@ -21,7 +24,7 @@ export interface SourceScan {
 }
 
 const MAIN_AGENT_TYPE = "main";
-const UNKNOWN_SUB_AGENT_TYPE = "sub-agent (unknown)";
+export const UNKNOWN_SUB_AGENT_TYPE = "sub-agent (unknown)";
 // <project folder>/<session id>.jsonl is a main session file.
 const MAIN_FILE_DEPTH = 2;
 
@@ -49,11 +52,16 @@ async function findFiles(
     .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
     .map((entry) => {
       const file = path.join(entry.parentPath, entry.name);
-      const depth = path.relative(root, file).split(path.sep).length;
+      const parts = path.relative(root, file).split(path.sep);
+      if (parts.length <= MAIN_FILE_DEPTH) {
+        return { path: file, agentType: MAIN_AGENT_TYPE, compressed };
+      }
+      const agentId = entry.name.slice(0, -suffix.length).replace(/^agent-/, "");
       return {
         path: file,
-        agentType: depth > MAIN_FILE_DEPTH ? UNKNOWN_SUB_AGENT_TYPE : MAIN_AGENT_TYPE,
+        agentType: UNKNOWN_SUB_AGENT_TYPE,
         compressed,
+        agent: { agentId, sessionId: parts[1] ?? "" },
       };
     });
 }
@@ -75,6 +83,22 @@ export async function scanSources(claudeDir: string, dataDir: string): Promise<S
     ...(missing.includes(archive) ? [] : await findFiles(archive, ARCHIVE_SUFFIX, true)),
   ].sort((a, b) => a.path.localeCompare(b.path));
   return { files, missing };
+}
+
+/**
+ * Reads the meta file next to a sub-agent transcript. A missing, unreadable or
+ * invalid meta file gives an empty result: the agent type stays unknown.
+ */
+export async function readAgentMeta(file: TranscriptFile): Promise<AgentMeta> {
+  const suffix = file.compressed ? ARCHIVE_SUFFIX : ".jsonl";
+  const metaPath = `${file.path.slice(0, -suffix.length)}.meta.json${file.compressed ? ".gz" : ""}`;
+  try {
+    const bytes = await readFile(metaPath);
+    const text = (file.compressed ? await gunzipAsync(bytes) : bytes).toString("utf8");
+    return parseAgentMeta(text);
+  } catch {
+    return {};
+  }
 }
 
 export interface FileCursor {

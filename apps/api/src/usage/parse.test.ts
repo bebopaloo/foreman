@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLine } from "./parse.ts";
+import { parseAgentMeta, parseLine } from "./parse.ts";
 
 function assistant(overrides: Record<string, unknown> = {}, usage: Record<string, unknown> = {}) {
   return JSON.stringify({
@@ -96,5 +96,25 @@ describe("parseLine", () => {
     delete record.message.id;
     expect(parseLine(JSON.stringify(record))).toEqual({ kind: "malformed" });
     expect(parseLine(assistant({ timestamp: "not a time" }))).toEqual({ kind: "malformed" });
+  });
+});
+
+describe("parseAgentMeta", () => {
+  it("reads the Agent type and the start tool call ID", () => {
+    expect(parseAgentMeta(JSON.stringify({ agentType: "reviewer", toolUseId: "toolu_1" }))).toEqual(
+      { agentType: "reviewer", startToolCallId: "toolu_1" },
+    );
+  });
+
+  it("returns no fields for text that is not JSON", () => {
+    expect(parseAgentMeta("not json")).toEqual({});
+  });
+
+  it("returns no fields when a field has the wrong type", () => {
+    expect(parseAgentMeta(JSON.stringify({ agentType: 5, toolUseId: "toolu_1" }))).toEqual({});
+  });
+
+  it("returns no Agent type when it is empty", () => {
+    expect(parseAgentMeta(JSON.stringify({ agentType: "" }))).toEqual({});
   });
 });
