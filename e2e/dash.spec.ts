@@ -304,3 +304,55 @@ for (const name of AXE_SETS) {
     expect(results.violations).toEqual([]);
   });
 }
+
+const reposSection = (page: Page) => page.getByRole("region", { name: "Repos", exact: true });
+const NOT_COMPLETE = "Data is not complete: 1 repo not connected. See Repos.";
+const NOT_CONNECTED =
+  "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.";
+
+test("Repos shows each repo with its client and connection state", async ({ page }) => {
+  await useFixture("pipeline-incomplete");
+  await page.goto("/");
+  const table = reposSection(page).getByRole("table");
+  const row = (name: string) => table.getByRole("row").filter({ hasText: name });
+  await expect(table.getByRole("row")).toHaveCount(5);
+  await expect(row("acme/app")).toContainText("acme");
+  await expect(row("acme/app")).toContainText("connected");
+  await expect(row("acme/site")).toContainText("not connected: no token");
+  await expect(row("acme/site").getByRole("cell").nth(3)).toHaveText("none");
+  await expect(row("misc/notes")).toContainText("no client");
+});
+
+test("Repos shows the last night log line and the last Control event of a repo", async ({
+  page,
+}) => {
+  await useFixture("review-health");
+  await page.goto("/");
+  const site = reposSection(page).getByRole("row").filter({ hasText: "acme/site" });
+  await expect(site.getByRole("cell").nth(5)).not.toHaveText("none");
+  await expect(site.getByRole("cell").nth(4)).toHaveText("none");
+  const tools = reposSection(page).getByRole("row").filter({ hasText: "bebopaloo/tools" });
+  await expect(tools.getByRole("cell").nth(5)).toHaveText("none");
+});
+
+test("Waits for you and Review health say that the data is not complete", async ({ page }) => {
+  await useFixture("pipeline-incomplete");
+  await page.goto("/");
+  await expect(waitsSection(page)).toContainText(NOT_COMPLETE);
+  await expect(review(page)).toContainText(NOT_COMPLETE);
+  await expect(strip(page)).toContainText(NOT_COMPLETE);
+});
+
+test("with no repo connected, the forge sections say not connected and Review health keeps its local data", async ({
+  page,
+}) => {
+  await useFixture("not-connected");
+  await page.goto("/");
+  await expect(waitsSection(page)).toContainText(NOT_CONNECTED);
+  await expect(strip(page)).toContainText(NOT_CONNECTED);
+  await expect(review(page)).toContainText(NOT_CONNECTED);
+  await expect(review(page)).toContainText("First-round pass: no gate decision in 30 days");
+  await expect(
+    reposSection(page).getByRole("row").filter({ hasText: "not connected: no token" }),
+  ).toHaveCount(4);
+});

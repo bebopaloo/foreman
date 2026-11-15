@@ -1,6 +1,6 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
-import type { DashResponse } from "@foreman/shared";
+import type { DashRepo, DashResponse } from "@foreman/shared";
 import { eq, inArray, sql } from "drizzle-orm";
 import { readRepoList, type RepoListResult } from "../work/repo-list.ts";
 import { readControlEvents, type ControlEventsRead } from "./control-events.ts";
@@ -15,6 +15,7 @@ import {
   type CachedIssue,
   type CachedPullRequest,
 } from "./pipeline.ts";
+import { PARTIAL_STATE } from "../work/fetch-repo.ts";
 import { waitsOf } from "./waits.ts";
 import { reviewHealth, type ConnectedRepo } from "./review-health.ts";
 import { folderLabel, runsInWindow, type Run, type RunRepo, type RunScope } from "./runs.ts";
@@ -37,6 +38,11 @@ export interface DashSources {
 export interface WorkCache {
   /** The fetch state of the tracker role of each cached repo, by repo ID. */
   trackerStates: Map<string, string | null>;
+  /** The forge state, the tracker state and the last good fetch of each cached repo, by repo ID. */
+  repoRows: Map<
+    string,
+    { forgeState: string | null; trackerState: string | null; lastGoodFetchAt: Date | null }
+  >;
   issues: CachedIssue[];
   pullRequests: CachedPullRequest[];
 }
@@ -50,7 +56,12 @@ export interface DashRead {
 async function readWorkCache(db: Database): Promise<WorkCache> {
   const [repos, issues, pulls] = await Promise.all([
     db
-      .select({ id: schema.workRepos.id, trackerState: schema.workRepos.trackerState })
+      .select({
+        id: schema.workRepos.id,
+        forgeState: schema.workRepos.forgeState,
+        trackerState: schema.workRepos.trackerState,
+        lastGoodFetchAt: schema.workRepos.lastGoodFetchAt,
+      })
       .from(schema.workRepos),
     db
       .select({
@@ -79,6 +90,7 @@ async function readWorkCache(db: Database): Promise<WorkCache> {
   ]);
   return {
     trackerStates: new Map(repos.map((repo) => [repo.id, repo.trackerState])),
+    repoRows: new Map(repos.map((repo) => [repo.id, repo])),
     issues,
     pullRequests: pulls,
   };
@@ -312,6 +324,51 @@ function workOf(
   };
 }
 
+const NOT_CONFIGURED = "not configured";
+
+/** The first role state that is not connected, else `partial`, else `connected`. No role state is `not fetched`. */
+export function connectionState(
+  row: { forgeState: string | null; trackerState: string | null } | undefined,
+): string {
+  const states = [row?.forgeState, row?.trackerState].flatMap((state) =>
+    state == null || state === NOT_CONFIGURED ? [] : [state],
+  );
+  if (states.length === 0) return "not fetched";
+  const problem = states.find((state) => !isConnectedState(state));
+  if (problem !== undefined) return problem;
+  return states.includes(PARTIAL_STATE) ? PARTIAL_STATE : "connected";
+}
+
+/** The repos in scope, each with its connection state and the times of its newest log line and Control event. */
+function reposOf({ repoList, work, nightLog, controls }: DashSources, scope: RunScope): DashRepo[] {
+  const repoOf = repoResolver(repoList);
+  const logTimes = new Map<string, number>();
+  for (const line of nightLog.entries) {
+    const { id } = repoOf(line.repo);
+    if (id !== null) logTimes.set(id, Math.max(logTimes.get(id) ?? -Infinity, line.time.getTime()));
+  }
+  const controlTimes = new Map<string, number>();
+  for (const event of controls.events) {
+    const key = event.repo.toLowerCase();
+    controlTimes.set(key, Math.max(controlTimes.get(key) ?? -Infinity, event.at.getTime()));
+  }
+  const iso = (time: number | undefined): string | null =>
+    time === undefined ? null : new Date(time).toISOString();
+  return reposInScope(repoList, scope).map((entry) => {
+    const label = `${entry.owner ?? ""}/${entry.name ?? ""}`;
+    const row = work.repoRows.get(entry.id);
+    return {
+      repoId: entry.id,
+      repo: label,
+      client: entry.client,
+      state: connectionState(row),
+      dataAsOf: row?.lastGoodFetchAt?.toISOString() ?? null,
+      lastLogAt: iso(logTimes.get(entry.id)),
+      lastControlAt: iso(controlTimes.get(label.toLowerCase())),
+    };
+  });
+}
+
 const noTiles = { builds: null, peak: null, merged: null, waits: null };
 
 function runOf(lock: RunLockRead): DashResponse["run"] {
@@ -353,6 +410,7 @@ export function buildDash(
       pipeline: forge.pipeline,
       waits: forge.waits,
       complete: forge.complete,
+      repos: reposOf(sources, scope),
       sources: { runs: nightLog.folder, controls: controls.folder },
       skipped: {
         nightLogLines: nightLog.skippedLines,

@@ -1,5 +1,6 @@
 import type { DashResponse } from "@foreman/shared";
 import { plural } from "./last-run.ts";
+import { incompleteNote, NotConnected } from "./PipelineStrip.tsx";
 
 type Health = DashResponse["reviewHealth"];
 
@@ -17,8 +18,16 @@ const ROUND_LABELS = [
   ["three", "Round 3"],
 ] as const;
 
-export function ReviewHealth({ health }: { health: Health }) {
+export function ReviewHealth({
+  health,
+  complete,
+}: {
+  health: Health;
+  complete: DashResponse["complete"];
+}) {
   const { firstRound, rounds } = health;
+  const note = incompleteNote(complete);
+  const nothingConnected = complete.connectedRepos === 0 && complete.missingRepos > 0;
   const pulls = rounds.one + rounds.two + rounds.three;
   return (
     <div className="review-health">
@@ -78,6 +87,8 @@ export function ReviewHealth({ health }: { health: Health }) {
           </ul>
         </div>
       </div>
+      {nothingConnected ? <NotConnected /> : null}
+      {note === null ? null : <p className="note note-warn">{note}</p>}
       {health.reposWithoutControls.length === 0 ? null : (
         <ul className="no-controls" aria-label="Repos with no Control events">
           {health.reposWithoutControls.map((repo) => (
