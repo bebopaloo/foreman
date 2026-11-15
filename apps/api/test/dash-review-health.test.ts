@@ -5,6 +5,7 @@ import type { ReviewHealth } from "@foreman/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
+import { OK_STATE, PARTIAL_STATE } from "../src/work/fetch-repo.ts";
 import { repoId } from "../src/work/repo-list.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
 import { gateEvent, makeFactoryDir, NOW, writeJsonl } from "./dash-fixtures.ts";
@@ -36,15 +37,15 @@ const REPO_LIST = {
 };
 const FACTORY = "synthetic-factory[bot]";
 
-async function connect(owner: string, name: string): Promise<string> {
+async function connect(owner: string, name: string, state = OK_STATE): Promise<string> {
   const id = repoId("github.com", owner, name);
   await database.db.insert(schema.workRepos).values({
     id,
     host: "github.com",
     owner,
     name,
-    forgeState: "connected",
-    trackerState: "connected",
+    forgeState: state,
+    trackerState: state,
     lastGoodFetchAt: NOW,
   });
   return id;
@@ -186,6 +187,20 @@ describe("GET /api/dash reviewHealth", () => {
     expect(result.reposWithoutControls).toEqual([
       { repoId: app, repo: "acme/app", reviewed: 3, unreviewed: 1 },
     ]);
+  });
+
+  it("counts a repo in the forge state partial as connected", async () => {
+    const app = await connect("acme", "app", PARTIAL_STATE);
+    const result = await health([], { logins: FACTORY });
+    expect(result.reposWithoutControls).toEqual([
+      { repoId: app, repo: "acme/app", reviewed: 0, unreviewed: 0 },
+    ]);
+  });
+
+  it("does not list a repo whose forge fetch failed", async () => {
+    await connect("acme", "app", "token rejected");
+    await connect("acme", "site", "not connected: no token");
+    expect((await health([], { logins: FACTORY })).reposWithoutControls).toEqual([]);
   });
 
   it("shows no repo with Control events and no repo that is not connected", async () => {

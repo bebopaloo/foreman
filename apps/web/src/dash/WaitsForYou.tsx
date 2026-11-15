@@ -18,7 +18,7 @@ function Item({ item }: { item: WaitItem }) {
   return (
     <li className="wait-item">
       <div className="wait-head">
-        <span className={`pill pill-${item.kind}`}>{labels.pill}</span>
+        <span className={`wait-pill wait-pill-${item.kind}`}>{labels.pill}</span>
         <span className="mono">{refOf(item)}</span>
       </div>
       <div className="wait-title">{item.title}</div>
