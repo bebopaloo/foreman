@@ -57,7 +57,8 @@ const trackerReleaseSchema = z
   })
   .strict();
 
-const reviewSchema = z
+/** One review. A review that fails this shape is skipped; it does not fail the whole list. */
+export const prReviewSchema = z
   .object({
     author: z.string(),
     state: z.string().min(1),
@@ -81,7 +82,7 @@ export const contractSchemas = {
   issueRelations: relationsSchema,
   releaseList: z.array(trackerReleaseSchema),
   prList: z.array(pullRequestSchema),
-  prReviews: z.array(reviewSchema),
+  prReviews: z.array(z.unknown()),
   releaseView: forgeReleaseSchema,
 };
 

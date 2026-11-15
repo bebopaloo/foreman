@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 import { resolveAdapter, type AdapterRole, type ResolvedAdapter } from "./adapters.ts";
-import { contractSchemas, RELEASE_TAG_PATTERN } from "./contract.ts";
+import { contractSchemas, prReviewSchema, RELEASE_TAG_PATTERN } from "./contract.ts";
 import type { RepoEntry } from "./repo-list.ts";
 import {
   runAdapterCommand,
@@ -303,6 +303,7 @@ async function fetchForge(
   const reviewRows: (typeof schema.workReviews.$inferInsert)[] = [];
   const replacedReviews: number[] = [];
   let firstError: string | null = null;
+  let skippedReviews = 0;
   for (const pull of pulls.values()) {
     const before = cached.get(pull.number);
     const needsDetails =
@@ -322,9 +323,14 @@ async function fetchForge(
       );
       if (reviews.ok) {
         replacedReviews.push(pull.number);
-        reviews.data.forEach((review, position) => {
-          const time = new Date(review.time);
-          if (Number.isNaN(time.getTime())) return;
+        reviews.data.forEach((raw, position) => {
+          const parsed = prReviewSchema.safeParse(raw);
+          const time = parsed.success ? new Date(parsed.data.time) : null;
+          if (!parsed.success || time === null || Number.isNaN(time.getTime())) {
+            skippedReviews += 1;
+            return;
+          }
+          const review = parsed.data;
           reviewRows.push({
             repoId: repo.id,
             pullRequestNumber: pull.number,
@@ -358,6 +364,11 @@ async function fetchForge(
       detailsFetchedAt,
       detailsErrorClass,
     });
+  }
+
+  if (skippedReviews > 0) {
+    const noun = skippedReviews === 1 ? "review" : "reviews";
+    ctx.runner.log?.warn(`skipped ${String(skippedReviews)} ${noun} that fails the contract`);
   }
 
   const forgeRows = await fetchForgeReleases(ctx, repo, caller, releases);

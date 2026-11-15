@@ -14,7 +14,8 @@ key = " ".join(command)
 with (here / "calls.jsonl").open("a") as log:
     log.write(json.dumps({"command": key, "host": args[1], "repo": args[3]}) + "\n")
 
-answer = scenario.get(key)
+# A key with a "<owner>/<name> " prefix answers for that repo only.
+answer = scenario.get(f"{args[3]} {key}", scenario.get(key))
 if answer is None:
     sys.stderr.write(json.dumps({"error": "unexpected command"}))
     sys.exit(1)
