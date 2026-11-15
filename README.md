@@ -76,6 +76,23 @@ docker compose -f compose.local.yaml -p foreman-local down   # stop the stack an
 
 Set `LOCAL_PORT` to use another web port and `LOCAL_PROJECT` to use another Compose project name.
 
+### Forge and tracker tokens
+
+Foreman reads work items and pull requests through the factory's adapter plugins. It needs one read-only token for each host and owner in the factory's repo list. The token stays in the macOS Keychain, in the Compose secret `foreman_tokens` (the file `/run/secrets/foreman_tokens` in the API container) and in the memory of the runner. It is never in a file of the repo, in an environment value of a container or in a log.
+
+For each owner:
+
+1. Create a fine-grained token on GitHub. Give it the owner of the repos, only those repos, an expiry date, and these read permissions: Metadata, Contents, Issues, Pull requests, Commit statuses, Checks and Actions.
+2. Store it in the Keychain. The command asks for the token, so it does not reach your shell history:
+
+   ```bash
+   security add-generic-password -s foreman -a github.com/<owner> -w
+   ```
+
+3. Run `pnpm local:up` again. It reads one Keychain item for each distinct `<host>/<owner>` in the repo list, with the service `foreman` and `<host>/<owner>` as the account. A missing item is an owner that shows "not connected: no token". The stack starts anyway.
+
+At the end of `pnpm local:up`, a smoke test runs inside the API container. For each owner it runs one allow-listed read command (`pr list --state open`) through the installed forge adapter and prints one line, for example `github.com/acme: connected`. It exits with an error when the adapter output is not valid, the token is not a fine-grained token, or the adapter plugin is not readable. The API image has Python, `uv`, `gh` and `git` for the adapters.
+
 ## Database changes
 
 Change `packages/db/src/schema.ts`, run `pnpm db:generate`, read the generated SQL in `packages/db/migrations/`, and commit both.
