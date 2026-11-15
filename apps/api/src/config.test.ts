@@ -39,6 +39,14 @@ describe("loadConfig", () => {
     expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(30);
   });
 
+  it("reads the tokens file from the Compose secret by default and from a variable", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_FILE).toBe("/run/secrets/foreman_tokens");
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_TOKENS_FILE: "/synthetic/tokens.json" })
+        .FOREMAN_TOKENS_FILE,
+    ).toBe("/synthetic/tokens.json");
+  });
+
   it("reads the price table of the repo by default and from a variable", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_PRICE_TABLE).toMatch(/data\/price-table\.json$/);
     expect(

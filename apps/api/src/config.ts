@@ -56,6 +56,7 @@ function createConfigSchema(home: string) {
           .map((host) => host.trim().toLowerCase())
           .filter((host) => host.length > 0),
       ),
+    FOREMAN_TOKENS_FILE: z.string().min(1).default("/run/secrets/foreman_tokens"),
     FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
     FOREMAN_PRICE_TABLE: z
       .string()
