@@ -1,3 +1,4 @@
+import path from "node:path";
 import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { schema } from "@foreman/db";
 import { sql } from "drizzle-orm";
@@ -256,6 +257,47 @@ describe("ingestTranscripts", () => {
       ["m2", "software-developer"],
     ]);
   });
+
+  it("refreshes more sub-agents than one query can hold parameters for", async () => {
+    const folder = await makeConfigFolder();
+    const count = 17_000;
+    const ids = Array.from({ length: count }, (_, index) => `a${String(index)}`);
+    const directory = path.join(folder.claudeDir, "projects", "p", "session-1", "subagents");
+    await mkdir(directory, { recursive: true });
+    for (let start = 0; start < count; start += 500) {
+      await Promise.all(
+        ids
+          .slice(start, start + 500)
+          .map((id) =>
+            writeFile(path.join(directory, `agent-${id}.jsonl`), `${assistantLine(`m-${id}`)}\n`),
+          ),
+      );
+    }
+
+    const first = await refresh(folder);
+    await writeMeta(folder.claudeDir, "p/session-1/subagents/agent-a16999.meta.json", {
+      agentType: "reviewer",
+    });
+    await ingestTranscripts({
+      db: database.db,
+      ...folder,
+      log: recordingLog().log,
+      replaceAll: true,
+    });
+
+    expect(first.result.files).toBe(count);
+    const agents = await database.db.select({ id: schema.agents.agentId }).from(schema.agents);
+    expect(agents).toHaveLength(count);
+    const reviewed = await database.db
+      .select({ key: schema.turns.turnKey })
+      .from(schema.turns)
+      .where(sql`${schema.turns.agentType} = 'reviewer'`);
+    expect(reviewed).toEqual([{ key: "m-a16999" }]);
+    const runs = await database.db
+      .select({ state: schema.refreshRuns.state })
+      .from(schema.refreshRuns);
+    expect(runs.map((run) => run.state)).toEqual(["idle", "idle"]);
+  }, 60_000);
 
   it("ends idle with 0 files and logs each missing source", async () => {
     const folder = await makeConfigFolder();

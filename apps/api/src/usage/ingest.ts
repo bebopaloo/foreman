@@ -105,6 +105,39 @@ async function writeCursors(db: Pick<Database, "insert">, cursors: CursorRow[]):
   }
 }
 
+async function writeAgents(
+  db: Pick<Database, "insert" | "update">,
+  agents: AgentRow[],
+): Promise<void> {
+  for (let start = 0; start < agents.length; start += INSERT_BATCH_SIZE) {
+    const batch = agents.slice(start, start + INSERT_BATCH_SIZE);
+    await db
+      .insert(schema.agents)
+      .values(batch)
+      .onConflictDoUpdate({
+        target: schema.agents.agentId,
+        set: {
+          agentType: sql`case when excluded.agent_type = ${UNKNOWN_SUB_AGENT_TYPE} then ${schema.agents.agentType} else excluded.agent_type end`,
+          startToolCallId: sql`coalesce(excluded.start_tool_call_id, ${schema.agents.startToolCallId})`,
+        },
+      });
+    // A meta file can appear or change after a refresh stored the turns of its agent.
+    await db
+      .update(schema.turns)
+      .set({ agentType: schema.agents.agentType })
+      .from(schema.agents)
+      .where(
+        and(
+          eq(schema.turns.agentId, schema.agents.agentId),
+          inArray(
+            schema.agents.agentId,
+            batch.map((agent) => agent.agentId),
+          ),
+        ),
+      );
+  }
+}
+
 async function readSources(options: IngestOptions): Promise<
   IngestResult & {
     rows: IndexedTurn[];
@@ -221,32 +254,7 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
       }
       await writeTurns(tx, rows);
       await writeCursors(tx, cursors);
-      if (agents.length > 0) {
-        await tx
-          .insert(schema.agents)
-          .values(agents)
-          .onConflictDoUpdate({
-            target: schema.agents.agentId,
-            set: {
-              agentType: sql`case when excluded.agent_type = ${UNKNOWN_SUB_AGENT_TYPE} then ${schema.agents.agentType} else excluded.agent_type end`,
-              startToolCallId: sql`coalesce(excluded.start_tool_call_id, ${schema.agents.startToolCallId})`,
-            },
-          });
-        // A meta file can appear or change after a refresh stored the turns of its agent.
-        await tx
-          .update(schema.turns)
-          .set({ agentType: schema.agents.agentType })
-          .from(schema.agents)
-          .where(
-            and(
-              eq(schema.turns.agentId, schema.agents.agentId),
-              inArray(
-                schema.agents.agentId,
-                agents.map((agent) => agent.agentId),
-              ),
-            ),
-          );
-      }
+      await writeAgents(tx, agents);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)
