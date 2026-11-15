@@ -607,3 +607,7 @@ main a:focus-visible {
 .pill-plain {
   color: var(--muted);
 }
+
+.repos-table {
+  min-width: 720px;
+}

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { schema } from "@foreman/db";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -687,5 +688,300 @@ describe("the module files are parsed", () => {
       skipped: [{ position: 2, field: "expires" }],
     });
     expect(row?.fields).toMatchObject({ waivers: [{ id: "WAIVER-1" }] });
+  });
+});
+
+const RULE_STAMP = (name: string, version = "0.8.1") =>
+  `<!-- factory-core ${version}: from Rule template ${name}. The team owns this file. -->`;
+const ruleText = (name: string, body = "SYNTHETIC-RULE-TEXT") =>
+  `${RULE_STAMP(name)}\n# ${name}\n${body}\n`;
+const rulePath = (name: string) => `.claude/rules/${name}.md`;
+const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+function ruleScenario(
+  configOver: Record<string, unknown>,
+  rules: Record<string, string>,
+  branch = "main",
+  configSha?: string,
+): Scenario {
+  const scenario = fileScenario({
+    configText: config(configOver),
+    ...(configSha === undefined ? {} : { configSha }),
+  });
+  for (const [name, text] of Object.entries(rules)) {
+    scenario[`file get ${rulePath(name)} --ref ${branch}`] = {
+      ok: fileAnswer(rulePath(name), branch, text),
+    };
+  }
+  return scenario;
+}
+
+async function ruleRows() {
+  return (await fileRows()).filter((row) => row.path.startsWith(".claude/rules/"));
+}
+
+describe("the rule files", () => {
+  it("reads each listed name once and caches the parsed fields, never the text", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario(
+        { rules: ["coding", "react"], compliance: ["gdpr"] },
+        { coding: ruleText("coding"), react: ruleText("react"), gdpr: ruleText("gdpr") },
+      ),
+    );
+    await env.fetchAt(T0);
+    const calls = forgeFileCalls(await env.adapters.calls("forge"));
+    expect(calls).toEqual([
+      "repo",
+      `file get ${CONFIG} --ref main`,
+      ...["coding", "react", "gdpr"].map((name) => `file get ${rulePath(name)} --ref main`),
+    ]);
+
+    const rows = await ruleRows();
+    expect(rows.map((row) => row.path)).toEqual(["coding", "gdpr", "react"].map(rulePath));
+    expect(rows.find((row) => row.path === rulePath("coding"))).toMatchObject({
+      state: "ok",
+      ref: "main",
+      fields: {
+        kind: "rule",
+        stampPlugin: "factory-core",
+        stampVersion: "0.8.1",
+        stampName: "coding",
+        textHash: sha256("# coding\nSYNTHETIC-RULE-TEXT\n"),
+      },
+    });
+    expect(rows.find((row) => row.path === rulePath("gdpr"))?.fields).toMatchObject({
+      kind: "compliance",
+    });
+    expect(JSON.stringify(await fileRows())).not.toContain("SYNTHETIC-RULE-TEXT");
+  });
+
+  it("runs no file get on a timer fetch within 60 minutes of the last forge file step", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario({ rules: ["coding"] }, { coding: ruleText("coding") }),
+    );
+    await env.fetchAt(T0);
+    const before = forgeFileCalls(await env.adapters.calls("forge")).length;
+    await env.fetchAt(minutes(15));
+    expect(forgeFileCalls(await env.adapters.calls("forge"))).toHaveLength(before);
+    await env.fetchAt(minutes(20), true);
+    expect(forgeFileCalls(await env.adapters.calls("forge")).length).toBeGreaterThan(before);
+  });
+
+  it("reads each name once when it is in both lists, as a rule", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario(
+        { rules: ["coding", "coding"], compliance: ["coding"] },
+        { coding: ruleText("coding") },
+      ),
+    );
+    await env.fetchAt(T0);
+    const calls = forgeFileCalls(await env.adapters.calls("forge"));
+    expect(calls.filter((call) => call.includes(rulePath("coding")))).toHaveLength(1);
+    expect((await ruleRows())[0]?.fields).toMatchObject({ kind: "rule" });
+  });
+
+  it("keeps the parsed fields and sets the fetch time when the sha does not change, and parses again when the kind changes", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario({ rules: ["coding"] }, { coding: ruleText("coding") }),
+    );
+    await env.fetchAt(T0);
+    await env.fetchAt(minutes(5), true);
+    const [row] = await ruleRows();
+    expect(row?.fetchedAt).toEqual(minutes(5));
+    expect(row?.fields).toMatchObject({ kind: "rule" });
+
+    await env.setForge(
+      ruleScenario({ compliance: ["coding"] }, { coding: ruleText("coding") }, "main", SHA_B),
+    );
+    await env.fetchAt(minutes(10), true);
+    expect((await ruleRows())[0]?.fields).toMatchObject({ kind: "compliance" });
+  });
+
+  it("finds the stamp after the front matter and counts only a stamp of the rule name", async () => {
+    const framed = `---\npaths: a\n---\n${RULE_STAMP("react")}\n# react\n`;
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario(
+        { rules: ["react", "coding"] },
+        { react: framed, coding: `${RULE_STAMP("security")}\n# coding\n` },
+      ),
+    );
+    await env.fetchAt(T0);
+    const rows = await ruleRows();
+    expect(rows.find((row) => row.path === rulePath("react"))?.fields).toMatchObject({
+      stampName: "react",
+      textHash: sha256("---\npaths: a\n---\n# react\n"),
+    });
+    expect(rows.find((row) => row.path === rulePath("coding"))?.fields).toMatchObject({
+      stampPlugin: null,
+      textHash: sha256(`${RULE_STAMP("security")}\n# coding\n`),
+    });
+  });
+
+  it("records a missing rule file and a missing ref, and the fetch stays ok", async () => {
+    const env = await setup(["acme/app"], {
+      ...ruleScenario({ rules: ["fastify-api", "coding"] }, {}),
+      [`file get ${rulePath("fastify-api")} --ref main`]: {
+        error: `file not found: ${rulePath("fastify-api")} at main`,
+      },
+      [`file get ${rulePath("coding")} --ref main`]: { error: "ref not found: main" },
+    });
+    await env.fetchAt(T0);
+    const rows = await ruleRows();
+    expect(rows.map((row) => [row.path, row.state])).toEqual([
+      [rulePath("coding"), "missing_ref"],
+      [rulePath("fastify-api"), "missing_file"],
+    ]);
+    expect(await repoRow()).toMatchObject({ forgeState: "ok" });
+  });
+
+  it("keeps the earlier hash and shows no drift state for a large, invalid or failed rule file", async () => {
+    const names = ["big", "bad", "boom"];
+    const first = ruleScenario(
+      { rules: names },
+      Object.fromEntries(names.map((name) => [name, ruleText(name)])),
+    );
+    const env = await setup(["acme/app"], first);
+    await env.fetchAt(T0);
+    const earlier = Object.fromEntries((await ruleRows()).map((row) => [row.path, row.fields]));
+
+    await env.setForge({
+      ...ruleScenario({ rules: names }, {}),
+      [`file get ${rulePath("big")} --ref main`]: {
+        ok: { ...fileAnswer(rulePath("big"), "main", "x"), size: 2_000_000 },
+      },
+      [`file get ${rulePath("bad")} --ref main`]: { ok: { path: rulePath("bad") } },
+      [`file get ${rulePath("boom")} --ref main`]: { error: "HTTP 500 server error" },
+    });
+    await env.fetchAt(minutes(5), true);
+    const rows = await ruleRows();
+    expect(rows.map((row) => [row.path, row.state, row.errorClass])).toEqual([
+      [rulePath("bad"), "failed", "invalid_output"],
+      [rulePath("big"), "failed", "invalid_output"],
+      [rulePath("boom"), "failed", "other"],
+    ]);
+    for (const row of rows) expect(row.fields).toEqual(earlier[row.path]);
+    expect(await repoRow()).toMatchObject({ forgeState: "partial" });
+  });
+
+  it("marks no rule file as read for a repo with no factory config, and keeps the earlier rule rows", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario({ rules: ["coding"] }, { coding: ruleText("coding") }),
+    );
+    await env.fetchAt(T0);
+    await env.setForge({
+      repo: { ok: repoInfo("main") },
+      [`file get ${CONFIG} --ref main`]: { error: `file not found: ${CONFIG} at main` },
+    });
+    await env.fetchAt(minutes(5), true);
+    const calls = forgeFileCalls(await env.adapters.calls("forge"));
+    expect(calls.slice(-2)).toEqual(["repo", `file get ${CONFIG} --ref main`]);
+    expect((await ruleRows()).map((row) => row.state)).toEqual(["ok"]);
+  });
+
+  it.each([
+    ["is not valid JSON", "not json"],
+    ["has rules that is not a list of names", config({ rules: "coding", compliance: ["gdpr"] })],
+    ["has a rule name with a capital", config({ rules: ["Coding"] })],
+  ])(
+    "reads no rule file when the factory config %s, and keeps the earlier rule rows",
+    async (_name, text) => {
+      const env = await setup(
+        ["acme/app"],
+        ruleScenario({ rules: ["coding"] }, { coding: ruleText("coding") }),
+      );
+      await env.fetchAt(T0);
+      const before = forgeFileCalls(await env.adapters.calls("forge")).length;
+      await env.setForge(fileScenario({ configText: text, configSha: SHA_B }));
+      await env.fetchAt(minutes(5), true);
+      const after = forgeFileCalls(await env.adapters.calls("forge")).slice(before);
+      expect(after.some((call) => call.includes(".claude/rules/"))).toBe(false);
+      expect((await ruleRows()).map((row) => row.path)).toEqual([rulePath("coding")]);
+    },
+  );
+
+  it("still reads the module files when only a rule key is not valid", async () => {
+    const env = await setup(["acme/app"], {
+      ...fileScenario({
+        configText: config({ rules: "coding", ...controls("waivers") }),
+        files: { [WAIVERS]: { ref: "main", content: "" } },
+      }),
+    });
+    await env.fetchAt(T0);
+    const rows = await fileRows();
+    expect(rows.find((row) => row.path === WAIVERS)?.state).toBe("ok");
+    expect(await ruleRows()).toEqual([]);
+  });
+
+  it("reads the config at the default branch and the rule files at main_branch", async () => {
+    const env = await setup(["acme/app"], {
+      repo: { ok: repoInfo("trunk") },
+      [`file get ${CONFIG} --ref trunk`]: {
+        ok: fileAnswer(CONFIG, "trunk", config({ main_branch: "main", rules: ["coding"] })),
+      },
+      [`file get ${rulePath("coding")} --ref main`]: {
+        ok: fileAnswer(rulePath("coding"), "main", ruleText("coding")),
+      },
+    });
+    await env.fetchAt(T0);
+    expect(forgeFileCalls(await env.adapters.calls("forge"))).toEqual([
+      "repo",
+      `file get ${CONFIG} --ref trunk`,
+      `file get ${rulePath("coding")} --ref main`,
+    ]);
+    expect((await ruleRows())[0]).toMatchObject({ state: "ok", ref: "main" });
+  });
+
+  it("removes the row of a rule that leaves the list", async () => {
+    const env = await setup(
+      ["acme/app"],
+      ruleScenario(
+        { rules: ["coding", "react"] },
+        { coding: ruleText("coding"), react: ruleText("react") },
+      ),
+    );
+    await env.fetchAt(T0);
+    expect(await ruleRows()).toHaveLength(2);
+    await env.setForge(
+      ruleScenario({ rules: ["coding"] }, { coding: ruleText("coding") }, "main", SHA_B),
+    );
+    await env.fetchAt(minutes(5), true);
+    expect((await ruleRows()).map((row) => row.path)).toEqual([rulePath("coding")]);
+  });
+
+  it("logs the repo ID, the file names, the counts and the error classes, and no text or hash", async () => {
+    const env = await setup(["acme/app"], {
+      ...ruleScenario({ rules: ["coding", "react"] }, { coding: ruleText("coding") }),
+      [`file get ${rulePath("react")} --ref main`]: { error: "HTTP 500 secret-adapter-output" },
+    });
+    const lines: string[] = [];
+    const claudeDir = env.claudeDir;
+    await runFetch({
+      db: database.db,
+      claudeDir,
+      allowedHosts: ["github.com"],
+      timeoutMs: 20_000,
+      now: () => T0,
+      tokensFile: await writeTokens(claudeDir, { "github.com/acme": TOKEN }),
+      log: { info: (line) => lines.push(line), warn: (line) => lines.push(line) },
+    });
+    const text = lines.join("\n");
+    expect(text).toContain(APP);
+    expect(text).toContain(rulePath("react"));
+    expect(text).toMatch(/listed=2/);
+    expect(text).toContain("error=other");
+    for (const forbidden of [
+      "SYNTHETIC-RULE-TEXT",
+      sha256("# coding\nSYNTHETIC-RULE-TEXT\n"),
+      "secret-adapter-output",
+      TOKEN,
+    ]) {
+      expect(text).not.toContain(forbidden);
+    }
   });
 });

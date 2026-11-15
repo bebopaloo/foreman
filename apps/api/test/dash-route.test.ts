@@ -90,6 +90,7 @@ describe("GET /api/dash", () => {
       pipeline: null,
       waits: null,
       complete: { connectedRepos: 0, missingRepos: 0 },
+      repos: [],
       sources: { runs: "missing", controls: "missing" },
       skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
     });

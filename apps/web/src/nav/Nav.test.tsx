@@ -25,6 +25,7 @@ describe("Nav", () => {
       "Work",
       "Usage",
       "Sessions",
+      "Reviews",
     ]);
   });
 

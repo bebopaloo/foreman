@@ -385,6 +385,11 @@ describe("the forge file commands", () => {
     ["a path with ..", ["file", "get", "_context/controls/../../.env", "--ref", "main"]],
     ["a leading slash", ["file", "get", "/_context/threat-model.md", "--ref", "main"]],
     ["a backslash", ["file", "get", "_context\\threat-model.md", "--ref", "main"]],
+    ["a rule path with ..", ["file", "get", ".claude/rules/../settings.json", "--ref", "main"]],
+    [
+      "a rule file with an option as the ref",
+      ["file", "get", ".claude/rules/coding.md", "--ref", "--upload-pack"],
+    ],
     ["a rule name with a capital", ["file", "get", ".claude/rules/Api.md", "--ref", "main"]],
     ["a rule name with a folder", ["file", "get", ".claude/rules/a/b.md", "--ref", "main"]],
     ["a rule name that starts with -", ["file", "get", ".claude/rules/-a.md", "--ref", "main"]],

@@ -1,4 +1,5 @@
 import { ADAPTER_PLUGINS, SYNTHETIC_HOST, type AdapterData } from "./adapter/index.ts";
+import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
 
@@ -558,6 +559,18 @@ const FETCHED_APP: AdapterData[string] = {
   ],
 };
 
+const REVIEWS_OWNERS = [...OWNERS, "github.com/misc"] as const;
+
+/** All four repos connected, with the pull requests 40, 41 and 46 of `acme/app` in the cache. */
+const REVIEWS_CACHE: WorkSeed = {
+  repos: REPOS.map(({ repo, client }) => ({ fullName: repo, client })),
+  pullRequests: [40, 41, 46].map((number) => ({
+    repo: "acme/app",
+    number,
+    title: `Change ${number.toString()}`,
+  })),
+};
+
 export const FIXTURE_SETS = {
   /** Every owner has a token: a real fetch of the synthetic adapter connects both repos. */
   "fetch-connected": {
@@ -729,6 +742,63 @@ export const FIXTURE_SETS = {
     files: (now) => ({ "factory/repos.json": repoList(), ...sessionTranscripts(now) }),
     work: CONNECTED_CACHE,
     usage: true,
+  },
+
+  /**
+   * The Reviews view: 5 pull requests of `acme/app` and `acme/site` with Control events, 3 builds in the
+   * night log and the sub-agent transcripts of one build. All repos are connected.
+   */
+  reviews: {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...reviewsFiles(now),
+      ...reviewsTranscripts(now),
+    }),
+    work: REVIEWS_CACHE,
+    tokenOwners: REVIEWS_OWNERS,
+    usage: true,
+  },
+
+  /** The Reviews data, with `acme/site` not connected: no token, so no cache rows. */
+  "reviews-incomplete": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...reviewsFiles(now) }),
+    work: {
+      ...REVIEWS_CACHE,
+      repos: REPOS.map(({ repo, client }) => ({
+        fullName: repo,
+        client,
+        ...(repo === "acme/site" ? { state: "not connected: no token" } : {}),
+      })),
+    },
+    tokenOwners: REVIEWS_OWNERS,
+  },
+
+  /** The Reviews data with no token for any repo. */
+  "reviews-not-connected": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...reviewsFiles(now) }),
+    work: {
+      repos: REPOS.map(({ repo, client }) => ({
+        fullName: repo,
+        client,
+        state: "not connected: no token",
+      })),
+    },
+  },
+
+  /** `acme/site` turns Control events off and has one build in the night log. */
+  "reviews-events-off": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...reviewsFiles(now, { siteEvents: false, siteBuild: true }),
+    }),
+    work: {
+      ...REVIEWS_CACHE,
+      repoConfigs: [
+        { repo: "acme/app", modules: ["control_events"] },
+        { repo: "acme/site", modules: ["risk_tiers"] },
+      ],
+    },
+    tokenOwners: REVIEWS_OWNERS,
   },
 
   /** No repo list and no factory folder: Foreman has no client and no data. */

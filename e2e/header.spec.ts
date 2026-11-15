@@ -12,7 +12,7 @@ test("the header shows the scope from the URL and keeps it in links", async ({ p
     "href",
     "/?client=acme",
   );
-  await expect(page.getByText("Connected")).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Connected")).toBeVisible();
   await page.getByRole("button", { name: "bebopaloo" }).click();
   await expect(page).toHaveURL(/\?client=bebopaloo$/);
 });
@@ -39,7 +39,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await useFixture("no-run");
     await page.goto("/?client=acme");
-    await expect(page.getByText("Connected")).toBeVisible();
+    await expect(page.getByRole("banner").getByText("Connected")).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     const scoped = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
     expect(scoped.violations).toEqual([]);
