@@ -103,6 +103,7 @@ export function UsageView({ project = null }: { project?: UsageProject | null })
     to: today,
     tz: timeZone,
     client: scope,
+    ...(project === null ? {} : { project: project.id }),
   };
   const calendar = useQuery({
     queryKey: [...PANEL_KEY, "calendar", calendarQuery],
