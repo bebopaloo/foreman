@@ -1,5 +1,6 @@
 import { ledgerLongTranscripts, ledgerTranscripts } from "./ledger-transcripts.ts";
 import { ADAPTER_PLUGINS, SYNTHETIC_HOST, type AdapterData } from "./adapter/index.ts";
+import { healthPluginFiles, healthRepoFiles, hostileVersionFiles } from "./health-files.ts";
 import { controlsFiles, controlsWork } from "./controls-files.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import {
@@ -636,6 +637,26 @@ const REVIEWS_CACHE: WorkSeed = {
   })),
 };
 
+/** Two runs of `acme/app`: the older one leaves #12 and #14 open, the newer one resumes #12. */
+function healthRunLines(now: Date): NightLogLine[] {
+  const older = new Date(now.getTime() - 30 * HOUR_MS);
+  const newer = new Date(now.getTime() - 6 * HOUR_MS);
+  return [
+    ...runLines("run-health-a", older, [
+      step(APP, 12, 0, START, "build started", "READY"),
+      step(APP, 14, 10, START, "build started", "READY"),
+      step(APP, 15, 20, START, "build started", "READY"),
+      step(APP, 14, 60, "IN REVIEW", "pull request opened #70"),
+      step(APP, 15, 100, "DONE", "merged #71", "IN REVIEW"),
+      step(APP, 16, 30, "READY", "blocked by #3", "READY"),
+    ]),
+    ...runLines("run-health-b", newer, [
+      step(APP, 12, 0, START, "build started", "READY"),
+      step(APP, 12, 90, "DONE", "merged #72", "IN REVIEW"),
+    ]),
+  ];
+}
+
 export const FIXTURE_SETS = {
   /** Every owner has a token: a real fetch of the synthetic adapter connects both repos. */
   "fetch-connected": {
@@ -916,6 +937,65 @@ export const FIXTURE_SETS = {
       ],
     },
     tokenOwners: REVIEWS_OWNERS,
+  },
+
+  /**
+   * Factory health: `factory-core` 0.30.0 has an update and `stack-ts` is current. `acme/app` has four
+   * Repo rules (current, behind, edited by the team and one of the Stack pack), read by a real fetch
+   * of the synthetic adapter. `bebopaloo/tools` has no token. Two runs leave two stopped items, and one
+   * of them has a title of markup.
+   */
+  health: {
+    files: (now) => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "bebopaloo/tools", client: "bebopaloo" },
+      ]),
+      ...healthPluginFiles(),
+      ...nightLog(healthRunLines(now)),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: {
+      "acme/app": {
+        issues: [
+          { number: 12, title: HOSTILE_TITLE, issueState: "IN PROGRESS" },
+          { number: 14, title: "Fixed footer", issueState: "IN REVIEW" },
+          { number: 15, title: "Sorted list", issueState: "DONE", state: "closed" },
+        ],
+        files: healthRepoFiles(),
+      },
+      "bebopaloo/tools": {},
+    },
+  },
+
+  /** Plugin files and a night log, but no token: Rule drift is not connected. */
+  "health-not-connected": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...healthPluginFiles({ factoryCoreInMarketplace: "0.30.0" }),
+      ...nightLog(healthRunLines(now)),
+    }),
+  },
+
+  /** No plugin file, no token and no run. */
+  "health-bare": {
+    files: () => ({ "factory/repos.json": repoList() }),
+  },
+
+  /** A run lock with a fresh heartbeat and 3 builds that did not end. */
+  "health-running": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...healthPluginFiles(),
+      ...runLock("run-synthetic-1", new Date(now.getTime() - 4 * MINUTE_MS)),
+      ...nightLog(threeBuilds(now)),
+    }),
+    work: CONNECTED_CACHE,
+  },
+
+  /** A Marketplace version of markup: Foreman shows "version not readable". */
+  "health-hostile": {
+    files: () => ({ "factory/repos.json": repoList(), ...hostileVersionFiles() }),
   },
 
   /** The Controls view: Control modules, 3 escalations, 4 Waivers, 4 Releases and the security artefacts of `acme/app`. */

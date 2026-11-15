@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -43,6 +44,11 @@ export interface AdapterPullRequest {
 export interface AdapterRepo {
   issues?: AdapterIssue[];
   pullRequests?: AdapterPullRequest[];
+  /**
+   * The files of the repo at its default branch `main`, by path: `file get <path> --ref main` answers
+   * with the text. A path that is not here is "file not found".
+   */
+  files?: Record<string, string>;
   /** An error message for each command (`issue relations 12`): the adapter fails that command. */
   fail?: Record<string, string>;
 }
@@ -104,6 +110,17 @@ function repoScenario(repo: string, data: AdapterRepo): Record<string, Answer> {
         body: "",
         time: "2026-01-02T03:04:05Z",
       })),
+    };
+  }
+  for (const [filePath, content] of Object.entries(data.files ?? {})) {
+    scenario[`file get ${filePath} --ref main`] = {
+      ok: {
+        path: filePath,
+        ref: "main",
+        sha: createHash("sha1").update(content, "utf8").digest("hex"),
+        size: Buffer.byteLength(content, "utf8"),
+        content,
+      },
     };
   }
   for (const [command, error] of Object.entries(data.fail ?? {})) {

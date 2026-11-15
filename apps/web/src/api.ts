@@ -5,13 +5,16 @@ import {
   ControlsResponse,
   ControlsWaiversResponse,
   DashResponse,
+  FactoryRunsResponse,
   HealthResponse,
   LedgerResponse,
   LimitsResponse,
+  PluginVersionsResponse,
   ProjectsResponse,
   RefreshStatusResponse,
   ReviewsPullRequestsResponse,
   ReviewsResponse,
+  RuleDriftResponse,
   SessionResponse,
   SessionsResponse,
   SeriesResponse,
@@ -223,6 +226,29 @@ const scopedPath = (path: string, client: string | null, cursor: string | null =
   const text = params.toString();
   return text === "" ? path : `${path}?${text}`;
 };
+
+/** One page of the plugin rows. The plugins belong to the whole factory, so the request has no client. */
+export const fetchPluginVersions = (
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<PluginVersionsResponse> =>
+  getJson(scopedPath("/api/factory-health/plugins", null, cursor), PluginVersionsResponse, signal);
+
+/** One page of the repos of the Rule drift section. */
+export const fetchRuleDrift = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<RuleDriftResponse> =>
+  getJson(scopedPath("/api/factory-health/rule-drift", client, cursor), RuleDriftResponse, signal);
+
+/** One page of the Unattended runs, newest first. */
+export const fetchFactoryRuns = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<FactoryRunsResponse> =>
+  getJson(scopedPath("/api/factory-health/runs", client, cursor), FactoryRunsResponse, signal);
 
 /** The Controls document. */
 export const fetchControls = (
