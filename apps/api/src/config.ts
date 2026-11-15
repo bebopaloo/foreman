@@ -47,6 +47,16 @@ function createConfigSchema(home: string) {
       (folder) => folder !== path.join(home, ".claude"),
     ),
     FOREMAN_DATA_DIR: folderSchema("~/.foreman", home),
+    FOREMAN_ALLOWED_HOSTS: z
+      .string()
+      .default("github.com")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((host) => host.trim().toLowerCase())
+          .filter((host) => host.length > 0),
+      ),
+    FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
     FOREMAN_PRICE_TABLE: z
       .string()
       .min(1)
