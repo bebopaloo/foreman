@@ -54,6 +54,28 @@ test("the limit tiles and the Limit history show the readings of the capture fil
   await expect(chartRows(page, "7-day windows").first()).toContainText("70% or more");
 });
 
+test("the activity calendar, Cache efficiency and Month outlook show the usage", async ({
+  page,
+}) => {
+  await useFixture("usage");
+  await page.goto("/usage");
+  const calendar = tile(page, "Activity calendar");
+  await expect(calendar).toContainText("This panel ignores the date range.");
+  const grid = calendar.getByRole("table", { name: "Tokens per day in the last 26 weeks" });
+  await expect(grid.getByRole("columnheader")).toHaveCount(26);
+  await expect(
+    grid.getByRole("img", { name: /^\d+ \w+ 20\d\d: [\d.]+[KM]? tokens$/ }).first(),
+  ).toBeAttached();
+  await expect(calendar.locator(".level-4").first()).toBeAttached();
+  await expect(calendar.getByText("up to 25%")).toBeVisible();
+  const cache = tile(page, "Cache efficiency");
+  await expect(cache).toContainText("Cache hit ratio 72%");
+  await expect(cache).toContainText("input tokens came from the cache");
+  const outlook = tile(page, "Month outlook");
+  await expect(outlook).toContainText("The projection takes the average per day so far this month");
+  await expect(outlook).toContainText(/so far this month|No usage so far this month/);
+});
+
 test("without a limit reading each limit tile and chart shows No reading", async ({ page }) => {
   await useFixture("usage-empty");
   await page.goto("/usage");
@@ -119,8 +141,14 @@ test("a link with values that are not valid shows the defaults and a message", a
 test("no usage in the range shows one sentence in each panel", async ({ page }) => {
   await useFixture("usage-empty");
   await page.goto("/usage");
-  await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(2);
+  await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(3);
   await expect(tile(page, "5-hour window")).toContainText("No reading");
+  await expect(tile(page, "Activity calendar")).toContainText(
+    "No usage in the last 26 weeks in this scope.",
+  );
+  await expect(tile(page, "Month outlook")).toContainText(
+    "No usage so far this month in this scope.",
+  );
 });
 
 const AXE_SETS: { name: FixtureName; path: string }[] = [

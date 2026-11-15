@@ -9,6 +9,8 @@ import {
 import { browserTimeZone, formatDay } from "../format/index.ts";
 import { useScope } from "../scope/index.ts";
 import { FilterBar, rangeName } from "./FilterBar.tsx";
+import { ActivityCalendarPanel, CacheEfficiency, MonthOutlook } from "./ActivityPanels.tsx";
+import { calendarStart, monthStart } from "./activity.ts";
 import { LimitHistory, LimitTiles } from "./LimitPanels.tsx";
 import { limitsTo } from "./limits.ts";
 import { TokensTile, UsageOverTime } from "./Panels.tsx";
@@ -64,6 +66,25 @@ export function UsagePage() {
     enabled: enabled && scope === null,
   });
 
+  // The calendar and the outlook ignore the date range: they have their own ranges up to today.
+  const calendarQuery: UsageQuery = {
+    from: calendarStart(today),
+    to: today,
+    tz: timeZone,
+    client: scope,
+  };
+  const calendar = useQuery({
+    queryKey: [...PANEL_KEY, "calendar", calendarQuery],
+    queryFn: ({ signal }) => fetchUsageSeries(calendarQuery, "day", signal),
+    enabled,
+  });
+  const monthQuery: UsageQuery = { ...calendarQuery, from: monthStart(today) };
+  const month = useQuery({
+    queryKey: [...PANEL_KEY, "month", monthQuery],
+    queryFn: ({ signal }) => fetchUsageSeries(monthQuery, "day", signal),
+    enabled,
+  });
+
   if (unknownClient) return null;
 
   const rangeLabel =
@@ -97,6 +118,9 @@ export function UsagePage() {
       {scope === null ? (
         <LimitHistory query={limits} now={now} includesToday={resolved.to === today} />
       ) : null}
+      <ActivityCalendarPanel query={calendar} metric={state.metric} today={today} />
+      <CacheEfficiency query={totals} />
+      <MonthOutlook query={month} today={today} />
       <p className="muted">Times in {timeZone}</p>
     </>
   );
