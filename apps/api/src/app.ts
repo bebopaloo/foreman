@@ -13,6 +13,7 @@ import { registerHostCheck } from "./host-check.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
+import { sessionsRoutes } from "./routes/sessions.ts";
 import { usageRoutes } from "./routes/usage.ts";
 import { loadPriceTable } from "./usage/prices.ts";
 import { createFetchSchedule, type FetchSchedule } from "./work/schedule.ts";
@@ -140,6 +141,12 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
     priceTable,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     allowedOrigins: config.CORS_ORIGINS,
+  });
+
+  await app.register(sessionsRoutes, {
+    prefix: "/api/sessions",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
   });
 
   return app;
