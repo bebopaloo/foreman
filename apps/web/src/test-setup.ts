@@ -9,6 +9,8 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
   server.resetHandlers();
 });
 
