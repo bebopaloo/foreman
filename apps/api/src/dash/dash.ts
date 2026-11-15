@@ -159,7 +159,7 @@ export async function readDashSources(
 }
 
 /** The repo of a night log line: the repo list entry whose `path` is the line's `repo`. */
-function repoResolver(repoList: RepoListResult): (folder: string) => RunRepo {
+export function repoResolver(repoList: RepoListResult): (folder: string) => RunRepo {
   const byPath = new Map<string, RunRepo>();
   if (repoList.status === "ok") {
     for (const entry of repoList.repos) {
