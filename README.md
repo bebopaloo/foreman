@@ -62,6 +62,20 @@ docker compose -f compose.preview.yaml -p foreman-preview down --volumes
 
 The stack-ts `preview` skill does the same with one project and a stable port per branch.
 
+## Local runtime
+
+`pnpm local:up` builds and starts the stack in `compose.local.yaml` and keeps it running (`restart: unless-stopped`). The web app and the API share one origin at http://127.0.0.1:47100. Postgres uses a named volume and has no published port.
+
+The stack mounts two folders read-only: the config folder (`FOREMAN_CLAUDE_DIR`, default `~/.claude-bebopaloo`) and the Foreman data folder (`FOREMAN_DATA_DIR`, default `~/.foreman`). When the data folder does not exist, `pnpm local:up` creates it with mode `0700` first. It stops when `FOREMAN_CLAUDE_DIR` is `~/.claude`.
+
+```bash
+pnpm local:up
+pnpm local:reindex   # rebuilds the Usage index inside the running stack
+docker compose -f compose.local.yaml -p foreman-local down   # stop the stack and keep the data
+```
+
+Set `LOCAL_PORT` to use another web port and `LOCAL_PROJECT` to use another Compose project name.
+
 ## Database changes
 
 Change `packages/db/src/schema.ts`, run `pnpm db:generate`, read the generated SQL in `packages/db/migrations/`, and commit both.

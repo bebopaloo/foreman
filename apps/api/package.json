@@ -2,9 +2,13 @@
   "name": "@foreman/api",
   "private": true,
   "type": "module",
+  "exports": {
+    "./prices": "./src/usage/prices.ts"
+  },
   "scripts": {
     "dev": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node --watch src/server.ts",
     "start": "node src/server.ts",
+    "reindex": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node src/reindex.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run"
   },

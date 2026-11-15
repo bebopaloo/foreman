@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - scripts
 
 # Install only versions published at least 7 days ago (in minutes).
 minimumReleaseAge: 10080

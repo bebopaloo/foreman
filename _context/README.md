@@ -6,7 +6,7 @@ The knowledge base for this repo. Agents read it before they plan. It describes 
 |---|---|---|
 | `terminology.md` | The glossary. Use these terms in code, docs and conversation. | `grill-me` |
 | `adr/NNNN-<slug>.md` | One record per decision that a reader of the code cannot see | `grill-me`, `to-spec` |
-| `features/<slug>.md` | One **Spec** per feature: problem, acceptance criteria, design, gating, rollout | `to-spec` |
+| `features/<number>-<slug>.md` | One **Spec** per feature: problem, acceptance criteria, design, gating, rollout | `to-spec` |
 | `plans/` | Plans for one work item. Not committed (`.gitignore`). | `write-plan` |
 
 ## Terminology entry

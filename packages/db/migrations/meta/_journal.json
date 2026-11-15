@@ -1,5 +1,41 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794694293746,
+      "tag": "0000_sudden_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794695511582,
+      "tag": "0001_public_sunspot",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794696040150,
+      "tag": "0002_parallel_doctor_doom",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794696576563,
+      "tag": "0003_thankful_wolfsbane",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794698234384,
+      "tag": "0004_cynical_stellaris",
+      "breakpoints": true
+    }
+  ]
 }
