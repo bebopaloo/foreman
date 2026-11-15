@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { ClientName } from "./client.ts";
 import { NextCursor, pageQueryShape } from "./paging.ts";
+
+export { ClientName };
 
 export const HealthResponse = z
   .object({
@@ -65,9 +68,6 @@ export const WorkStatusResponse = z
   .strict();
 
 export type WorkStatusResponse = z.infer<typeof WorkStatusResponse>;
-
-/** The shape of a client name in the repo list. */
-export const ClientName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/);
 
 export const ProjectsQuery = z
   .object({
@@ -263,6 +263,7 @@ export const LimitsResponse = z
 export type LimitsResponse = z.infer<typeof LimitsResponse>;
 
 export * from "./paging.ts";
+export * from "./dash.ts";
 export * from "./ledger.ts";
 export * from "./factory-health.ts";
 

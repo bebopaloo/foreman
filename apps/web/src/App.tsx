@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api.ts";
+import { DashPage } from "./dash/index.ts";
 import { Header } from "./Header.tsx";
 import { useScope } from "./scope/index.ts";
 
@@ -12,23 +13,23 @@ export function App() {
     enabled: clientsSettled && !unknownClient,
   });
 
-  let message: string | null = null;
-  if (!unknownClient) {
-    if (!clientsSettled || health.isPending) {
-      message = "Checking the API.";
-    } else if (health.isError) {
-      message = "The API cannot be reached. Start it with pnpm dev, then reload this page.";
-    } else {
-      message = `API status: ${health.data.status}`;
-    }
-  }
-
   return (
     <>
       <Header />
       <main>
-        <h1>foreman</h1>
-        {message === null ? null : <p role="status">{message}</p>}
+        {window.location.pathname === "/" ? (
+          <DashPage />
+        ) : (
+          <>
+            <h1>Page not found</h1>
+            <p>Foreman has no page at this address. Use a link in the header.</p>
+          </>
+        )}
+        {health.isError ? (
+          <p role="status" className="note note-warn">
+            The API cannot be reached. Start it with pnpm dev, then reload this page.
+          </p>
+        ) : null}
       </main>
       {health.isSuccess && !unknownClient ? <footer>Foreman {health.data.version}</footer> : null}
     </>

@@ -10,6 +10,7 @@ import {
 import type { Config } from "./config.ts";
 import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
+import { dashRoutes } from "./routes/dash.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { ledgerRoutes } from "./routes/ledger.ts";
 import { healthRoutes } from "./routes/health.ts";
@@ -41,7 +42,7 @@ export interface AppOptions {
   refresher?: Refresher;
   /** Tests pass a fake. The default runs the real fetch. */
   fetcher?: FetchSchedule;
-  /** Tests pass a fixed clock for the default range of the ledger. */
+  /** Tests pass a fixed clock for the dash and the default range of the ledger. */
   now?: () => Date;
 }
 
@@ -135,6 +136,11 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     schedule: activeFetcher,
     allowedOrigins: config.CORS_ORIGINS,
+  });
+  await app.register(dashRoutes, {
+    prefix: "/api",
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    ...(now === undefined ? {} : { now }),
   });
   await app.register(usageRoutes, {
     prefix: "/api/usage",

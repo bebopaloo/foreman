@@ -7,3 +7,4 @@ test-results/
 .env
 .env.*
 _context/plans/
+e2e/fixtures/claude/
