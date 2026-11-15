@@ -1,0 +1,231 @@
+/* The colours of the bars come from the Agent type tokens of the theme, so they follow the theme. */
+.day-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.day-choice h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.day-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.day-controls input {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.day-controls button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.sessions-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+  align-items: flex-start;
+}
+
+.sessions-list-card {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.sessions-detail {
+  flex: 999 1 560px;
+  min-width: 0;
+}
+
+.session-list ul,
+.span-rows ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.session-list a:hover {
+  background: var(--surface-hover);
+}
+
+.session-list a[aria-current="true"] {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.session-list a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.timeline-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+}
+
+.timeline-head h2 {
+  margin: 0;
+}
+
+.span-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.span-rows ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.span-row,
+.span-rows li {
+  display: grid;
+  grid-template-columns: minmax(150px, 240px) minmax(0, 1fr) 56px;
+  gap: 12px;
+  align-items: center;
+}
+
+.span-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.span-item {
+  font-size: 12px;
+}
+
+.span-tokens {
+  text-align: right;
+}
+
+.span-lane {
+  position: relative;
+  height: 26px;
+  margin: 0 8px;
+  background: var(--surface-hover);
+  border-radius: 6px;
+}
+
+.span-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 4px;
+  border-radius: 4px;
+}
+
+.you-mark {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.span-axis {
+  position: relative;
+  height: 18px;
+  margin: 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.span-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.agent-main {
+  background: var(--agent-main);
+}
+
+.agent-software-developer {
+  background: var(--agent-software-developer);
+}
+
+.agent-review-finder {
+  background: var(--agent-review-finder);
+}
+
+.agent-review-verifier {
+  background: var(--agent-review-verifier);
+}
+
+.agent-review-resolver {
+  background: var(--agent-review-resolver);
+}
+
+.agent-other {
+  background: var(--agent-other);
+}
+
+@media (max-width: 640px) {
+  .span-row,
+  .span-rows li {
+    grid-template-areas:
+      "label tokens"
+      "lane lane";
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+
+  .span-row > :nth-child(1),
+  .span-rows li > :nth-child(1) {
+    grid-area: label;
+  }
+
+  .span-row > :nth-child(2),
+  .span-rows li > :nth-child(2) {
+    grid-area: lane;
+  }
+
+  .span-row > :nth-child(3),
+  .span-rows li > :nth-child(3) {
+    grid-area: tokens;
+  }
+
+  .span-head {
+    display: none;
+  }
+}

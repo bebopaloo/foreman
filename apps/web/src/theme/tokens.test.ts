@@ -54,6 +54,16 @@ const PAIRS: [string, string][] = [
   ["danger", "page"],
 ];
 
+// Each Agent type bar sits on the lane of the timeline, which has the colour of `surface-hover`.
+const AGENT_BARS = [
+  "agent-main",
+  "agent-software-developer",
+  "agent-review-finder",
+  "agent-review-verifier",
+  "agent-review-resolver",
+  "agent-other",
+];
+
 describe("the colour tokens", () => {
   const light = blockOf(":root {");
   const dark = { ...light, ...blockOf(':root[data-theme="dark"]') };
@@ -73,6 +83,24 @@ describe("the colour tokens", () => {
       expect(fg).toBeDefined();
       expect(bg).toBeDefined();
       expect(contrast(fg ?? "", bg ?? "")).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+
+  describe.each([
+    ["light", light],
+    ["dark", dark],
+  ])("for the Agent type bars in the %s theme", (_name, tokens) => {
+    it.each(AGENT_BARS)("%s on the lane passes 3:1", (bar) => {
+      const fg = tokens[bar];
+      const bg = tokens["surface-hover"];
+      expect(fg).toBeDefined();
+      expect(bg).toBeDefined();
+      expect(contrast(fg ?? "", bg ?? "")).toBeGreaterThanOrEqual(3);
+    });
+
+    it("gives each Agent type bar its own colour", () => {
+      const values = AGENT_BARS.map((bar) => tokens[bar]);
+      expect(new Set(values).size).toBe(AGENT_BARS.length);
     });
   });
 });

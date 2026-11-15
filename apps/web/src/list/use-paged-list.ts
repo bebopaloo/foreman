@@ -5,10 +5,16 @@ export interface ListPage<Row> {
   nextCursor: string | null;
 }
 
-export interface PagedListOptions<Row> {
+export interface PagedListOptions<Row, Page extends ListPage<Row> = ListPage<Row>> {
   queryKey: QueryKey;
   /** Loads one page. A null cursor asks for the first page. The caller validates the response. */
-  fetchPage: (cursor: string | null, signal: AbortSignal) => Promise<ListPage<Row>>;
+  fetchPage: (cursor: string | null, signal: AbortSignal) => Promise<Page>;
+  /** Asks again for the loaded pages at this interval, in milliseconds. A hidden tab does not ask. */
+  refetchInterval?: number | false;
+  /** False stops the list from loading. The default is true. */
+  enabled?: boolean;
+  /** Decides whether a failed request is tried again. The default is the query client's rule. */
+  retry?: (failureCount: number, error: Error) => boolean;
 }
 
 /**
@@ -16,12 +22,22 @@ export interface PagedListOptions<Row> {
  * cursor, then for as many more pages as were loaded, each with the new
  * `nextCursor`. The old rows stay on show until all of those pages arrive.
  */
-export function usePagedList<Row>({ queryKey, fetchPage }: PagedListOptions<Row>) {
+export function usePagedList<Row, Page extends ListPage<Row> = ListPage<Row>>({
+  queryKey,
+  fetchPage,
+  refetchInterval = false,
+  enabled = true,
+  retry,
+}: PagedListOptions<Row, Page>) {
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) => fetchPage(pageParam, signal),
     getNextPageParam: (last) => last.nextCursor,
+    refetchInterval,
+    refetchIntervalInBackground: false,
+    enabled,
+    ...(retry === undefined ? {} : { retry }),
   });
 
   const rows = query.data?.pages.flatMap((page) => page.items) ?? [];
@@ -41,10 +57,15 @@ export function usePagedList<Row>({ queryKey, fetchPage }: PagedListOptions<Row>
     hasMore: query.hasNextPage,
     isPending: query.isPending,
     isError: query.isError,
+    error: query.error,
+    /** The first page as the caller's own type, for the values that the page holds beside its rows. */
+    firstPage: query.data?.pages[0],
     isLoadingMore: query.isFetchingNextPage,
     showMore,
     refresh: query.refetch,
   };
 }
 
-export type PagedList<Row> = ReturnType<typeof usePagedList<Row>>;
+export type PagedList<Row, Page extends ListPage<Row> = ListPage<Row>> = ReturnType<
+  typeof usePagedList<Row, Page>
+>;

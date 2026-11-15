@@ -7,4 +7,5 @@ export interface View {
 export const VIEWS: readonly View[] = [
   { label: "Foreman dash", path: "/" },
   { label: "Usage", path: "/usage" },
+  { label: "Sessions", path: "/sessions" },
 ];

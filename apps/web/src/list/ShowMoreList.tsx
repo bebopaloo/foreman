@@ -6,10 +6,18 @@ export interface ShowMoreListProps<Row> {
   /** The accessible name of the list. */
   label: string;
   rowKey: (row: Row) => string;
+  /** The text of the button. The default is "Show more". */
+  moreLabel?: string;
   renderRow: (row: Row) => ReactNode;
 }
 
-export function ShowMoreList<Row>({ list, label, rowKey, renderRow }: ShowMoreListProps<Row>) {
+export function ShowMoreList<Row>({
+  list,
+  label,
+  rowKey,
+  moreLabel = "Show more",
+  renderRow,
+}: ShowMoreListProps<Row>) {
   const [announcement, setAnnouncement] = useState("");
   const [focusTick, setFocusTick] = useState(0);
   const focusIndex = useRef<number | null>(null);
@@ -61,11 +69,11 @@ export function ShowMoreList<Row>({ list, label, rowKey, renderRow }: ShowMoreLi
       </ul>
       {list.hasMore ? (
         <button type="button" onClick={() => void onShowMore()} disabled={list.isLoadingMore}>
-          Show more
+          {moreLabel}
         </button>
       ) : null}
       {failed ? (
-        <p role="alert">The next rows did not load. Select Show more to try again.</p>
+        <p role="alert">The next rows did not load. Select the button to try again.</p>
       ) : null}
       <p role="status">{announcement}</p>
     </div>
