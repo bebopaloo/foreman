@@ -23,7 +23,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await database.db.execute(
-    sql`truncate table work_repos, work_issues, work_pull_requests, work_reviews, work_forge_files`,
+    sql`truncate table work_repos, work_issues, work_pull_requests, work_reviews, work_forge_files, turns`,
   );
 });
 
@@ -38,9 +38,11 @@ interface Setup {
   controls?: (Record<string, unknown> | string)[];
   runs?: Record<string, unknown>[];
   logins?: string[];
+  /** The "data as of" time of the Usage index. */
+  usageAsOf?: Date;
 }
 
-async function appFor({ repos, controls = [], runs = [], logins = [] }: Setup = {}) {
+async function appFor({ repos, controls = [], runs = [], logins = [], usageAsOf }: Setup = {}) {
   const claudeDir = await makeClaudeDir({
     repos: repos ?? [
       entry("acme/app", "acme"),
@@ -58,7 +60,20 @@ async function appFor({ repos, controls = [], runs = [], logins = [] }: Setup = 
     FOREMAN_TOKENS_FILE: tokensFile,
     FOREMAN_FACTORY_LOGINS: logins,
   };
-  return buildApp({ config, db: database.db, logger: false, now: () => NOW });
+  const refresher = {
+    trigger: () => Promise.resolve(),
+    status: () =>
+      Promise.resolve({
+        state: "idle" as const,
+        filesRead: null,
+        filesTotal: null,
+        dataAsOf: usageAsOf?.toISOString() ?? null,
+        reason: null,
+      }),
+    start: () => undefined,
+    stop: () => Promise.resolve(),
+  };
+  return buildApp({ config, db: database.db, logger: false, now: () => NOW, refresher });
 }
 
 type App = Awaited<ReturnType<typeof appFor>>;
@@ -489,5 +504,80 @@ describe("GET /api/reviews/pull-requests", () => {
     ]) {
       expect((await get(app, `/api/reviews/pull-requests${query}`)).status, query).toBe(400);
     }
+  });
+});
+
+let turnCounter = 0;
+
+/** One Turn of a sub-agent in the Usage index, at a number of minutes before NOW. */
+async function agentTurns(
+  agentType: string,
+  agentId: string,
+  minutes: number[],
+  over: { worktreeName?: string | null; branch?: string | null; project?: string } = {},
+) {
+  for (const minute of minutes) {
+    turnCounter += 1;
+    await database.db.insert(schema.turns).values({
+      turnKey: `rv${turnCounter.toString()}`,
+      sessionId: "s1",
+      time: minutesAgo(minute),
+      model: "claude-synthetic-1",
+      speed: null,
+      serviceTier: null,
+      inputTokens: 1,
+      outputTokens: 0,
+      cacheWrite5mTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheReadTokens: 0,
+      webSearchCount: 0,
+      projectKey: over.project ?? "/synthetic/acme/app",
+      branch: over.branch ?? "HEAD",
+      worktreeName: over.worktreeName === undefined ? "12-add-export" : over.worktreeName,
+      agentType,
+      agentId,
+      skillName: null,
+      skillBasis: null,
+    });
+  }
+}
+
+describe("GET /api/reviews with Agent spans", () => {
+  // The build of issue 12 runs from 120 to 60 minutes ago: its Review cycle starts at 100.
+  it("takes the build end from the Agent span and splits the Review cycle", async () => {
+    const app = await appFor({
+      runs: build(12, 120, 60, 40),
+      controls: [gate(40, 95, { issue: 12, tier: "sensitive", decision: "pass" })],
+      usageAsOf: minutesAgo(5),
+    });
+    await cacheRepo(APP, "acme", "app");
+    await agentTurns("factory-core:software-developer", "dev", [118, 100]);
+    await agentTurns("factory-core:review-finder", "f1", [100, 90]);
+    await agentTurns("review-finder", "f2", [98, 85]);
+    await agentTurns("review-verifier", "v1", [85, 80]);
+    await agentTurns("review-resolver", "r1", [75, 65]);
+    const [item] = (await rows(app)).items;
+    expect(item).toMatchObject({
+      buildEndSource: "agent span",
+      buildSeconds: 20 * 60,
+      reviewCycleSeconds: 40 * 60,
+      split: { reviewAgentsSeconds: 20 * 60, resolverSeconds: 10 * 60, otherSeconds: 10 * 60 },
+    });
+    const body = await reviews(app);
+    expect(body.tiles.reviewShare).toEqual({ percent: 67, builds: 1 });
+    expect(body.times.usageDataAsOf).toBe(minutesAgo(5).toISOString());
+    expect(body.times.reviewAgentSpansNotLinked).toBe(0);
+  });
+
+  it("counts a review span with no single work item as not linked", async () => {
+    const app = await appFor({ runs: build(12, 120, 60, 40) });
+    await agentTurns("review-finder", "n1", [100, 90], { worktreeName: null, branch: "HEAD" });
+    await agentTurns("review-verifier", "n2", [95], { worktreeName: "12-add-export" });
+    await agentTurns("review-verifier", "n2", [90], { worktreeName: "13-fix-total" });
+    await agentTurns("software-developer", "n4", [118, 110], { worktreeName: null });
+    const body = await reviews(app);
+    expect(body.times.reviewAgentSpansNotLinked).toBe(2);
+    const [item] = (await rows(app)).items;
+    expect(item?.buildEndSource).toBeNull();
   });
 });

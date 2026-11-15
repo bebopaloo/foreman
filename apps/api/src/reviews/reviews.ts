@@ -1,12 +1,14 @@
 import { schema, type Database } from "@foreman/db";
 import type { ReviewsMode, ReviewsPullRequest, ReviewsResponse } from "@foreman/shared";
 import { inArray } from "drizzle-orm";
+import { LINE_WINDOW_DAYS } from "../dash/jsonl-window.ts";
 import { readControlModules, type ControlModulesRow } from "../controls/modules.ts";
 import type { ControlEvent } from "../dash/control-events.ts";
 import { readDashSources, repoResolver, type DashSources } from "../dash/dash.ts";
 import { reviewHealth } from "../dash/review-health.ts";
 import { runsInWindow, type RunScope } from "../dash/runs.ts";
 import type { CursorKey } from "../paging.ts";
+import { subAgentSpansInWindow, type AgentSpan } from "../sessions/spans.ts";
 import { linkFor } from "../work/lists.ts";
 import type { RepoEntry } from "../work/repo-list.ts";
 import {
@@ -22,7 +24,7 @@ import {
   pathAgainstFinalTier,
   pullRequestsByFinalTier,
 } from "./tier-results.ts";
-import { buildTimes, timesByTier, type BuildTimeRow } from "./times.ts";
+import { buildTimes, prKey, timesByTier, type BuildTimeRow } from "./times.ts";
 
 export interface ReviewsData {
   dash: DashSources;
@@ -40,6 +42,10 @@ export interface ReviewsData {
   modules: ReadonlyMap<string, ControlModulesRow>;
   /** The link of each cached pull request, as `<repo ID>#<number>`. */
   links: ReadonlyMap<string, string | null>;
+  /** The whole sub-agent spans of the last 30 days in scope, from the Usage index. */
+  spans: readonly AgentSpan[];
+  /** The "data as of" time of the Usage index. Null before the first refresh. */
+  usageDataAsOf: Date | null;
 }
 
 export interface ReviewsScope {
@@ -58,9 +64,15 @@ export async function readReviewsData(
   db: Database,
   factoryLogins: readonly string[],
   scope: ReviewsScope,
+  usageDataAsOf: Date | null = null,
 ): Promise<ReviewsData> {
   const ids = [...scope.repoIds];
-  const [dash, modules, repoRows, pullRows, issueRows] = await Promise.all([
+  const spanWindow = {
+    from: new Date(now.getTime() - LINE_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+    to: now,
+    clientKeys: scope.narrowed ? scope.inScope.map((entry) => entry.path) : null,
+  };
+  const [dash, modules, repoRows, pullRows, issueRows, spans] = await Promise.all([
     readDashSources(claudeDir, now, db, factoryLogins),
     readControlModules(db),
     ids.length === 0
@@ -90,6 +102,7 @@ export async function readReviewsData(
           .selectDistinct({ repoId: schema.workIssues.repoId })
           .from(schema.workIssues)
           .where(inArray(schema.workIssues.repoId, ids)),
+    subAgentSpansInWindow(db, spanWindow),
   ]);
   const cached = new Set<string>([
     ...pullRows.map((row) => row.repoId),
@@ -112,6 +125,8 @@ export async function readReviewsData(
     errored,
     modules: new Map(modules.map((row) => [row.repoId, row])),
     links: new Map(pullRows.map((row) => [pullKey(row.repoId, row.number), row.link])),
+    spans,
+    usageDataAsOf,
   };
 }
 
@@ -121,7 +136,7 @@ const fullName = (entry: RepoEntry): string | null =>
 interface Analysis {
   events: ControlEvent[];
   records: PullRequestRecord[];
-  /** The records by repo ID (or by the event's repo name when the repo has no ID) and number. */
+  /** The records by `prKey`: the repo name of the event and the number. */
   recordByPull: Map<string, PullRequestRecord>;
   idOf: ReadonlyMap<string, string>;
   times: ReturnType<typeof buildTimes>;
@@ -147,12 +162,14 @@ function analyse(data: ReviewsData, now: Date): Analysis {
       if (name !== null && !idOf.has(name.toLowerCase())) idOf.set(name.toLowerCase(), entry.id);
     }
   }
-  // The builds know their repo by its ID, so the build times read events and records by repo ID.
-  const idEvents = events.map((event) => {
-    const id = idOf.get(event.repo.toLowerCase());
-    return id === undefined ? event : { ...event, repo: id };
-  });
-  const idRecords = pullRequestRecords(idEvents);
+  // A Project key is the folder of a repo. A listed repo has its repo ID as the key of its builds.
+  const keyByFolder = new Map<string, string>();
+  if (dash.repoList.status === "ok") {
+    for (const entry of dash.repoList.repos) {
+      if (!keyByFolder.has(entry.path)) keyByFolder.set(entry.path, entry.id);
+    }
+  }
+  const repoKeyOf = (projectKey: string): string => keyByFolder.get(projectKey) ?? projectKey;
   const scope: RunScope = client === undefined ? { kind: "all" } : { kind: "client", client };
   const runs = runsInWindow({
     entries: dash.nightLog.entries,
@@ -165,20 +182,16 @@ function analyse(data: ReviewsData, now: Date): Analysis {
   return {
     events,
     records,
-    recordByPull: new Map(idRecords.map((record) => [pullKey(record.repo, record.pr), record])),
+    recordByPull: new Map(records.map((record) => [prKey(record), record])),
     idOf,
-    times: buildTimes({ runs, events: idEvents, records: idRecords }),
+    times: buildTimes({ runs, events, records, spans: data.spans, repoKeyOf }),
   };
 }
 
 const percentOf = (part: number, whole: number): number | null =>
   whole === 0 ? null : Math.round((part / whole) * 100);
 
-/**
- * The Agent span link and the split of a Review cycle go here: a row with the build end source
- * "agent span" counts in the aggregates. No Agent span is read yet, so every row has the build end
- * from the first gate event, or none, and no split.
- */
+/** The rows that the aggregates use: the build end comes from an Agent span. */
 function agentSpanRows(rows: readonly BuildTimeRow[]): BuildTimeRow[] {
   return rows.filter((row) => row.buildEnd?.source === "agent span");
 }
@@ -296,8 +309,8 @@ export function buildReviews(data: ReviewsData, mode: ReviewsMode, now: Date): R
       noBuildEnd: rows.filter((row) => row.buildEnd === null).length,
       notTimed: times.notTimed,
       noPullRequest: times.noPullRequest,
-      reviewAgentSpansNotLinked: 0,
-      usageDataAsOf: null,
+      reviewAgentSpansNotLinked: times.reviewAgentSpansNotLinked,
+      usageDataAsOf: data.usageDataAsOf?.toISOString() ?? null,
     },
     factoryLoginSet: dash.factoryLogins.size > 0,
     eventsOff: eventsOffOf(data),
@@ -341,7 +354,8 @@ export function reviewRows(
     .filter((row) => filter.repo === undefined || row.repo.id === filter.repo)
     .map((row): ReviewsPullRequest => {
       const repoId = row.repo.id;
-      const record = repoId === null ? undefined : recordByPull.get(pullKey(repoId, row.pr));
+      const record =
+        repoId === null ? undefined : recordByPull.get(prKey({ repo: row.repo.label, pr: row.pr }));
       const host = repoId === null ? undefined : hosts.get(repoId);
       return {
         repoId,
@@ -361,7 +375,7 @@ export function reviewRows(
         buildSeconds: row.buildSeconds,
         buildEndSource: row.buildEnd?.source ?? null,
         reviewCycleSeconds: row.reviewCycleSeconds,
-        split: null,
+        split: row.split,
         totalSeconds: row.totalSeconds,
         link:
           repoId === null || host === undefined
