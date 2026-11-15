@@ -5,6 +5,7 @@ import { useScope } from "../scope/index.ts";
 import { LastRun } from "./LastRun.tsx";
 import { plural } from "./last-run.ts";
 import { PipelineStrip } from "./PipelineStrip.tsx";
+import { Repos } from "./Repos.tsx";
 import { ReviewHealth } from "./ReviewHealth.tsx";
 import { summariseNow } from "./run-state.ts";
 import { Tiles } from "./Tiles.tsx";
@@ -77,12 +78,12 @@ export function DashPage() {
         ) : reviewUnreadable ? (
           <p className="muted">cannot read the factory folder</p>
         ) : (
-          <ReviewHealth health={dash.data.reviewHealth} />
+          <ReviewHealth health={dash.data.reviewHealth} complete={dash.data.complete} />
         )}
       </section>
       <section className="card" aria-labelledby="dash-repos">
         <h2 id="dash-repos">Repos</h2>
-        <p className="muted">Not shown yet.</p>
+        <Repos dash={dash.data} />
       </section>
     </>
   );
