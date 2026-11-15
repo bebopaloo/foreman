@@ -28,6 +28,7 @@ describe("Nav", () => {
       "Reviews",
       "Factory health",
       "Controls",
+      "Engagement ledger",
     ]);
   });
 

@@ -1,0 +1,77 @@
+.ledger-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ledger-view p,
+.ledger-view h1 {
+  margin: 0;
+}
+
+.ledger-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+
+.ledger-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.ledger-range button[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+
+.ledger-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+}
+
+.ledger-section h2 {
+  margin: 0;
+}
+
+.ledger-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+}
+
+.ledger-table th,
+.ledger-table td {
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: normal;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledger-table thead th {
+  font-weight: 600;
+}
+
+.ledger-table tfoot th,
+.ledger-table tfoot td {
+  font-weight: 600;
+  border-bottom: 0;
+}
+
+.ledger-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-table tbody tr:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}

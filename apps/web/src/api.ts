@@ -7,6 +7,8 @@ import {
   DashResponse,
   FactoryRunsResponse,
   HealthResponse,
+  LedgerResponse,
+  LimitsResponse,
   PluginVersionsResponse,
   ProjectsResponse,
   RefreshStatusResponse,
@@ -137,6 +139,13 @@ export const fetchUsageSeries = (
   signal?: AbortSignal,
 ): Promise<SeriesResponse> =>
   getJson(`/api/usage/series?${usageParams(query, { grain })}`, SeriesResponse, signal);
+
+/** The Limit windows are plan-wide, so this query has no client. */
+export const fetchUsageLimits = (
+  query: { from: string; to: string; tz: string },
+  signal?: AbortSignal,
+): Promise<LimitsResponse> =>
+  getJson(`/api/usage/limits?${new URLSearchParams(query).toString()}`, LimitsResponse, signal);
 
 export const fetchUsageProjects = (
   client: string | null,
@@ -271,3 +280,27 @@ export const fetchControlsRegister = (
   signal?: AbortSignal,
 ): Promise<ControlsRegisterResponse> =>
   getJson(scopedPath("/api/controls/register", client, cursor), ControlsRegisterResponse, signal);
+
+export interface LedgerRange {
+  /** The first day of the range, `YYYY-MM-DD`, in the ledger time zone. */
+  from: string;
+  to: string;
+}
+
+/** One page of the ledger. With no range, the API chooses this month. */
+export const fetchLedger = (
+  range: LedgerRange | null,
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<LedgerResponse> => {
+  const params = new URLSearchParams();
+  if (range !== null) {
+    params.set("from", range.from);
+    params.set("to", range.to);
+  }
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return getJson(`/api/ledger${text === "" ? "" : `?${text}`}`, LedgerResponse, signal);
+};

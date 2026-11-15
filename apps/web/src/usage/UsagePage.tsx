@@ -1,14 +1,24 @@
 import type { UsageProject } from "@foreman/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { fetchUsageBreakdown, fetchUsageSeries, type UsageQuery } from "../api.ts";
+import {
+  fetchUsageBreakdown,
+  fetchUsageLimits,
+  fetchUsageSeries,
+  type UsageQuery,
+} from "../api.ts";
 import { browserTimeZone, formatDay } from "../format/index.ts";
 import { ScopedLink, useScope } from "../scope/index.ts";
 import { DimensionPanel } from "./DimensionPanel.tsx";
 import { rowLimit, UNASSIGNED } from "./dimension.ts";
 import { FilterBar, rangeName } from "./FilterBar.tsx";
+import { ActivityCalendarPanel, CacheEfficiency, MonthOutlook } from "./ActivityPanels.tsx";
+import { calendarStart, monthStart } from "./activity.ts";
+import { LimitHistory, LimitTiles } from "./LimitPanels.tsx";
+import { limitsTo } from "./limits.ts";
 import { TokensTile, UsageOverTime } from "./Panels.tsx";
 import {
+  addDays,
   effectiveGrain,
   localDay,
   relativeRangeValue,
@@ -44,7 +54,9 @@ export function UsageView({ project = null }: { project?: UsageProject | null })
     void queryClient.invalidateQueries({ queryKey: PANEL_KEY });
   }, [queryClient]);
 
-  const resolved = resolveRange(state.range, localDay(new Date()));
+  const now = new Date();
+  const today = localDay(now);
+  const resolved = resolveRange(state.range, today);
   const { grain, tooLong } = effectiveGrain(resolved, state.grain);
   const timeZone = browserTimeZone();
   const query: UsageQuery = {
@@ -70,6 +82,38 @@ export function UsageView({ project = null }: { project?: UsageProject | null })
   const dimension = useQuery({
     queryKey: [...PANEL_KEY, "dimension", query, state.tab],
     queryFn: ({ signal }) => fetchUsageBreakdown(query, state.tab, rowLimit(state.tab), signal),
+    enabled,
+  });
+
+  // Limit windows are plan-wide: a client scope sends no request to /limits.
+  const limitsQuery = {
+    from: resolved.from,
+    to: limitsTo(resolved.to, today, addDays(today, 7)),
+    tz: timeZone,
+  };
+  const limits = useQuery({
+    queryKey: [...PANEL_KEY, "limits", limitsQuery],
+    queryFn: ({ signal }) => fetchUsageLimits(limitsQuery, signal),
+    enabled: enabled && scope === null,
+  });
+
+  // The calendar and the outlook ignore the date range: they have their own ranges up to today.
+  const calendarQuery: UsageQuery = {
+    from: calendarStart(today),
+    to: today,
+    tz: timeZone,
+    client: scope,
+    ...(project === null ? {} : { project: project.id }),
+  };
+  const calendar = useQuery({
+    queryKey: [...PANEL_KEY, "calendar", calendarQuery],
+    queryFn: ({ signal }) => fetchUsageSeries(calendarQuery, "day", signal),
+    enabled,
+  });
+  const monthQuery: UsageQuery = { ...calendarQuery, from: monthStart(today) };
+  const month = useQuery({
+    queryKey: [...PANEL_KEY, "month", monthQuery],
+    queryFn: ({ signal }) => fetchUsageSeries(monthQuery, "day", signal),
     enabled,
   });
 
@@ -107,7 +151,9 @@ export function UsageView({ project = null }: { project?: UsageProject | null })
       ) : null}
       <div className="tiles">
         <TokensTile query={totals} rangeLabel={rangeLabel} />
-        {scope === null ? null : (
+        {scope === null ? (
+          <LimitTiles query={limits} now={now} />
+        ) : (
           <p className="note">Limit windows are plan-wide. They show only in the scope All.</p>
         )}
       </div>
@@ -122,6 +168,12 @@ export function UsageView({ project = null }: { project?: UsageProject | null })
           update({ tab });
         }}
       />
+      {scope === null ? (
+        <LimitHistory query={limits} now={now} includesToday={resolved.to === today} />
+      ) : null}
+      <ActivityCalendarPanel query={calendar} metric={state.metric} today={today} />
+      <CacheEfficiency query={totals} />
+      <MonthOutlook query={month} today={today} />
       <p className="muted">Times in {timeZone}</p>
     </>
   );

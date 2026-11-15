@@ -9,6 +9,7 @@ import { SessionsPage } from "./sessions/index.ts";
 import { ReviewsPage } from "./reviews/index.ts";
 import { FactoryHealthPage } from "./factory-health/index.ts";
 import { ControlsPage } from "./controls/index.ts";
+import { LedgerPage } from "./ledger/index.ts";
 
 export function App() {
   const { unknownClient, clientsSettled } = useScope();
@@ -39,6 +40,8 @@ export function App() {
           <FactoryHealthPage />
         ) : window.location.pathname === "/controls" ? (
           <ControlsPage />
+        ) : window.location.pathname === "/ledger" ? (
+          <LedgerPage />
         ) : (
           <>
             <h1>Page not found</h1>

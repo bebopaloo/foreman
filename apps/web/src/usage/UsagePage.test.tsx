@@ -159,8 +159,9 @@ describe("unpriced turns", () => {
     window.history.replaceState(null, "", "/usage?metric=estimate");
     renderApp();
     await screen.findByRole("table", { name: "List-price estimate by day" });
+    // The estimate tile, Usage over time and Month outlook.
     expect(await screen.findAllByText("3 turns unpriced (model synthetic-model-x)")).toHaveLength(
-      2,
+      3,
     );
   });
 });
@@ -348,7 +349,8 @@ describe("no usage in the range", () => {
       series: days().map((bucket) => ({ ...bucket, turns: 0, inputTokens: 0 })),
     });
     renderApp();
-    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(3);
+    // The tokens tile, Usage over time, Usage by dimension and Cache efficiency use this sentence.
+    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(4);
   });
 });
 
@@ -356,9 +358,9 @@ describe("a panel fails", () => {
   it("shows a status line in the tile and the other panel still shows its data", async () => {
     fakeUsage({ breakdown: 500 });
     renderApp();
-    const statuses = await screen.findAllByText("This panel cannot load the data. Try Refresh.");
-    expect(statuses).toHaveLength(2);
-    for (const status of statuses) expect(status).toHaveAttribute("role", "status");
+    const tile = await screen.findByRole("region", { name: /^Tokens, / });
+    const status = await within(tile).findByText("This panel cannot load the data. Try Refresh.");
+    expect(status).toHaveAttribute("role", "status");
     expect(await screen.findByRole("table", { name: "Tokens by day" })).toBeInTheDocument();
   });
 
@@ -366,8 +368,9 @@ describe("a panel fails", () => {
     fakeUsage({ series: 500 });
     renderApp();
     expect(await screen.findByText("12.4M")).toBeInTheDocument();
+    const panel = await screen.findByRole("region", { name: "Usage over time" });
     expect(
-      await screen.findByText("This panel cannot load the data. Try Refresh."),
+      await within(panel).findByText("This panel cannot load the data. Try Refresh."),
     ).toHaveAttribute("role", "status");
   });
 });
