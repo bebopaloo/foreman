@@ -113,6 +113,13 @@ function matchAllowed(command: readonly string[]): AllowedCommand | undefined {
 
 const errorObjectSchema = z.object({ error: z.string() }).loose();
 
+const LOGGED_ARGUMENTS = new Set(["--state", "all", "open"]);
+
+/** The command for a log line: its words and fixed options, without an issue number or a tag. */
+function commandNameOf(command: readonly string[]): string {
+  return command.filter((word, index) => index < 2 || LOGGED_ARGUMENTS.has(word)).join(" ");
+}
+
 /** Maps the free text of an adapter error to an error class. */
 export function classifyAdapterError(text: string): ErrorClass {
   const lower = text.toLowerCase();
@@ -253,7 +260,7 @@ export async function runAdapterCommand(
     return failure("host_not_allowed");
   }
 
-  const commandText = request.command.join(" ");
+  const commandText = commandNameOf(request.command);
   const folder = await mkdtemp(path.join(os.tmpdir(), "foreman-adapter-"));
   try {
     const home = path.join(folder, "home");
