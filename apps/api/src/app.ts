@@ -11,6 +11,7 @@ import type { Config } from "./config.ts";
 import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
+import { ledgerRoutes } from "./routes/ledger.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
 import { sessionsRoutes } from "./routes/sessions.ts";
@@ -40,9 +41,11 @@ export interface AppOptions {
   refresher?: Refresher;
   /** Tests pass a fake. The default runs the real fetch. */
   fetcher?: FetchSchedule;
+  /** Tests pass a fixed clock for the default range of the ledger. */
+  now?: () => Date;
 }
 
-export async function buildApp({ config, db, logger, refresher, fetcher }: AppOptions) {
+export async function buildApp({ config, db, logger, refresher, fetcher, now }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
@@ -140,6 +143,17 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
     priceTable,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     allowedOrigins: config.CORS_ORIGINS,
+  });
+  await app.register(ledgerRoutes, {
+    prefix: "/api/ledger",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    rules: {
+      timeZone: config.FOREMAN_LEDGER_TIME_ZONE,
+      idleMinutes: config.FOREMAN_LEDGER_IDLE_MINUTES,
+      leadInMinutes: config.FOREMAN_LEDGER_LEAD_IN_MINUTES,
+    },
+    ...(now === undefined ? {} : { now }),
   });
 
   await app.register(sessionsRoutes, {
