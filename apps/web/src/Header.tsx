@@ -1,4 +1,5 @@
 import { ConnectionBar } from "./connection/index.ts";
+import { Nav } from "./nav/index.ts";
 import { ThemeButton } from "./theme/index.ts";
 import { ScopedLink, ScopeSelector, useScope } from "./scope/index.ts";
 
@@ -13,6 +14,7 @@ export function Header() {
         <ScopeSelector />
         <ThemeButton />
       </div>
+      <Nav />
       <ConnectionBar />
       {unknownClient ? (
         <p role="alert" className="note note-warn">

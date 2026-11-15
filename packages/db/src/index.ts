@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -23,6 +24,29 @@ export type Database = ReturnType<typeof createDatabase>["db"];
 
 export async function migrateDatabase(db: Database): Promise<void> {
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+}
+
+const DUPLICATE_DATABASE = "42P04";
+
+function errorCode(error: unknown): unknown {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("code" in error) return error.code;
+  return "cause" in error ? errorCode(error.cause) : undefined;
+}
+
+/** Creates the database that the URL names on its server, unless it exists. For tests and local tools only. */
+export async function ensureDatabase(url: string): Promise<void> {
+  const server = new URL(url);
+  const name = server.pathname.slice(1);
+  server.pathname = "/postgres";
+  const maintenance = createDatabase(server.toString());
+  try {
+    await maintenance.db.execute(sql`create database ${sql.identifier(name)}`);
+  } catch (error) {
+    if (errorCode(error) !== DUPLICATE_DATABASE) throw error;
+  } finally {
+    await maintenance.close();
+  }
 }
 
 export { schema };

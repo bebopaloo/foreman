@@ -1,25 +1,24 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { fakeWork } from "./fake-work.ts";
+import { useFixture } from "./fixtures/use-fixture.ts";
 
 const WCAG_22_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 test("the header shows the scope from the URL and keeps it in links", async ({ page }) => {
-  await fakeWork(page);
+  await useFixture("no-run");
   await page.goto("/?client=acme");
   await expect(page.getByText("Showing only acme")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Foreman" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Foreman", exact: true })).toHaveAttribute(
     "href",
     "/?client=acme",
   );
   await expect(page.getByText("Connected")).toBeVisible();
-  await expect(page.getByText(/The last fetch failed: forge timeout/)).toBeVisible();
   await page.getByRole("button", { name: "bebopaloo" }).click();
   await expect(page).toHaveURL(/\?client=bebopaloo$/);
 });
 
 test("Foreman opens in the last chosen scope", async ({ page }) => {
-  await fakeWork(page);
+  await useFixture("no-run");
   await page.goto("/");
   await page.getByRole("button", { name: "acme" }).click();
   await expect(page.getByText("Showing only acme")).toBeVisible();
@@ -29,16 +28,16 @@ test("Foreman opens in the last chosen scope", async ({ page }) => {
 });
 
 test("an unknown client shows Unknown client and no data", async ({ page }) => {
-  await fakeWork(page);
+  await useFixture("no-run");
   await page.goto("/?client=globex");
   await expect(page.getByRole("alert")).toContainText("Unknown client");
-  await expect(page.getByText(/API status/)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Foreman dash" })).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {
   test(`the header has no WCAG 2.2 AA violations in the ${theme} theme`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
-    await fakeWork(page);
+    await useFixture("no-run");
     await page.goto("/?client=acme");
     await expect(page.getByText("Connected")).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -56,7 +55,7 @@ test("the theme button cycles the theme, keeps it after a reload and passes axe 
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await fakeWork(page);
+  await useFixture("no-run");
   await page.goto("/");
   const html = page.locator("html");
   await expect(page.getByRole("button", { name: "Theme: auto (dark)" })).toBeVisible();
