@@ -20,6 +20,9 @@ const issueSchema = z
   })
   .strict();
 
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
+export const STATUS_CONTEXTS = ["factory/machine-gate", "factory/release-review"] as const;
+
 const pullRequestSchema = z
   .object({
     number,
@@ -32,10 +35,17 @@ const pullRequestSchema = z
     author: z.string(),
     checks: z.enum(["none", "pending", "success", "failure"]),
     labels: z.array(z.string()),
-    head_sha: z
-      .string()
-      .regex(/^[0-9a-f]{40}$/)
-      .optional(),
+    head_sha: z.string().regex(SHA_PATTERN).optional(),
+  })
+  .strict();
+
+/** The output of `status get`. The runner also checks that `sha` and `context` match the request. */
+const commitStatusSchema = z
+  .object({
+    sha: z.string().regex(SHA_PATTERN),
+    context: z.enum(STATUS_CONTEXTS),
+    state: z.enum(["pass", "fail", "pending", "none"]),
+    description: z.string(),
   })
   .strict();
 
@@ -81,7 +91,13 @@ export const contractSchemas = {
   issueList: z.array(issueSchema),
   issueRelations: relationsSchema,
   releaseList: z.array(trackerReleaseSchema),
-  prList: z.array(pullRequestSchema),
+  prList: z.array(pullRequestSchema).refine(
+    // An older adapter sends no head_sha at all. A list that mixes both is a broken contract.
+    (list) =>
+      list.every((item) => item.head_sha !== undefined) ||
+      list.every((item) => item.head_sha === undefined),
+  ),
+  commitStatus: commitStatusSchema,
   prReviews: z.array(z.unknown()),
   releaseView: forgeReleaseSchema,
 };

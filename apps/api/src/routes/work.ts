@@ -2,14 +2,19 @@ import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { WorkClientsResponse, WorkReposResponse, WorkStatusResponse } from "@foreman/shared";
-import { desc } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { originGuard } from "../host-check.ts";
 import { listClients } from "../work/clients.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
+import type { FetchSchedule } from "../work/schedule.ts";
+import { readWorkStatus } from "../work/status.ts";
 
 export interface WorkOptions {
   db: Database;
   claudeDir: string;
+  schedule: FetchSchedule;
+  /** The origins that may send a refresh request. */
+  allowedOrigins: readonly string[];
 }
 
 async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
@@ -17,7 +22,11 @@ async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
   return list.status === "ok" ? list.repos : [];
 }
 
-export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (app, { db, claudeDir }, done) => {
+export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
+  app,
+  { db, claudeDir, schedule, allowedOrigins },
+  done,
+) => {
   app.get(
     "/work/clients",
     { config: { public: true }, schema: { response: { 200: WorkClientsResponse } } },
@@ -62,25 +71,20 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (app, { db, cla
   app.get(
     "/work/status",
     { config: { public: true }, schema: { response: { 200: WorkStatusResponse } } },
-    async () => {
-      const list = await readRepoList(claudeDir);
-      const [last] = await db
-        .select({
-          state: schema.workFetchRuns.state,
-          endedAt: schema.workFetchRuns.endedAt,
-          failureReason: schema.workFetchRuns.failureReason,
-        })
-        .from(schema.workFetchRuns)
-        .orderBy(desc(schema.workFetchRuns.startedAt))
-        .limit(1);
-      const state: WorkStatusResponse["state"] =
-        last?.state === "running" ? "running" : last?.state === "failed" ? "failed" : "idle";
-      return {
-        state,
-        reason: last?.failureReason ?? null,
-        lastFetchAt: last?.endedAt?.toISOString() ?? null,
-        problems: list.status === "ok" ? list.problems : [],
-      };
+    () => readWorkStatus(db, claudeDir, schedule),
+  );
+
+  // The fetch runs in the background: the request never waits for it.
+  app.post(
+    "/work/refresh",
+    {
+      config: { public: true },
+      onRequest: originGuard(allowedOrigins),
+      schema: { response: { 202: WorkStatusResponse } },
+    },
+    async (_request, reply) => {
+      void schedule.trigger();
+      return reply.status(202).send(await readWorkStatus(db, claudeDir, schedule));
     },
   );
 
