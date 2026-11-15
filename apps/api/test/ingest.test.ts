@@ -334,6 +334,9 @@ describe("ingestTranscripts", () => {
     ]);
   });
 
+  // 17,000 is the least count that passes the 65,535 parameter limit, so the test
+  // cannot be smaller. Two refreshes read about 34,000 files one after the other:
+  // this takes 20 to 30 s alone and more than 60 s when other test runs share the machine.
   it("refreshes more sub-agents than one query can hold parameters for", async () => {
     const folder = await makeConfigFolder();
     const count = 17_000;
@@ -373,7 +376,7 @@ describe("ingestTranscripts", () => {
       .select({ state: schema.refreshRuns.state })
       .from(schema.refreshRuns);
     expect(runs.map((run) => run.state)).toEqual(["idle", "idle"]);
-  }, 60_000);
+  }, 180_000);
 
   it("ends idle with 0 files and logs each missing source", async () => {
     const folder = await makeConfigFolder();

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import type { FetchSchedule, FetchState } from "../src/work/schedule.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
@@ -15,6 +15,12 @@ import {
   writeTokens,
 } from "./work-fetch-fixtures.ts";
 import { createFetchSchedule } from "../src/work/schedule.ts";
+
+// A fetch runs one real `uv run` subprocess per adapter call. A cold `uv` start
+// takes 0.2 to 0.5 s when other test runs share the machine, so a test with a
+// full fetch can pass the 5 s default of Vitest. A hung adapter call still ends
+// at its own 20 s timeout.
+vi.setConfig({ testTimeout: 30_000 });
 
 let database: Awaited<ReturnType<typeof openTestDatabase>>;
 
