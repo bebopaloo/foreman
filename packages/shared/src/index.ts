@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ClientName } from "./client.ts";
+import { NextCursor, pageQueryShape } from "./paging.ts";
 
 export { ClientName };
 
@@ -82,6 +83,8 @@ export const UsageProject = z
     id: z.string().regex(/^[0-9a-f]{12}$/),
     label: z.string().min(1),
     noRepo: z.boolean(),
+    /** The client of the repo list entry whose `path` is the Project key, or null. */
+    client: z.string().nullable(),
     firstTurnAt: z.iso.datetime(),
     lastTurnAt: z.iso.datetime(),
   })
@@ -205,6 +208,8 @@ export const BreakdownResponse = z
           ...estimateFields,
           firstTurnAt: z.iso.datetime().optional(),
           lastTurnAt: z.iso.datetime().optional(),
+          // Project rows only.
+          client: z.string().nullable().optional(),
           // Skill rows only.
           calls: z.number().int().optional(),
           exactTurns: z.number().int().optional(),
@@ -260,3 +265,47 @@ export type LimitsResponse = z.infer<typeof LimitsResponse>;
 export * from "./paging.ts";
 export * from "./dash.ts";
 export * from "./factory-health.ts";
+
+export const SESSION_KINDS = ["unattended-loop", "attended-loop", "session"] as const;
+export type SessionKind = (typeof SESSION_KINDS)[number];
+
+export const SessionsQuery = z
+  .object({
+    day: UsageDate,
+    tz: rangeShape.tz,
+    client: ClientName.optional(),
+    ...pageQueryShape({ defaultLimit: 50, maxLimit: 200 }),
+  })
+  .strict();
+export type SessionsQuery = z.infer<typeof SessionsQuery>;
+
+export const SessionSummary = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().nullable(),
+    kind: z.enum(SESSION_KINDS),
+    start: z.iso.datetime(),
+    end: z.iso.datetime(),
+    continuesBefore: z.boolean(),
+    continuesAfter: z.boolean(),
+    projects: z
+      .array(
+        z.object({ id: z.string().regex(/^[0-9a-f]{12}$/), label: z.string().min(1) }).strict(),
+      )
+      .max(3),
+    projectCount: z.number().int(),
+    tokens: z.number().int(),
+    turns: z.number().int(),
+    userMessages: z.number().int(),
+  })
+  .strict();
+export type SessionSummary = z.infer<typeof SessionSummary>;
+
+export const SessionsResponse = z
+  .object({
+    sessions: z.array(SessionSummary),
+    total: z.number().int(),
+    nextCursor: NextCursor,
+  })
+  .strict();
+export type SessionsResponse = z.infer<typeof SessionsResponse>;

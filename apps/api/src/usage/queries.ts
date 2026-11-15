@@ -265,6 +265,7 @@ export async function queryBreakdown(
   limit: number,
   projectKey: string | null,
   clientKeys: ClientKeys = null,
+  clientOf: ReadonlyMap<string, string> = new Map(),
 ) {
   const key = dimensionKey(dimension);
   const grouped = await db
@@ -332,7 +333,12 @@ export async function queryBreakdown(
   const rows = [...byKey].map(([groupKey, group]) => {
     const figures = group.accumulator.result();
     if (dimension === "project") {
-      return { key: projectId(groupKey), label: labelOf(groupKey), ...figures };
+      return {
+        key: projectId(groupKey),
+        label: labelOf(groupKey),
+        client: clientOf.get(groupKey) ?? null,
+        ...figures,
+      };
     }
     if (dimension === "session") {
       return {

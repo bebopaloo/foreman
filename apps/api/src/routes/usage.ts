@@ -15,7 +15,7 @@ import { eq, inArray, max, min } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { originGuard } from "../host-check.ts";
-import { clientProjectKeys } from "../work/clients.ts";
+import { clientProjectKeys, clientsByProjectKey } from "../work/clients.ts";
 import { readRepoList } from "../work/repo-list.ts";
 import { queryLimits } from "../usage/limits.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
@@ -87,6 +87,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
         .leftJoin(schema.projects, eq(schema.projects.projectKey, schema.turns.projectKey))
         .where(clientKeys === null ? undefined : inArray(schema.turns.projectKey, clientKeys))
         .groupBy(schema.turns.projectKey, schema.projects.noRepo);
+      const clientOf = await projectClients();
       const refs = rows.map((row) => ({ key: row.key, noRepo: row.noRepo ?? false }));
       const labels = labelProjects(refs);
       const projects = rows.flatMap((row) =>
@@ -97,6 +98,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
                 id: projectId(row.key),
                 label: labels.get(row.key) ?? row.key,
                 noRepo: row.noRepo ?? false,
+                client: clientOf.get(row.key) ?? null,
                 firstTurnAt: row.first.toISOString(),
                 lastTurnAt: row.last.toISOString(),
               },
@@ -152,6 +154,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
         limit,
         scope.projectKey,
         scope.clientKeys,
+        dimension === "project" ? await projectClients() : undefined,
       );
     },
   );
@@ -169,6 +172,12 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
   async function resolveProject(id: string | undefined): Promise<string | null | undefined> {
     if (id === undefined) return null;
     return (await findProjectKey(db, id)) ?? undefined;
+  }
+
+  /** The client of each Project key. The map is empty when the repo list is not readable. */
+  async function projectClients(): Promise<Map<string, string>> {
+    const list = await readRepoList(claudeDir);
+    return list.status === "ok" ? clientsByProjectKey(list.repos) : new Map();
   }
 
   /** The Project keys of a client, null for "All", undefined for a client that is not in the repo list. */

@@ -130,6 +130,40 @@ describe("usage routes in a client scope", () => {
     expect(all.json<{ projects: unknown[] }>().projects).toHaveLength(3);
   });
 
+  it("returns the client of each Project in the project breakdown and in the projects list", async () => {
+    await seed([ACME, OTHER]);
+    const breakdown = await get(`/api/usage/breakdown?${RANGE}&dimension=project`);
+    const rows = breakdown.json<{ rows: { key: string; client: string | null }[] }>().rows;
+    expect(rows.find((row) => row.key === projectId(ACME))?.client).toBe("acme");
+    expect(rows.find((row) => row.key === projectId(OTHER))?.client).toBeNull();
+
+    const projects = await get("/api/usage/projects");
+    const list = projects.json<{ projects: { id: string; client: string | null }[] }>().projects;
+    expect(list.find((p) => p.id === projectId(ACME))?.client).toBe("acme");
+    expect(list.find((p) => p.id === projectId(OTHER))?.client).toBeNull();
+  });
+
+  it("returns a null client when the repo list is missing", async () => {
+    await seed([ACME]);
+    const claudeDir = await makeClaudeDir();
+    const app = await buildApp({
+      config: { ...testConfig, FOREMAN_CLAUDE_DIR: claudeDir },
+      db: database.db,
+      logger: false,
+    });
+    const response = await app.inject({ method: "GET", url: "/api/usage/projects" });
+    await app.close();
+    expect(
+      response.json<{ projects: { client: string | null }[] }>().projects[0]?.client,
+    ).toBeNull();
+  });
+
+  it("does not add a client to the rows of another dimension", async () => {
+    await seed([ACME]);
+    const response = await get(`/api/usage/breakdown?${RANGE}&dimension=model`);
+    expect(response.json<{ rows: object[] }>().rows[0]).not.toHaveProperty("client");
+  });
+
   it("returns an empty result for a client with no turns", async () => {
     await seed([OTHER]);
     const scoped = await get("/api/usage/projects?client=acme");
