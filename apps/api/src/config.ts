@@ -58,6 +58,7 @@ function createConfigSchema(home: string) {
       ),
     FOREMAN_TOKENS_FILE: z.string().min(1).default("/run/secrets/foreman_tokens"),
     FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
+    FOREMAN_FETCH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
     FOREMAN_PRICE_TABLE: z
       .string()
       .min(1)

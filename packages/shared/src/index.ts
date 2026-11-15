@@ -41,8 +41,25 @@ export const WorkStatusResponse = z
   .object({
     state: z.enum(["idle", "running", "failed"]),
     reason: z.string().nullable(),
+    lastFetchStartedAt: z.string().nullable(),
     lastFetchAt: z.string().nullable(),
+    lastFullFetchStartedAt: z.string().nullable(),
+    lastFullFetchAt: z.string().nullable(),
     problems: z.array(z.object({ position: z.number().int(), field: z.string() }).strict()),
+    owners: z.array(z.object({ host: z.string(), owner: z.string(), state: z.string() }).strict()),
+    repos: z.array(
+      z
+        .object({
+          id: z.string(),
+          fullName: z.string(),
+          forgeState: z.string().nullable(),
+          forgeErrorClass: z.string().nullable(),
+          trackerState: z.string().nullable(),
+          trackerErrorClass: z.string().nullable(),
+          dataAsOf: z.string().nullable(),
+        })
+        .strict(),
+    ),
   })
   .strict();
 
