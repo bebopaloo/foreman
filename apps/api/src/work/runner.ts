@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import type { AdapterRole, ResolvedAdapter } from "./adapters.ts";
-import { contractSchemas, RELEASE_TAG_PATTERN, type ContractName } from "./contract.ts";
+import {
+  contractSchemas,
+  RELEASE_TAG_PATTERN,
+  STATUS_CONTEXTS,
+  type ContractName,
+} from "./contract.ts";
 
 export const MAX_STDOUT_BYTES = 20 * 1024 * 1024;
 export const MAX_STDERR_BYTES = 64 * 1024;
@@ -38,6 +43,7 @@ interface AllowedCommand {
 }
 
 const POSITIVE_INTEGER = /^[1-9]\d{0,8}$/;
+const FULL_SHA = /^[0-9a-f]{40}$/;
 
 /** Matches an argument list against the allow-list. Any other shape returns `undefined`. */
 function matchAllowed(command: readonly string[]): AllowedCommand | undefined {
@@ -91,6 +97,16 @@ function matchAllowed(command: readonly string[]): AllowedCommand | undefined {
     RELEASE_TAG_PATTERN.test(first)
   ) {
     return { role: "forge", contract: "releaseView" };
+  }
+  if (
+    group === "status" &&
+    verb === "get" &&
+    first !== undefined &&
+    second !== undefined &&
+    FULL_SHA.test(first) &&
+    isState(second, STATUS_CONTEXTS)
+  ) {
+    return { role: "forge", contract: "commitStatus" };
   }
   return undefined;
 }
@@ -295,6 +311,13 @@ export async function runAdapterCommand(
     if (!parsed.success) {
       options.log?.warn(`invalid adapter output for "${commandText}"`);
       return failure("invalid_output");
+    }
+    if (allowed.contract === "commitStatus") {
+      const status = contractSchemas.commitStatus.parse(parsed.data);
+      if (status.sha !== request.command[2] || status.context !== request.command[3]) {
+        options.log?.warn(`invalid adapter output for "${commandText}"`);
+        return failure("invalid_output");
+      }
     }
     return { ok: true, data: parsed.data };
   } finally {
