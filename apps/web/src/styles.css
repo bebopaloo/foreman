@@ -246,7 +246,7 @@ main {
   position: relative;
   height: 30px;
   margin: 0 22px;
-  background: #f1f1ec;
+  background: var(--surface-hover);
   border-radius: 6px;
 }
 

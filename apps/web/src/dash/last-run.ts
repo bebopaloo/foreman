@@ -1,3 +1,4 @@
+import { formatDate, formatTime } from "../format/index.ts";
 import type { Build, BuildResult, LastRun } from "@foreman/shared";
 
 /** One colour for each result. White text on each has a contrast of at least 4.5:1. */
@@ -69,12 +70,6 @@ export function axisTicks(run: LastRun): Tick[] {
   }));
 }
 
-/** A time in the time zone of the browser. */
-export function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+export const clock = (iso: string): string => formatTime(iso);
 
-export function dayAndClock(iso: string): string {
-  const date = new Date(iso);
-  return `${date.toLocaleDateString([], { day: "numeric", month: "short" })} ${clock(iso)}`;
-}
+export const dayAndClock = (iso: string): string => `${formatDate(iso)} ${formatTime(iso)}`;

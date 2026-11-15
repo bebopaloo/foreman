@@ -87,14 +87,11 @@ test("the slot timeline shows lanes, results, skips and blocked at selection", a
   await page.goto("/");
   await expect(lastRun(page)).toContainText("9 skips");
   await expect(lastRun(page)).toContainText("1 blocked at selection");
-  const rows = await buildRows(page).evaluateAll((elements) =>
-    elements.map((row) =>
-      [...row.querySelectorAll("td")]
-        .map((cell) => cell.textContent)
-        .filter((_, index) => [0, 2, 5].includes(index))
-        .join(" "),
-    ),
-  );
+  const rows: string[] = [];
+  for (const row of await buildRows(page).all()) {
+    const cells = await row.getByRole("cell").allTextContents();
+    rows.push([cells[0], cells[2], cells[5]].join(" "));
+  }
   expect(rows).toEqual([
     "1 21 merged",
     "2 22 merge-ready",
@@ -109,9 +106,10 @@ test("a client scope shows the older run of that client, with its own lanes", as
   await useFixture("last-run-clients");
   await page.goto("/?client=acme");
   await expect(lastRun(page)).toContainText("run-synthetic-old");
-  const lanes = await buildRows(page).evaluateAll((elements) =>
-    elements.map((row) => row.querySelector("td")?.textContent),
-  );
+  const lanes: (string | undefined)[] = [];
+  for (const row of await buildRows(page).all()) {
+    lanes.push((await row.getByRole("cell").allTextContents())[0]);
+  }
   expect(lanes).toEqual(["1", "2"]);
   await page.goto("/");
   await expect(lastRun(page)).toContainText("run-synthetic-new");
