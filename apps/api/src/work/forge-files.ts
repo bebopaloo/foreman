@@ -1,15 +1,21 @@
 import { schema, type Database } from "@foreman/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 import {
   MODULE_FILES,
   moduleFileFieldsSchema,
+  isRulePath,
+  listedRules,
   parseModuleFile,
   parseRepoConfig,
+  parseRuleFile,
   REPO_CONFIG_PATH,
   repoConfigFieldsSchema,
+  ruleFileFieldsSchema,
+  rulePath,
   skippedEntriesSchema,
   type RepoConfigFields,
+  type RuleKind,
 } from "../controls/files.ts";
 import { fileBranchFor, filesToRead, usableDefaultBranch } from "../controls/modules.ts";
 import { contractSchemas } from "./contract.ts";
@@ -31,6 +37,7 @@ export interface FileStepContext {
   full: boolean;
   /** True for a fetch that a refresh request started. */
   refresh: boolean;
+  runner?: { log?: { info?(message: string): void } };
 }
 
 type FileRow = typeof schema.workForgeFiles.$inferInsert;
@@ -104,6 +111,7 @@ async function readFile(
   path: string,
   ref: string,
   before: CachedFile | undefined,
+  ruleKind: RuleKind | null = null,
 ): Promise<ReadFile> {
   const base: FileRow = { repoId, path, fetchedAt: ctx.startedAt, state: "ok" };
   const result = await caller.run(["file", "get", path, "--ref", ref], contractSchemas.fileGet);
@@ -119,12 +127,20 @@ async function readFile(
     before?.state === "ok" &&
     before.sha === sha &&
     before.ref === ref &&
-    (before.fields !== null || !PARSED_PATHS.has(path))
+    cachedFieldsUsable(path, before, ruleKind)
   ) {
     return {
       row: { ...common, state: "ok", fields: before.fields, skipped: before.skipped },
       failed: false,
       config: repoConfigFromFields(path, before.fields),
+    };
+  }
+  if (ruleKind !== null) {
+    const name = path.slice(".claude/rules/".length, -".md".length);
+    return {
+      row: { ...common, state: "ok", fields: parseRuleFile(name, ruleKind, content) },
+      failed: false,
+      config: null,
     };
   }
   if (path !== REPO_CONFIG_PATH) {
@@ -161,6 +177,19 @@ async function readFile(
   };
 }
 
+/**
+ * True when the cached parsed fields of an unchanged file still stand. A repo config from an
+ * older shape, and a rule file whose kind changed, are parsed again.
+ */
+function cachedFieldsUsable(path: string, before: CachedFile, ruleKind: RuleKind | null): boolean {
+  if (ruleKind !== null) {
+    const fields = ruleFileFieldsSchema.safeParse(before.fields);
+    return fields.success && fields.data.kind === ruleKind;
+  }
+  if (path === REPO_CONFIG_PATH) return repoConfigFromFields(path, before.fields) !== null;
+  return before.fields !== null || !PARSED_PATHS.has(path);
+}
+
 function repoConfigFromFields(path: string, fields: unknown): RepoConfigFields | null {
   if (path !== REPO_CONFIG_PATH) return null;
   const parsed = repoConfigFieldsSchema.safeParse(fields);
@@ -169,6 +198,10 @@ function repoConfigFromFields(path: string, fields: unknown): RepoConfigFields |
 
 const NONE_CONFIG: RepoConfigFields = {
   mainBranch: null,
+  rules: { state: "ok", value: [] },
+  compliance: { state: "ok", value: [] },
+  stackPack: { state: "ok", value: null },
+  factoryCoreVersion: { state: "ok", value: null },
   controls: { state: "none" },
   releases: null,
 };
@@ -252,7 +285,43 @@ export async function runForgeFileStep(
     }
   }
 
+  // Only a valid repo config with valid rule keys decides the rule files: the others keep the rows.
+  const listed = config === null || configAbsent ? null : listedRules(config);
+  let deletePaths: string[] = [];
+  if (listed !== null) {
+    const listedPaths = new Set(listed.map((rule) => rulePath(rule.name)));
+    for (const rule of listed) {
+      const path = rulePath(rule.name);
+      const read = await readFile(
+        ctx,
+        caller,
+        repoId,
+        path,
+        fileBranch,
+        cached.get(path),
+        rule.kind,
+      );
+      note(read);
+      if (read.row.state !== "ok") {
+        ctx.runner?.log?.info?.(
+          `rule file ${path} of ${repoId}: state=${read.row.state} error=${read.row.errorClass ?? "none"}`,
+        );
+      }
+    }
+    deletePaths = cachedRows
+      .map((row) => row.path)
+      .filter((path) => isRulePath(path) && !listedPaths.has(path));
+    ctx.runner?.log?.info?.(
+      `rule files of ${repoId}: listed=${String(listed.length)} removed=${String(deletePaths.length)}`,
+    );
+  }
+
   await ctx.db.transaction(async (tx) => {
+    for (const path of deletePaths) {
+      await tx
+        .delete(schema.workForgeFiles)
+        .where(and(eq(schema.workForgeFiles.repoId, repoId), eq(schema.workForgeFiles.path, path)));
+    }
     for (const row of rows) {
       await tx
         .insert(schema.workForgeFiles)

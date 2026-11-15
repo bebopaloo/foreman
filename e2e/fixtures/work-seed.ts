@@ -55,6 +55,13 @@ export interface SeedReview {
   author: string;
 }
 
+/** A cached repo config of a repo: the parsed fields only. */
+export interface SeedRepoConfig {
+  repo: string;
+  /** The Control modules that the repo turns on. */
+  modules: readonly string[];
+}
+
 /** The synthetic Work cache of one fixture set. */
 export interface WorkSeed {
   repos: SeedRepo[];
@@ -62,6 +69,7 @@ export interface WorkSeed {
   pullRequests?: SeedPullRequest[];
   reviews?: SeedReview[];
   statuses?: SeedStatus[];
+  repoConfigs?: SeedRepoConfig[];
 }
 
 export function idOf(fullName: string): string {
@@ -78,6 +86,7 @@ export async function seedWorkCache(
   const database = createDatabase(databaseUrl);
   try {
     await database.db.transaction(async (tx) => {
+      await tx.delete(schema.workForgeFiles);
       await tx.delete(schema.workCommitStatuses);
       await tx.delete(schema.workReviews);
       await tx.delete(schema.workPullRequests);
@@ -146,6 +155,19 @@ export async function seedWorkCache(
           sha: status.sha,
           state: status.state,
           fetchedAt: now,
+        });
+      }
+      for (const config of seed.repoConfigs ?? []) {
+        await tx.insert(schema.workForgeFiles).values({
+          repoId: idOf(config.repo),
+          path: ".claude/factory.json",
+          fetchedAt: now,
+          state: "ok",
+          fields: {
+            mainBranch: null,
+            controls: { state: "ok", profile: "synthetic", modules: config.modules },
+            releases: null,
+          },
         });
       }
       for (const [position, review] of (seed.reviews ?? []).entries()) {

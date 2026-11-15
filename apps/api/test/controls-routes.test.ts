@@ -136,6 +136,10 @@ async function seedFile(
 function configFields(modules: string[], profile = "regulated") {
   return {
     mainBranch: null,
+    rules: { state: "ok", value: [] },
+    compliance: { state: "ok", value: [] },
+    stackPack: { state: "ok", value: null },
+    factoryCoreVersion: { state: "ok", value: null },
     controls: modules.length === 0 ? { state: "none" } : { state: "ok", profile, modules },
     releases: null,
   };
@@ -753,6 +757,10 @@ describe("Control modules by repo", () => {
     await seedRepo(WEB, "acme", "web");
     await seedFile(PAY, CONFIG, {
       mainBranch: null,
+      rules: { state: "ok", value: [] },
+      compliance: { state: "ok", value: [] },
+      stackPack: { state: "ok", value: null },
+      factoryCoreVersion: { state: "ok", value: null },
       controls: { state: "not_valid" },
       releases: null,
     });

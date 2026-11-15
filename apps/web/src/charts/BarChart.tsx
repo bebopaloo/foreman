@@ -12,6 +12,8 @@ export interface BarChartProps {
   title: string;
   /** The name of the value column of the table, for example "Tokens". */
   valueName: string;
+  /** The name of the label column of the table. The default is "Period". */
+  labelName?: string;
   data: readonly BarPoint[];
   /** Writes a value for the axis, the tooltip and the table. The default is the plain number. */
   formatValue?: (value: number) => string;
@@ -29,6 +31,7 @@ const plain = (value: number): string => String(value);
 export function BarChart({
   title,
   valueName,
+  labelName = "Period",
   data,
   formatValue = plain,
   height = 220,
@@ -72,7 +75,7 @@ export function BarChart({
         <caption>{title}</caption>
         <thead>
           <tr>
-            <th scope="col">Period</th>
+            <th scope="col">{labelName}</th>
             <th scope="col">{valueName}</th>
           </tr>
         </thead>

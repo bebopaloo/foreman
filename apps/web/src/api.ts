@@ -4,6 +4,8 @@ import {
   HealthResponse,
   ProjectsResponse,
   RefreshStatusResponse,
+  ReviewsPullRequestsResponse,
+  ReviewsResponse,
   SessionResponse,
   SessionsResponse,
   SeriesResponse,
@@ -172,3 +174,31 @@ export const fetchSession = (
     SessionResponse,
     signal,
   );
+
+/** One Reviews document. `mode` chooses the findings events. */
+export const fetchReviews = (
+  client: string | null,
+  mode: string,
+  signal?: AbortSignal,
+): Promise<ReviewsResponse> => {
+  const params = new URLSearchParams({ mode });
+  if (client !== null) params.set("client", client);
+  return getJson(`/api/reviews?${params.toString()}`, ReviewsResponse, signal);
+};
+
+/** One page of the pull request rows of the Reviews view. */
+export const fetchReviewsPullRequests = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ReviewsPullRequestsResponse> => {
+  const params = new URLSearchParams();
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return getJson(
+    `/api/reviews/pull-requests${text === "" ? "" : `?${text}`}`,
+    ReviewsPullRequestsResponse,
+    signal,
+  );
+};

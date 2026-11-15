@@ -6,6 +6,7 @@ import { ProjectPage, UsagePage, projectIdOf } from "./usage/index.ts";
 import { useScope } from "./scope/index.ts";
 import { WorkPage } from "./work/index.ts";
 import { SessionsPage } from "./sessions/index.ts";
+import { ReviewsPage } from "./reviews/index.ts";
 
 export function App() {
   const { unknownClient, clientsSettled } = useScope();
@@ -30,6 +31,8 @@ export function App() {
           <ProjectPage projectId={projectIdOf(window.location.pathname) ?? ""} />
         ) : window.location.pathname === "/sessions" ? (
           <SessionsPage />
+        ) : window.location.pathname === "/reviews" ? (
+          <ReviewsPage />
         ) : (
           <>
             <h1>Page not found</h1>
