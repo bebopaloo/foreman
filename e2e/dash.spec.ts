@@ -130,11 +130,7 @@ test("Review health shows the pass rates, the rounds, the escalations and the Wa
     "no tier50% of 2",
   ]);
   const rounds = review(page).getByRole("list", { name: "Pull requests by highest round" });
-  await expect(rounds.getByRole("listitem")).toHaveText([
-    "Round 180%8",
-    "Round 210%1",
-    "Round 310%1",
-  ]);
+  await expect(rounds.getByRole("listitem")).toHaveText(["Round 18", "Round 21", "Round 31"]);
   await expect(review(page)).toContainText("Escalations: 3");
   await expect(review(page)).toContainText("Waivers in use: 2");
 });
