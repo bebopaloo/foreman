@@ -1,12 +1,26 @@
+import type { DashResponse } from "@foreman/shared";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDash } from "../api.ts";
 import { useScope } from "../scope/index.ts";
 import { LastRun } from "./LastRun.tsx";
+import { plural } from "./last-run.ts";
+import { PipelineStrip } from "./PipelineStrip.tsx";
 import { ReviewHealth } from "./ReviewHealth.tsx";
 import { summariseNow } from "./run-state.ts";
+import { Tiles } from "./Tiles.tsx";
 
 /** The dash asks again each 60 seconds while the tab is visible. The query pauses in a hidden tab. */
 export const DASH_REFRESH_MS = 60_000;
+
+function buildsText({ run, running }: DashResponse): string {
+  if (running === null) return "";
+  if (run.state !== "in_progress") {
+    return `${plural(running.count, "build waits", "builds wait")} for the next run`;
+  }
+  return running.slotLimit === null
+    ? plural(running.count, "build running", "builds running")
+    : `${running.count.toString()} of ${running.slotLimit.toString()} build slots in use`;
+}
 
 export function DashPage() {
   const { scope, clientsSettled, unknownClient } = useScope();
@@ -34,6 +48,7 @@ export function DashPage() {
         </p>
       ) : null}
       {dash.isPending ? <p role="status">Reading the dash.</p> : null}
+      {dash.data === undefined ? null : <Tiles dash={dash.data} />}
       <section className="card" aria-labelledby="dash-now">
         <h2 id="dash-now">Now</h2>
         {now === null ? (
@@ -44,7 +59,11 @@ export function DashPage() {
             {now.detail === null ? null : <span className="muted">: {now.detail}</span>}
           </p>
         )}
+        {dash.data === undefined || dash.data.running === null ? null : (
+          <p>{buildsText(dash.data)}</p>
+        )}
       </section>
+      {dash.data === undefined ? null : <PipelineStrip dash={dash.data} />}
       <section className="card" aria-labelledby="dash-waits">
         <h2 id="dash-waits">Waits for you</h2>
         <p className="muted">Not shown yet.</p>
