@@ -14,6 +14,7 @@ import { dashRoutes } from "./routes/dash.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { ledgerRoutes } from "./routes/ledger.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { reviewsRoutes } from "./routes/reviews.ts";
 import { workRoutes } from "./routes/work.ts";
 import { sessionsRoutes } from "./routes/sessions.ts";
 import { usageRoutes } from "./routes/usage.ts";
@@ -143,6 +144,14 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
+    factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(reviewsRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
     factoryLogins: config.FOREMAN_FACTORY_LOGINS,
     ...(now === undefined ? {} : { now }),
   });

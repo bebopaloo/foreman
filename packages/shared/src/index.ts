@@ -364,6 +364,7 @@ export const WorkReleasesResponse = pageResponseSchema(WorkRelease);
 export type WorkReleasesResponse = z.infer<typeof WorkReleasesResponse>;
 export * from "./dash.ts";
 export * from "./ledger.ts";
+export * from "./reviews.ts";
 export * from "./factory-health.ts";
 
 export const SESSION_KINDS = ["unattended-loop", "attended-loop", "session"] as const;
