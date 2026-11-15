@@ -5,6 +5,7 @@ import { Header } from "./Header.tsx";
 import { UsagePage } from "./usage/index.ts";
 import { useScope } from "./scope/index.ts";
 import { WorkPage } from "./work/index.ts";
+import { SessionsPage } from "./sessions/index.ts";
 
 export function App() {
   const { unknownClient, clientsSettled } = useScope();
@@ -25,6 +26,8 @@ export function App() {
           <WorkPage />
         ) : window.location.pathname === "/usage" ? (
           <UsagePage />
+        ) : window.location.pathname === "/sessions" ? (
+          <SessionsPage />
         ) : (
           <>
             <h1>Page not found</h1>

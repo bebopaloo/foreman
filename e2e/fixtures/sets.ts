@@ -1,3 +1,4 @@
+import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
 
 /** A fixture set: the files of a synthetic Claude folder and the Work cache. All data is synthetic. */
@@ -547,6 +548,13 @@ export const FIXTURE_SETS = {
         ...(repo === "acme/site" ? { state: "not connected: no token" } : {}),
       })),
     },
+  },
+
+  /** The repo list and the transcripts of 3 sessions on the day before `now`. */
+  sessions: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...sessionTranscripts(now) }),
+    work: CONNECTED_CACHE,
+    usage: true,
   },
 
   /** No repo list and no factory folder: Foreman has no client and no data. */

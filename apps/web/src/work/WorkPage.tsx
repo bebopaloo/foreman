@@ -36,7 +36,7 @@ export function WorkPage() {
     fetchPage: (cursor, signal) => fetchWorkItems(request, cursor, signal),
     // Nothing loads until the scope is a real client and every filter value is valid.
     enabled: clientsSettled && !unknownClient && valid && repos.isSuccess,
-    refetchMs: WORK_REFRESH_MS,
+    refetchInterval: WORK_REFRESH_MS,
   });
 
   if (unknownClient) return null;

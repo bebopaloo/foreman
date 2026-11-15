@@ -3,9 +3,12 @@ import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import {
   MODULE_FILES,
+  moduleFileFieldsSchema,
+  parseModuleFile,
   parseRepoConfig,
   REPO_CONFIG_PATH,
   repoConfigFieldsSchema,
+  skippedEntriesSchema,
   type RepoConfigFields,
 } from "../controls/files.ts";
 import { fileBranchFor, filesToRead, usableDefaultBranch } from "../controls/modules.ts";
@@ -36,8 +39,11 @@ type CachedFile = typeof schema.workForgeFiles.$inferSelect;
 /** Files that fail with one of these states are not an error of the repo. */
 const ABSENT_CLASSES: readonly ErrorClass[] = ["missing_file", "missing_ref"];
 
-/** The paths that the parser of this slice turns into parsed fields. A file with no parser keeps no fields. */
-const PARSED_PATHS: ReadonlySet<string> = new Set([REPO_CONFIG_PATH]);
+/** The paths that a parser turns into parsed fields: the repo config and the module files. */
+const PARSED_PATHS: ReadonlySet<string> = new Set([
+  REPO_CONFIG_PATH,
+  ...MODULE_FILES.map((file) => file.path),
+]);
 
 /**
  * True when the forge file step runs for this repo: it has no earlier step, its last step ended
@@ -78,6 +84,7 @@ function failedRow(base: FileRow, errorClass: ErrorClass, before: CachedFile | u
     size: before?.size ?? null,
     state: "failed",
     errorClass,
+    skipped: before?.skipped ?? null,
     fields: before?.fields ?? null,
   };
 }
@@ -121,7 +128,27 @@ async function readFile(
     };
   }
   if (path !== REPO_CONFIG_PATH) {
-    return { row: { ...common, state: "ok", fields: null }, failed: false, config: null };
+    const module = parseModuleFile(path, content);
+    if (module === null) {
+      return { row: { ...common, state: "ok", fields: null }, failed: false, config: null };
+    }
+    if (!module.ok) {
+      return {
+        row: { ...common, state: "not_readable", fields: null },
+        failed: false,
+        config: null,
+      };
+    }
+    return {
+      row: {
+        ...common,
+        state: "ok",
+        fields: moduleFileFieldsSchema.parse(module.fields),
+        skipped: skippedEntriesSchema.parse(module.skipped),
+      },
+      failed: false,
+      config: null,
+    };
   }
   const parsed = parseRepoConfig(content);
   if (!parsed.ok) {

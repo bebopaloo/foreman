@@ -8,4 +8,5 @@ export const VIEWS: readonly View[] = [
   { label: "Foreman dash", path: "/" },
   { label: "Work", path: "/work" },
   { label: "Usage", path: "/usage" },
+  { label: "Sessions", path: "/sessions" },
 ];

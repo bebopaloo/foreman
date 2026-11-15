@@ -24,6 +24,7 @@ describe("Nav", () => {
       "Foreman dash",
       "Work",
       "Usage",
+      "Sessions",
     ]);
   });
 
