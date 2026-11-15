@@ -168,6 +168,26 @@ describe("checkPriceTable", () => {
     expect(findings).toEqual([]);
   });
 
+  it("matches a table row whose ID is longer than the page ID", async () => {
+    const dated = {
+      ...table,
+      models: [{ ...firstRow, model: "claude-synthetic-1-20250805" }, secondRow],
+    };
+    const findings = await checkPriceTable(dated, fetchOf({ [URL_A]: syntheticPage }).fetchHtml);
+    expect(findings).toEqual([]);
+  });
+
+  it("compares the rates of a table row whose ID is longer than the page ID", async () => {
+    const dated = {
+      ...table,
+      models: [{ ...firstRow, model: "claude-synthetic-1-20250805", input_per_mtok: 2 }, secondRow],
+    };
+    const findings = await checkPriceTable(dated, fetchOf({ [URL_A]: syntheticPage }).fetchHtml);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.kind).toBe("rate-differs");
+    expect(findings[0]?.message).toContain("claude-synthetic-1-20250805 input");
+  });
+
   it("reports a page that cannot be parsed", async () => {
     const findings = await checkPriceTable(
       table,

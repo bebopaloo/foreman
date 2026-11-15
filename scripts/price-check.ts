@@ -139,6 +139,11 @@ function differs(a: number, b: number): boolean {
   return Math.abs(a - b) > EPSILON;
 }
 
+/** The row for a page ID: the API lookup, else a row whose longer ID starts with the page ID. */
+function matchRow(table: PriceTable, id: string): PriceTable["models"][number] | undefined {
+  return findRow(table, id) ?? table.models.find((row) => row.model.startsWith(id));
+}
+
 function comparePage(table: PriceTable, url: string, page: PagePrices): Finding[] {
   const findings: Finding[] = [];
   const rate = (what: string, was: number, now: number) =>
@@ -151,7 +156,7 @@ function comparePage(table: PriceTable, url: string, page: PagePrices): Finding[
   if (rows.length > 0) {
     const sub: PriceTable = { models: rows, rules: null };
     for (const model of page.models) {
-      const row = findRow(sub, model.id);
+      const row = matchRow(sub, model.id);
       if (row === undefined) {
         findings.push({
           kind: "model-missing",
