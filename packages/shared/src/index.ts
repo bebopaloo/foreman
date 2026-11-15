@@ -408,3 +408,87 @@ export const SessionsResponse = z
   })
   .strict();
 export type SessionsResponse = z.infer<typeof SessionsResponse>;
+
+export const SessionId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+
+export const SessionParams = z.object({ sessionId: SessionId }).strict();
+export type SessionParams = z.infer<typeof SessionParams>;
+
+// The session route takes the list query with the paging of spans.
+export const SessionQuery = z
+  .object({
+    day: UsageDate,
+    tz: rangeShape.tz,
+    client: ClientName.optional(),
+    ...pageQueryShape({ defaultLimit: 200, maxLimit: 500 }),
+  })
+  .strict();
+export type SessionQuery = z.infer<typeof SessionQuery>;
+
+export const SPAN_KINDS = ["main", "sub-agent"] as const;
+
+export const SpanWorkItem = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z
+    .object({
+      kind: z.literal("one"),
+      repoId: z
+        .string()
+        .regex(/^[0-9a-f]{12}$/)
+        .nullable(),
+      fullName: z.string().nullable(),
+      number: z.number().int(),
+      title: z.string().nullable(),
+      link: z.string().nullable(),
+    })
+    .strict(),
+  z.object({ kind: z.literal("several"), count: z.number().int() }).strict(),
+]);
+export type SpanWorkItem = z.infer<typeof SpanWorkItem>;
+
+export const SessionSpan = z
+  .object({
+    key: z.string().min(1),
+    kind: z.enum(SPAN_KINDS),
+    agentType: z.string().min(1),
+    skill: z.string().nullable(),
+    skillBasis: z.enum(["exact", "estimate"]).nullable(),
+    models: z.array(z.object({ model: z.string(), turns: z.number().int() }).strict()),
+    project: z
+      .object({ id: z.string().regex(/^[0-9a-f]{12}$/), label: z.string().min(1) })
+      .strict(),
+    workItem: SpanWorkItem,
+    start: z.iso.datetime(),
+    end: z.iso.datetime(),
+    turns: z.number().int(),
+    inputTokens: z.number().int(),
+    outputTokens: z.number().int(),
+    cacheWriteTokens: z.number().int(),
+    cacheReadTokens: z.number().int(),
+    tokens: z.number().int(),
+  })
+  .strict();
+export type SessionSpan = z.infer<typeof SessionSpan>;
+
+export const SESSION_USER_MESSAGE_LIMIT = 1000;
+
+export const SessionResponse = z
+  .object({
+    session: SessionSummary,
+    window: z.object({ start: z.iso.datetime(), end: z.iso.datetime() }).strict(),
+    userMessages: z.array(z.iso.datetime()).max(SESSION_USER_MESSAGE_LIMIT),
+    userMessageTotal: z.number().int(),
+    spans: z.array(SessionSpan),
+    spanTotal: z.number().int(),
+    nextCursor: NextCursor,
+    complete: z
+      .object({
+        /** The repos in scope with no cache rows or a fetch error. */
+        incompleteRepos: z.number().int(),
+        /** True when no repo in scope has cache rows. */
+        notConnected: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export type SessionResponse = z.infer<typeof SessionResponse>;

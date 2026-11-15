@@ -11,6 +11,8 @@ export interface SessionsRequest {
   tz: string;
   /** The Project keys of the client, or null for "All". */
   clientKeys: readonly string[] | null;
+  /** Only this session, for the session route. */
+  sessionId?: string;
   limit: number;
   cursor: string | undefined;
   /** The query values that the cursor is bound to. */
@@ -64,6 +66,7 @@ export async function querySessions(db: Database, request: SessionsRequest): Pro
     gte(schema.turns.time, dayStart),
     lt(schema.turns.time, dayEnd),
     inScope(schema.turns.projectKey),
+    request.sessionId === undefined ? undefined : eq(schema.turns.sessionId, request.sessionId),
   );
 
   // The index on the Turn time bounds this read to the Turns of the day.
