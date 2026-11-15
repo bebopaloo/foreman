@@ -380,6 +380,50 @@ const PIPELINE_CACHE: WorkSeed = {
   pullRequests: [{ repo: APP, number: 200, title: "Release", base: "production" }],
 };
 
+/**
+ * What waits for the Operator in `acme/app`: 2 BLOCKED issues (one with a night log reason), 1 pull
+ * request into `production`, 1 `merge-ready` issue, and 3 TODO issues with next steps. One title holds HTML and Markdown.
+ */
+export const HOSTILE_TITLE = '<img src="https://evil.test/x.png"> **bold** [a](https://evil.test)';
+const WAITS_CACHE: WorkSeed = {
+  ...CONNECTED_CACHE,
+  issues: [
+    { repo: APP, number: 50, title: "Reject a transfer", issueState: "BLOCKED", priority: "high" },
+    {
+      repo: APP,
+      number: 51,
+      title: "Archive the invoices",
+      issueState: "BLOCKED",
+      priority: "low",
+    },
+    {
+      repo: APP,
+      number: 52,
+      title: "Add the export",
+      issueState: "IN REVIEW",
+      labels: ["merge-ready"],
+    },
+    { repo: APP, number: 53, title: "Plan the search", issueState: "TODO", priority: "medium" },
+    {
+      repo: APP,
+      number: 54,
+      title: "Fix the footer",
+      issueState: "TODO",
+      priority: "low",
+      labels: ["spec-waived"],
+    },
+    {
+      repo: APP,
+      number: 55,
+      title: HOSTILE_TITLE,
+      issueState: "TODO",
+      priority: "high",
+      labels: ["spec-approved"],
+    },
+  ],
+  pullRequests: [{ repo: APP, number: 60, title: "Release 1.2", base: "production" }],
+};
+
 /** Owners with a synthetic token in the e2e tokens file. The API reads only repos of such owners. */
 const OWNERS = ["github.com/acme", "github.com/bebopaloo"] as const;
 
@@ -628,6 +672,37 @@ export const FIXTURE_SETS = {
       ...nightLog(threeBuilds(now)),
     }),
     work: PIPELINE_CACHE,
+  },
+
+  /** Waits for you: the items of the Spec scenario, with a night log reason for one BLOCKED issue. */
+  waits: {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      ...nightLog([
+        {
+          run_id: "run-synthetic-3",
+          repo: repoFolder(APP),
+          issue: 50,
+          from: "IN PROGRESS",
+          to: "BLOCKED",
+          reason: "auto mode refused the migration",
+          time: new Date(now.getTime() - 3 * HOUR_MS),
+        },
+      ]),
+    }),
+    work: WAITS_CACHE,
+    tokenOwners: OWNERS,
+  },
+
+  /** Connected repos with one READY issue: nothing waits for the Operator. */
+  "waits-none": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: {
+      ...CONNECTED_CACHE,
+      issues: [{ repo: APP, number: 12, title: "Fix the sort order", issueState: "READY" }],
+      pullRequests: [],
+    },
+    tokenOwners: OWNERS,
   },
 
   /** The pipeline cache with no run: the leaf issues in IN PROGRESS wait for the next run. */
