@@ -48,8 +48,12 @@ export const WorkStatusResponse = z
 
 export type WorkStatusResponse = z.infer<typeof WorkStatusResponse>;
 
+/** The shape of a client name in the repo list. */
+export const ClientName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/);
+
 export const ProjectsQuery = z
   .object({
+    client: ClientName.optional(),
     limit: z.coerce.number().int().min(1).max(1000).default(500),
   })
   .strict();
@@ -103,6 +107,7 @@ const UsageDate = z
   }, "Not a calendar date");
 
 const rangeShape = {
+  client: ClientName.optional(),
   from: UsageDate,
   to: UsageDate,
   tz: z.string().min(1).refine(isTimeZone, "Unknown time zone"),
@@ -198,6 +203,7 @@ export const BreakdownResponse = z
   .strict();
 export type BreakdownResponse = z.infer<typeof BreakdownResponse>;
 
+// No `client` here: a limit window belongs to the whole plan, and `.strict()` refuses the key.
 export const LimitsQuery = z
   .object({
     from: UsageDate,

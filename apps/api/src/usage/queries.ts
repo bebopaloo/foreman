@@ -1,6 +1,6 @@
 import { type Database, schema } from "@foreman/db";
 import { ESTIMATE_NOTE, MAX_SERIES_BUCKETS, type UsageGrain } from "@foreman/shared";
-import { sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import { estimateGroup, type PriceTable } from "./prices.ts";
 import { labelProjects, projectId } from "./projects.ts";
 
@@ -101,13 +101,27 @@ function unpricedList(unpriced: Map<string, number>) {
     .sort((a, b) => b.turns - a.turns || a.model.localeCompare(b.model));
 }
 
-function rangeFilter(range: UsageRange, projectKey: string | null): SQL {
+/** The Project keys of a client scope, or null for "All". */
+export type ClientKeys = readonly string[] | null;
+
+/** A filter on the Project keys of a client. An empty list matches nothing. */
+function clientFilter(
+  column: typeof schema.turns.projectKey | typeof schema.skillCalls.projectKey,
+  clientKeys: ClientKeys,
+): SQL {
+  return clientKeys !== null && clientKeys.length > 0
+    ? inArray(column, [...clientKeys])
+    : sql`false`;
+}
+
+function rangeFilter(range: UsageRange, projectKey: string | null, clientKeys: ClientKeys): SQL {
   const day = localDate(range.tz);
   const filters: SQL[] = [
     sql`${day}::date >= ${range.from}::date`,
     sql`${day}::date <= ${range.to}::date`,
   ];
   if (projectKey !== null) filters.push(sql`${schema.turns.projectKey} = ${projectKey}`);
+  if (clientKeys !== null) filters.push(clientFilter(schema.turns.projectKey, clientKeys));
   return sql.join(filters, sql` and `);
 }
 
@@ -159,13 +173,14 @@ export async function querySeries(
   range: UsageRange,
   grain: UsageGrain,
   projectKey: string | null,
+  clientKeys: ClientKeys = null,
 ) {
   const starts = bucketStarts(range.from, range.to, grain);
   const start = sql<string>`to_char(date_trunc(${grain}::text, ${schema.turns.time} at time zone ${range.tz}::text), 'YYYY-MM-DD')`;
   const rows = await db
     .select({ start, ...sums, ...priceSums })
     .from(schema.turns)
-    .where(rangeFilter(range, projectKey))
+    .where(rangeFilter(range, projectKey, clientKeys))
     .groupBy(sql`1`, ...priceGroupBy);
   const unpriced = new Map<string, number>();
   const byStart = new Map<string, Accumulator>();
@@ -213,6 +228,7 @@ async function querySkillCalls(
   db: Database,
   range: UsageRange,
   projectKey: string | null,
+  clientKeys: ClientKeys,
 ): Promise<Map<string, number>> {
   const day = sql`(${schema.skillCalls.time} at time zone ${range.tz})`;
   const filters: SQL[] = [
@@ -220,6 +236,7 @@ async function querySkillCalls(
     sql`${day}::date <= ${range.to}::date`,
   ];
   if (projectKey !== null) filters.push(sql`${schema.skillCalls.projectKey} = ${projectKey}`);
+  if (clientKeys !== null) filters.push(clientFilter(schema.skillCalls.projectKey, clientKeys));
   const rows = await db
     .select({ skill: schema.skillCalls.skillName, calls: sql<number>`count(*)::float8` })
     .from(schema.skillCalls)
@@ -247,6 +264,7 @@ export async function queryBreakdown(
   dimension: BreakdownDimension,
   limit: number,
   projectKey: string | null,
+  clientKeys: ClientKeys = null,
 ) {
   const key = dimensionKey(dimension);
   const grouped = await db
@@ -260,7 +278,7 @@ export async function queryBreakdown(
       ...skillSums,
     })
     .from(schema.turns)
-    .where(rangeFilter(range, projectKey))
+    .where(rangeFilter(range, projectKey, clientKeys))
     .groupBy(key, ...priceGroupBy);
 
   // Labels come from all Projects, so that a filter does not change a label.
@@ -293,7 +311,8 @@ export async function queryBreakdown(
     byKey.set(row.key, group);
   }
 
-  const calls = dimension === "skill" ? await querySkillCalls(db, range, projectKey) : null;
+  const calls =
+    dimension === "skill" ? await querySkillCalls(db, range, projectKey, clientKeys) : null;
   if (calls !== null) {
     // A skill that was called in the range shows a row even when no turn belongs to it.
     for (const skill of calls.keys()) {
