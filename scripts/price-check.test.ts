@@ -177,6 +177,15 @@ describe("checkPriceTable", () => {
     expect(findings).toEqual([]);
   });
 
+  it("does not match a longer table ID of another model version", async () => {
+    const other = {
+      ...table,
+      models: [{ ...firstRow, model: "claude-synthetic-1-5-20250805" }, secondRow],
+    };
+    const findings = await checkPriceTable(other, fetchOf({ [URL_A]: syntheticPage }).fetchHtml);
+    expect(findings.map((finding) => finding.kind)).toContain("model-missing");
+  });
+
   it("compares the rates of a table row whose ID is longer than the page ID", async () => {
     const dated = {
       ...table,

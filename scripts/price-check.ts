@@ -139,9 +139,17 @@ function differs(a: number, b: number): boolean {
   return Math.abs(a - b) > EPSILON;
 }
 
-/** The row for a page ID: the API lookup, else a row whose longer ID starts with the page ID. */
+// A dated API ID is the page ID plus a date. Any other longer ID is another model version.
+const DATE_SUFFIX = /^-\d{8}$/;
+
+/** The row for a page ID: the API lookup, else a row whose ID is the page ID with a date. */
 function matchRow(table: PriceTable, id: string): PriceTable["models"][number] | undefined {
-  return findRow(table, id) ?? table.models.find((row) => row.model.startsWith(id));
+  return (
+    findRow(table, id) ??
+    table.models.find(
+      (row) => row.model.startsWith(id) && DATE_SUFFIX.test(row.model.slice(id.length)),
+    )
+  );
 }
 
 function comparePage(table: PriceTable, url: string, page: PagePrices): Finding[] {
