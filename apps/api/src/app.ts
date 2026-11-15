@@ -161,6 +161,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     tokensFile: config.FOREMAN_TOKENS_FILE,
     factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    usageDataAsOf: async () => (await activeRefresher.status()).dataAsOf,
     ...(now === undefined ? {} : { now }),
   });
   await app.register(usageRoutes, {

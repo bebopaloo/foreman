@@ -3,12 +3,15 @@ import { gate } from "../../test/control-event-fixtures.ts";
 import type { ControlEvent } from "../dash/control-events.ts";
 import type { NightLogEntry } from "../dash/night-log.ts";
 import { folderLabel, runsInWindow, type RunRepo } from "../dash/runs.ts";
+import { repoId } from "../work/repo-list.ts";
 import { pullRequestRecords } from "./pr-records.ts";
+import type { AgentSpan } from "../sessions/spans.ts";
 import { buildTimes, timesByTier, type BuildTimeRow } from "./times.ts";
 
 const at = (clock: string): Date => new Date(`2026-11-14T${clock}:00Z`);
 const NOW = new Date("2026-11-15T12:00:00Z");
-const ACME: RunRepo = { key: "r-acme", id: "acme/app", label: "acme/app", client: null };
+const ACME_ID = repoId("github.com", "acme", "app");
+const ACME: RunRepo = { key: ACME_ID, id: ACME_ID, label: "acme/app", client: null };
 
 function line(over: Partial<NightLogEntry> & { clock: string }): NightLogEntry {
   const { clock, ...rest } = over;
@@ -28,7 +31,7 @@ function gateAt(clock: string, over: Parameters<typeof gate>[0]): ControlEvent {
   return gate({ ...over, at: at(clock), time: `2026-11-14T${clock}:00Z` });
 }
 
-function times(entries: NightLogEntry[], events: ControlEvent[]) {
+function times(entries: NightLogEntry[], events: ControlEvent[], spans: AgentSpan[] = []) {
   const runs = runsInWindow({
     entries,
     repoOf: (folder) =>
@@ -40,7 +43,13 @@ function times(entries: NightLogEntry[], events: ControlEvent[]) {
     lockRunId: null,
     now: NOW,
   });
-  return buildTimes({ runs, events, records: pullRequestRecords(events) });
+  return buildTimes({
+    runs,
+    events,
+    records: pullRequestRecords(events),
+    spans,
+    repoKeyOf: (project) => (project === "/src/acme-app" ? ACME_ID : project),
+  });
 }
 
 const merged40 = line({
@@ -109,7 +118,12 @@ describe("buildTimes", () => {
       ],
       [gateAt("01:30", { pr: 5, issue: 14 })],
     );
-    expect(result).toEqual({ rows: [], noPullRequest: 1, notTimed: 0 });
+    expect(result).toEqual({
+      rows: [],
+      noPullRequest: 1,
+      notTimed: 0,
+      reviewAgentSpansNotLinked: 0,
+    });
   });
 
   it("gives no row to a build in two runs and counts it once", () => {
@@ -135,7 +149,12 @@ describe("buildTimes", () => {
       ],
       [],
     );
-    expect(result).toEqual({ rows: [], noPullRequest: 0, notTimed: 1 });
+    expect(result).toEqual({
+      rows: [],
+      noPullRequest: 0,
+      notTimed: 1,
+      reviewAgentSpansNotLinked: 0,
+    });
   });
 
   it("gives no row and no count to a cancelled build", () => {
@@ -146,7 +165,12 @@ describe("buildTimes", () => {
       ],
       [],
     );
-    expect(result).toEqual({ rows: [], noPullRequest: 0, notTimed: 0 });
+    expect(result).toEqual({
+      rows: [],
+      noPullRequest: 0,
+      notTimed: 0,
+      reviewAgentSpansNotLinked: 0,
+    });
   });
 
   it("uses the pull request of the reason for a repo that is not in the repo list", () => {
@@ -167,6 +191,140 @@ describe("buildTimes", () => {
   });
 });
 
+function span(
+  agentType: string,
+  from: string,
+  to: string,
+  over: Partial<AgentSpan> = {},
+): AgentSpan {
+  return {
+    key: `a:${agentType}-${from}`,
+    kind: "sub-agent",
+    sessionId: "s1",
+    agentType,
+    skill: null,
+    skillBasis: null,
+    models: [],
+    projectKey: "/src/acme-app",
+    workRefs: [{ projectKey: "/src/acme-app", number: 12 }],
+    start: at(from),
+    end: at(to),
+    turns: 2,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    tokens: 0,
+    ...over,
+  };
+}
+
+const BUILD = [
+  line({ clock: "01:00" }),
+  line({ clock: "02:30", from: "IN REVIEW", to: "DONE", reason: "merged #40" }),
+];
+
+describe("buildTimes with Agent spans", () => {
+  it("takes the build end from the last Turn of the linked software-developer span", () => {
+    const result = times(
+      BUILD,
+      [gateAt("01:50", { pr: 40, issue: 12 })],
+      [span("factory-core:software-developer", "01:02", "01:35")],
+    );
+    expect(result.rows[0]).toMatchObject({
+      buildEnd: { source: "agent span", at: at("01:35") },
+      buildSeconds: 35 * 60,
+      reviewCycleSeconds: 55 * 60,
+    });
+  });
+
+  it("uses the first gate event when no software-developer span links", () => {
+    const other = span("software-developer", "01:02", "01:35", {
+      workRefs: [{ projectKey: "/src/acme-app", number: 13 }],
+    });
+    const result = times(BUILD, [gateAt("01:50", { pr: 40, issue: 12 })], [other]);
+    expect(result.rows[0]?.buildEnd).toEqual({ source: "first gate event", at: at("01:50") });
+  });
+
+  it("does not link a span whose first Turn is outside the build window", () => {
+    const early = span("software-developer", "00:50", "01:35");
+    expect(times(BUILD, [], [early]).rows[0]?.buildEnd).toBeNull();
+  });
+
+  it("does not use a build end after the settle", () => {
+    const late = span("software-developer", "02:00", "02:45");
+    expect(times(BUILD, [], [late]).rows[0]?.buildEnd).toBeNull();
+  });
+
+  it("does not link a span of another repo", () => {
+    const foreign = span("software-developer", "01:02", "01:35", {
+      workRefs: [{ projectKey: "/src/other", number: 12 }],
+    });
+    expect(times(BUILD, [], [foreign]).rows[0]?.buildEnd).toBeNull();
+  });
+
+  it("splits the Review cycle into review agents, resolver and other", () => {
+    const result = times(
+      BUILD,
+      [],
+      [
+        span("software-developer", "01:02", "01:40"),
+        span("review-finder", "01:40", "01:50"),
+        span("factory-core:review-finder", "01:42", "01:55"),
+        span("review-verifier", "01:55", "02:00"),
+        span("review-resolver", "02:05", "02:15"),
+      ],
+    );
+    expect(result.rows[0]?.split).toEqual({
+      reviewAgentsSeconds: 20 * 60,
+      resolverSeconds: 10 * 60,
+      otherSeconds: 20 * 60,
+    });
+  });
+
+  it("counts a resolver minute that a review agent also covers as review agent time", () => {
+    const result = times(
+      BUILD,
+      [],
+      [
+        span("software-developer", "01:02", "01:40"),
+        span("review-finder", "01:40", "01:50"),
+        span("review-resolver", "01:45", "01:55"),
+      ],
+    );
+    expect(result.rows[0]?.split).toEqual({
+      reviewAgentsSeconds: 10 * 60,
+      resolverSeconds: 5 * 60,
+      otherSeconds: 35 * 60,
+    });
+  });
+
+  it("gives no split with no linked review or resolver span", () => {
+    const result = times(BUILD, [], [span("software-developer", "01:02", "01:35")]);
+    expect(result.rows[0]?.split).toBeNull();
+  });
+
+  it("counts the review spans that have no single work item", () => {
+    const result = times(
+      BUILD,
+      [gateAt("01:40", { pr: 40, issue: 12 })],
+      [
+        span("review-finder", "01:40", "01:50", { workRefs: [] }),
+        span("review-verifier", "01:55", "02:00", {
+          workRefs: [
+            { projectKey: "/src/acme-app", number: 12 },
+            { projectKey: "/src/acme-app", number: 13 },
+          ],
+        }),
+        span("software-developer", "01:02", "01:05", { workRefs: [] }),
+        span("review-finder", "01:41", "01:50"),
+      ],
+    );
+    expect(result.reviewAgentSpansNotLinked).toBe(2);
+    expect(result.rows[0]?.split?.reviewAgentsSeconds).toBe(9 * 60);
+  });
+});
+
 function row(over: Partial<BuildTimeRow>): BuildTimeRow {
   return {
     repo: ACME,
@@ -180,6 +338,7 @@ function row(over: Partial<BuildTimeRow>): BuildTimeRow {
     buildEnd: { at: at("01:30"), source: "agent span" },
     buildSeconds: 0,
     reviewCycleSeconds: 0,
+    split: null,
     ...over,
   };
 }

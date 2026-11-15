@@ -29,13 +29,22 @@ export interface ReviewsOptions {
   tokensFile: string | undefined;
   /** The Factory identity logins of the config. */
   factoryLogins?: readonly string[];
+  /** The "data as of" time of the Usage index, as an ISO time, or null before the first refresh. */
+  usageDataAsOf?: () => Promise<string | null>;
   /** Tests pass a fixed clock. */
   now?: () => Date;
 }
 
 export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
   app,
-  { db, claudeDir, tokensFile, factoryLogins = [], now = () => new Date() },
+  {
+    db,
+    claudeDir,
+    tokensFile,
+    factoryLogins = [],
+    usageDataAsOf = () => Promise.resolve(null),
+    now = () => new Date(),
+  },
   done,
 ) => {
   async function load(client: string | undefined, repo: string | undefined, at: Date) {
@@ -43,12 +52,20 @@ export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
     const entries = list.status === "ok" ? list.repos : [];
     const scope = resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
     if (!scope.ok) return scope;
-    const data = await readReviewsData(claudeDir, at, db, factoryLogins, {
-      inScope: scope.inScope,
-      repoIds: scope.repos.map((scoped) => scoped.id),
-      client,
-      narrowed: client !== undefined || repo !== undefined,
-    });
+    const asOf = await usageDataAsOf();
+    const data = await readReviewsData(
+      claudeDir,
+      at,
+      db,
+      factoryLogins,
+      {
+        inScope: scope.inScope,
+        repoIds: scope.repos.map((scoped) => scoped.id),
+        client,
+        narrowed: client !== undefined || repo !== undefined,
+      },
+      asOf === null ? null : new Date(asOf),
+    );
     return { ok: true as const, data };
   }
 
