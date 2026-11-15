@@ -70,7 +70,7 @@ export function WorkPage() {
           Not connected. Add the Foreman token to the Keychain, then run <code>pnpm local:up</code>.
         </p>
       ) : null}
-      {valid && first && first.state === "ok" ? (
+      {valid && first?.state === "ok" ? (
         <div className="work-view">
           {first.complete > 0 ? (
             <p className="note note-warn">
@@ -89,7 +89,7 @@ export function WorkPage() {
           )}
           <WorkFilters
             counts={first.counts}
-            filters={parsed.valid ? parsed.filters : { sort: "repo" }}
+            filters={parsed.filters}
             repos={scopedRepos}
             setFilter={setFilter}
             states={ISSUE_STATES}

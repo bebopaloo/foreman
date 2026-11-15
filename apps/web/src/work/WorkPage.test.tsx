@@ -15,32 +15,51 @@ const REPOS: FakeRepo[] = [
   { id: "aaaaaaaaaaaa", fullName: "globex/api", client: "globex", dataAsOf: null },
 ];
 
-function item(over: Partial<WorkItem> & { n?: number } = {}): WorkItem {
-  const { n = 12, ...rest } = over;
+type Issue = NonNullable<WorkItem["issue"]>;
+type Pull = NonNullable<WorkItem["pullRequest"]>;
+
+interface ItemOptions extends Partial<Omit<WorkItem, "issue" | "pullRequest">> {
+  n?: number;
+  /** Changes to the issue, or null for a row with no issue. */
+  issue?: Partial<Issue> | null;
+  /** Changes to the pull request, or null for a row with no pull request. */
+  pr?: Partial<Pull> | null;
+}
+
+function item(over: ItemOptions = {}): WorkItem {
+  const { n = 12, issue, pr, ...rest } = over;
   return {
     repoId: APP,
     fullName: "acme/app",
     client: "acme",
-    issue: {
-      number: n,
-      title: "Add the export",
-      state: "open",
-      issueState: "IN REVIEW",
-      type: "feature",
-      priority: "high",
-      link: `https://github.com/acme/app/issues/${n.toString()}`,
-      stale: false,
-    },
-    pullRequest: {
-      number: 40,
-      title: "Add the export",
-      state: "open",
-      draft: false,
-      checks: "success",
-      link: "https://github.com/acme/app/pull/40",
-      stale: false,
-      otherCount: 0,
-    },
+    issue:
+      issue === null
+        ? null
+        : {
+            number: n,
+            title: "Add the export",
+            state: "open",
+            issueState: "IN REVIEW",
+            type: "feature",
+            priority: "high",
+            link: `https://github.com/acme/app/issues/${n.toString()}`,
+            stale: false,
+            ...issue,
+          },
+    pullRequest:
+      pr === null
+        ? null
+        : {
+            number: 40,
+            title: "Add the export",
+            state: "open",
+            draft: false,
+            checks: "success",
+            link: "https://github.com/acme/app/pull/40",
+            stale: false,
+            otherCount: 0,
+            ...pr,
+          },
     machineGate: { source: "forge", value: "pass" },
     round: 2,
     riskTier: "sensitive",
@@ -123,7 +142,7 @@ describe("the Work page rows", () => {
     open();
     fakeItems(() =>
       response({
-        items: [item({ pullRequest: null, machineGate: null, round: null, riskTier: null })],
+        items: [item({ pr: null, machineGate: null, round: null, riskTier: null })],
       }),
     );
     renderApp();
@@ -146,16 +165,11 @@ describe("the Work page rows", () => {
 
   it("shows TODO · closed for a closed issue with no end state", async () => {
     open();
-    const base = item();
     fakeItems(() =>
       response({
         items: [
           item({
-            issue: {
-              ...(base.issue as NonNullable<typeof base.issue>),
-              state: "closed",
-              issueState: "TODO",
-            },
+            issue: { state: "closed", issueState: "TODO" },
           }),
         ],
       }),
@@ -166,18 +180,12 @@ describe("the Work page rows", () => {
 
   it("marks the Machine gate from an event, a draft, more pull requests and a stale item", async () => {
     open();
-    const base = item();
     fakeItems(() =>
       response({
         items: [
           item({
             machineGate: { source: "events", value: "wait" },
-            pullRequest: {
-              ...(base.pullRequest as NonNullable<typeof base.pullRequest>),
-              draft: true,
-              otherCount: 1,
-              stale: true,
-            },
+            pr: { draft: true, otherCount: 1, stale: true },
           }),
         ],
       }),
@@ -200,10 +208,9 @@ describe("the Work page rows", () => {
   it("shows a title as plain text, with no image and no link", async () => {
     open();
     const title = '<img src="https://evil.example/t.png"> **Fix** [this](https://evil.example)';
-    const base = item();
     fakeItems(() =>
       response({
-        items: [item({ issue: { ...(base.issue as NonNullable<typeof base.issue>), title } })],
+        items: [item({ issue: { title } })],
       }),
     );
     const { container } = renderApp();
@@ -215,10 +222,9 @@ describe("the Work page rows", () => {
 
   it("shows no Issue link when the cached link is null", async () => {
     open();
-    const base = item();
     fakeItems(() =>
       response({
-        items: [item({ issue: { ...(base.issue as NonNullable<typeof base.issue>), link: null } })],
+        items: [item({ issue: { link: null } })],
       }),
     );
     renderApp();
@@ -229,15 +235,11 @@ describe("the Work page rows", () => {
 
   it("does not link an address that is not a web address", async () => {
     open();
-    const base = item();
     fakeItems(() =>
       response({
         items: [
           item({
-            issue: {
-              ...(base.issue as NonNullable<typeof base.issue>),
-              link: "javascript:alert(1)",
-            },
+            issue: { link: "javascript:alert(1)" },
           }),
         ],
       }),

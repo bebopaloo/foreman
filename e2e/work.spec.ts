@@ -103,7 +103,7 @@ test("the repo filter lists only the repos of the scope", async ({ page }) => {
   await useFixture("work");
   await page.goto("/work?client=acme");
   await expect(bodyRows(page).first()).toBeVisible();
-  await expect(page.getByLabel("Repo", { exact: true }).locator("option")).toHaveText([
+  await expect(page.getByRole("combobox", { name: /^Repo/ }).locator("option")).toHaveText([
     "All repos",
     "acme/app",
     "acme/site",
@@ -181,8 +181,12 @@ test("the page does not scroll sideways at 375 px, and the table region does", a
     "document.documentElement.scrollWidth - document.documentElement.clientWidth",
   );
   expect(overflow).toBeLessThanOrEqual(0);
-  const region = page.getByRole("region", { name: "Issues and pull requests table" });
-  const scrolls = await region.evaluate((element) => element.scrollWidth > element.clientWidth);
+  const scrolls = await page.evaluate(
+    `(() => {
+      const region = document.querySelector('[aria-label="Issues and pull requests table"]');
+      return region.scrollWidth > region.clientWidth;
+    })()`,
+  );
   expect(scrolls).toBe(true);
 });
 
