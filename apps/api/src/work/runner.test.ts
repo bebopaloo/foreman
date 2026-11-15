@@ -490,6 +490,33 @@ describe("the forge file commands", () => {
     expect(logged).toEqual(['invalid adapter output for "file get"']);
   });
 
+  it.each([
+    ["a size of 2000000", { size: 2_000_000 }],
+    ["content over 1048576 bytes", { size: 5, content: "x".repeat(1_048_577) }],
+  ])("gives too_large for a Repo rule file with %s", async (_name, over) => {
+    const rule = ".claude/rules/coding.md";
+    await control({ stdout: JSON.stringify({ ...fileOutput, path: rule, ...over }) });
+    const result = await runAdapterCommand(
+      request(["file", "get", rule, "--ref", "main"]),
+      options,
+    );
+    expect(result).toEqual({ ok: false, errorClass: "too_large", state: "file too large" });
+  });
+
+  it.each([
+    ["an unknown key", { extra: 1 }],
+    ["a short sha", { sha: "abc123" }],
+    ["a size that is not whole", { size: 1.5 }],
+  ])("keeps invalid_output for a Repo rule file with %s", async (_name, over) => {
+    const rule = ".claude/rules/coding.md";
+    await control({ stdout: JSON.stringify({ ...fileOutput, path: rule, ...over }) });
+    const result = await runAdapterCommand(
+      request(["file", "get", rule, "--ref", "main"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
+  });
+
   it("accepts file get content of 1048576 bytes", async () => {
     const content = "x".repeat(1_048_576);
     await control({ stdout: JSON.stringify({ ...fileOutput, size: 1_048_576, content }) });

@@ -115,6 +115,17 @@ const fileGetSchema = z
   })
   .strict();
 
+/** The shape of `file get` output with no limit on the size: it tells a file that is too large from a broken output. */
+export const fileGetUnboundedSchema = z
+  .object({
+    path: z.string(),
+    ref: z.string(),
+    sha: z.string().regex(SHA_PATTERN),
+    size: z.number().int().min(0),
+    content: z.string(),
+  })
+  .strict();
+
 /** The output of `release asset`. The runner also checks that `tag` and `name` match the request. */
 const releaseAssetSchema = z
   .object({

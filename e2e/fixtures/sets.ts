@@ -1,6 +1,15 @@
 import { ledgerLongTranscripts, ledgerTranscripts } from "./ledger-transcripts.ts";
 import { ADAPTER_PLUGINS, SYNTHETIC_HOST, type AdapterData } from "./adapter/index.ts";
-import { healthPluginFiles, healthRepoFiles, hostileVersionFiles } from "./health-files.ts";
+import {
+  configStateRepos,
+  currentVariantsRepo,
+  driftStatesRepo,
+  healthPluginFiles,
+  healthRepoFiles,
+  hostileVersionFiles,
+  mainBranchRepo,
+  type DriftRepo,
+} from "./health-files.ts";
 import { controlsFiles, controlsWork } from "./controls-files.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import {
@@ -586,6 +595,15 @@ function adapterRepoList(
   });
 }
 
+/** The adapter data of a repo that holds only files, answers and errors for Rule drift. */
+function driftRepo({ files, answers, fail }: DriftRepo): AdapterData[string] {
+  return {
+    files,
+    ...(answers === undefined ? {} : { answers }),
+    ...(fail === undefined ? {} : { fail }),
+  };
+}
+
 const FETCHED_APP: AdapterData[string] = {
   issues: [
     { number: 21, title: "Fetched export", issueState: "IN PROGRESS" },
@@ -996,6 +1014,51 @@ export const FIXTURE_SETS = {
   /** A Marketplace version of markup: Foreman shows "version not readable". */
   "health-hostile": {
     files: () => ({ "factory/repos.json": repoList(), ...hostileVersionFiles() }),
+  },
+
+  /**
+   * Rule drift states that `health` lacks: `acme/app` has a rule that differs, one missing, one too
+   * large, one with an invalid adapter output, one with an adapter error and one with no template, and
+   * its Stack pack `stack-py` is not installed. `acme/site` has a main branch that is not the default.
+   */
+  "health-drift-states": {
+    files: (now) => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "acme/site", client: "acme" },
+      ]),
+      ...healthPluginFiles(),
+      ...nightLog(healthRunLines(now)),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: { "acme/app": driftRepo(driftStatesRepo()), "acme/site": driftRepo(mainBranchRepo()) },
+  },
+
+  /** Rules that are current with an older stamp, with no stamp and as Compliance, and a template name in two plugins. */
+  "health-drift-variants": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList([{ repo: "acme/app", client: "acme" }]),
+      ...healthPluginFiles({ duplicateTemplate: true }),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: { "acme/app": driftRepo(currentVariantsRepo()) },
+  },
+
+  /** Four repos whose factory config is not set up, not readable, on a branch not found, and fails to read. */
+  "health-drift-config": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList(
+        ["acme/app", "acme/site", "acme/docs", "acme/api"].map((repo) => ({
+          repo,
+          client: "acme",
+        })),
+      ),
+      ...healthPluginFiles(),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: Object.fromEntries(
+      Object.entries(configStateRepos()).map(([repo, data]) => [repo, driftRepo(data)]),
+    ),
   },
 
   /** The Controls view: Control modules, 3 escalations, 4 Waivers, 4 Releases and the security artefacts of `acme/app`. */

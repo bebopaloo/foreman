@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { AdapterRole, ResolvedAdapter } from "./adapters.ts";
 import {
   contractSchemas,
+  fileGetUnboundedSchema,
   RELEASE_TAG_PATTERN,
   STATUS_CONTEXTS,
   type ContractName,
@@ -21,6 +22,7 @@ export type ErrorClass =
   | "rate_limit"
   | "timeout"
   | "invalid_output"
+  | "too_large"
   | "other"
   | "host_not_allowed"
   | "missing_file"
@@ -35,6 +37,7 @@ export const ERROR_CLASS_STATE: Record<ErrorClass, string> = {
   rate_limit: "rate limit",
   timeout: "timeout",
   invalid_output: "invalid adapter output",
+  too_large: "file too large",
   other: "adapter error",
   host_not_allowed: "host not allowed",
   missing_file: "missing file",
@@ -42,6 +45,8 @@ export const ERROR_CLASS_STATE: Record<ErrorClass, string> = {
   missing_tag: "missing tag",
   missing_asset: "missing asset",
 };
+
+const RULE_FILE_PREFIX = ".claude/rules/";
 
 /** The fixed message prefixes of `file get` and `release asset` errors. They join the factory contract. */
 const ERROR_PREFIXES: readonly (readonly [string, ErrorClass])[] = [
@@ -393,6 +398,16 @@ export async function runAdapterCommand(
     }
     const parsed = contractSchemas[allowed.contract].safeParse(json);
     if (!parsed.success) {
+      const file = fileGetUnboundedSchema.safeParse(json);
+      if (
+        allowed.contract === "fileGet" &&
+        request.command[2]?.startsWith(RULE_FILE_PREFIX) === true &&
+        file.success &&
+        file.data.path === request.command[2] &&
+        file.data.ref === request.command[4]
+      ) {
+        return failure("too_large");
+      }
       options.log?.warn(`invalid adapter output for "${commandText}"`);
       return failure("invalid_output");
     }

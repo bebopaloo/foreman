@@ -444,6 +444,21 @@ describe("Rule drift", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a rule file that is too large, one with an invalid output and one with an adapter error", async () => {
+    const rules = [
+      rule({ name: "a", state: "failed", errorState: "file too large" }),
+      rule({ name: "b", state: "failed", errorState: "invalid adapter output" }),
+      rule({ name: "c", state: "failed", errorState: "adapter error" }),
+    ];
+    await show({ drift: drift([repo(rules)]) });
+    const list = screen.getByRole("list", { name: "Repo rules of acme/app" });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["afile too large", "binvalid adapter output", "cadapter error"]);
+  });
+
   it("shows the summary of one rule behind", async () => {
     const rules = [rule(), rule({ name: "security", state: "behind", stampVersion: "0.8.1" })];
     await show({ drift: drift([repo(rules)]) });
