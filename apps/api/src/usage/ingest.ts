@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -8,10 +9,12 @@ import {
   type ParsedUserMessage,
   parseLine,
 } from "./parse.ts";
+import { type ParsedLimitReading, parseLimitLine } from "./limits.ts";
 import { resolveProjects } from "./projects.ts";
 import { attributeSessions, isBuiltInCommand } from "./skills.ts";
 import {
   type FileCursor,
+  LIMIT_CAPTURE_FILE,
   readAgentMeta,
   readArchiveLines,
   readNewLines,
@@ -51,6 +54,7 @@ type AgentRow = typeof schema.agents.$inferInsert;
 type UserMessageRow = typeof schema.userMessages.$inferInsert;
 type SkillCallRow = typeof schema.skillCalls.$inferInsert;
 type AgentStartRow = typeof schema.agentStarts.$inferInsert;
+type LimitReadingRow = typeof schema.limitReadings.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
 
 // 16 columns for each row, and Postgres allows 65,535 parameters in a query.
@@ -138,6 +142,56 @@ async function writeAgentStarts(
   }
 }
 
+async function writeLimitReadings(
+  db: Pick<Database, "insert">,
+  readings: LimitReadingRow[],
+): Promise<void> {
+  for (let start = 0; start < readings.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.limitReadings)
+      .values(readings.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing();
+  }
+}
+
+/**
+ * Reads the new lines of the capture file. A missing file has no readings. An
+ * unreadable file is logged and counted, and does not fail the refresh.
+ */
+async function readLimitCapture(
+  options: IngestOptions,
+  missing: readonly string[],
+  known: ReadonlyMap<string, FileCursor>,
+): Promise<{
+  readings: ParsedLimitReading[];
+  cursor: CursorRow | null;
+  skipped: number;
+  unreadable: boolean;
+}> {
+  const file = path.join(options.dataDir, LIMIT_CAPTURE_FILE);
+  const none = { readings: [], cursor: null, skipped: 0, unreadable: false };
+  if (missing.includes(file)) return none;
+  let read;
+  try {
+    read = await readNewLines(file, known.get(file));
+  } catch {
+    options.log.warn(`unreadable file: ${file}`);
+    return { ...none, unreadable: true };
+  }
+  const readings: ParsedLimitReading[] = [];
+  let skipped = 0;
+  for (const line of read.lines) {
+    const parsed = parseLimitLine(line);
+    if (parsed.kind === "malformed") skipped += 1;
+    if (parsed.kind === "readings") readings.push(...parsed.readings);
+  }
+  if (read.lines.length > 0) {
+    options.log.info(`read ${plural(read.lines.length, "new line")} in ${file}`);
+  }
+  if (skipped > 0) options.log.warn(`skipped ${plural(skipped, "line")} in ${file}`);
+  return { readings, cursor: { path: file, ...read.cursor }, skipped, unreadable: false };
+}
+
 async function writeCursors(db: Pick<Database, "insert">, cursors: CursorRow[]): Promise<void> {
   for (let start = 0; start < cursors.length; start += INSERT_BATCH_SIZE) {
     await db
@@ -198,6 +252,7 @@ async function readSources(options: IngestOptions): Promise<
     userMessages: UserMessageRow[];
     skillCalls: SkillCallRow[];
     agentStarts: AgentStartRow[];
+    limitReadings: LimitReadingRow[];
   }
 > {
   const { db, claudeDir, dataDir, log } = options;
@@ -288,6 +343,10 @@ async function readSources(options: IngestOptions): Promise<
     skippedLines += skipped;
     options.onProgress?.({ filesRead: files + unreadableFiles, filesTotal });
   }
+  const capture = await readLimitCapture(options, scan.missing, known);
+  if (capture.cursor !== null) cursors.push(capture.cursor);
+  skippedLines += capture.skipped;
+  if (capture.unreadable) unreadableFiles += 1;
   const knownProjects = await db
     .selectDistinct({ key: schema.turns.projectKey })
     .from(schema.turns);
@@ -330,6 +389,7 @@ async function readSources(options: IngestOptions): Promise<
     userMessages,
     skillCalls,
     agentStarts: [...starts.values()],
+    limitReadings: capture.readings,
   };
 }
 
@@ -345,8 +405,17 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, cursors, agents, userMessages, skillCalls, agentStarts, ...result } =
-      await readSources(options);
+    const {
+      rows,
+      projects,
+      cursors,
+      agents,
+      userMessages,
+      skillCalls,
+      agentStarts,
+      limitReadings,
+      ...result
+    } = await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) {
         await tx.delete(schema.turns);
@@ -354,6 +423,7 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
         await tx.delete(schema.userMessages);
         await tx.delete(schema.skillCalls);
         await tx.delete(schema.agentStarts);
+        await tx.delete(schema.limitReadings);
         await tx.delete(schema.fileCursors);
       }
       await writeTurns(tx, rows);
@@ -362,6 +432,7 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
       await writeUserMessages(tx, userMessages);
       await writeSkillCalls(tx, skillCalls);
       await writeAgentStarts(tx, agentStarts);
+      await writeLimitReadings(tx, limitReadings);
       await attributeSessions(tx, [
         ...new Set([
           ...rows.map((row) => row.sessionId),

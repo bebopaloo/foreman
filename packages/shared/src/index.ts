@@ -197,3 +197,39 @@ export const BreakdownResponse = z
   })
   .strict();
 export type BreakdownResponse = z.infer<typeof BreakdownResponse>;
+
+export const LimitsQuery = z
+  .object({
+    from: UsageDate,
+    to: UsageDate,
+    tz: rangeShape.tz,
+  })
+  .strict()
+  .refine(fromNotAfterTo, "from is after to");
+export type LimitsQuery = z.infer<typeof LimitsQuery>;
+
+const LatestReading = z
+  .object({
+    time: z.iso.datetime(),
+    usedPercentage: z.number().min(0).max(100),
+    resetsAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const LimitsResponse = z
+  .object({
+    windows: z.array(
+      z
+        .object({
+          window: z.enum(["five_hour", "seven_day"]),
+          resetsAt: z.iso.datetime(),
+          peakUsedPercentage: z.number().min(0).max(100),
+        })
+        .strict(),
+    ),
+    latest: z
+      .object({ five_hour: LatestReading.nullable(), seven_day: LatestReading.nullable() })
+      .strict(),
+  })
+  .strict();
+export type LimitsResponse = z.infer<typeof LimitsResponse>;

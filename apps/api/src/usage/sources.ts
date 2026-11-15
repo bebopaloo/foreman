@@ -40,6 +40,8 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
+export const LIMIT_CAPTURE_FILE = "limit-readings.jsonl";
+
 const ARCHIVE_SUFFIX = ".jsonl.gz";
 
 async function findFiles(
@@ -75,7 +77,7 @@ export async function scanSources(claudeDir: string, dataDir: string): Promise<S
   const projects = path.join(claudeDir, "projects");
   const archive = path.join(dataDir, "archive");
   const missing: string[] = [];
-  for (const source of [projects, archive, path.join(dataDir, "limit-readings.jsonl")]) {
+  for (const source of [projects, archive, path.join(dataDir, LIMIT_CAPTURE_FILE)]) {
     if (!(await exists(source))) missing.push(source);
   }
   const files = [
