@@ -234,14 +234,111 @@ for (const scheme of ["light", "dark"] as const) {
   }
 }
 
-test("at 375 pixels wide the page has no horizontal page scroll", async ({ page }) => {
-  await useFixture("usage");
-  await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto("/usage");
-  await expect(tile(page, "Tokens, last 14 days")).toContainText("11.4M");
+const noSidewaysScroll = async (page: Page): Promise<void> => {
   const overflow: unknown = await page.evaluate(
     "document.documentElement.scrollWidth - document.documentElement.clientWidth",
   );
   expect(overflow).toEqual(expect.any(Number));
   expect(Number(overflow)).toBeLessThanOrEqual(0);
-});
+};
+
+const openFirstProject = async (page: Page): Promise<void> => {
+  await page.getByRole("table", { name: "Usage by Project" }).getByRole("link").first().click();
+  await expect(page.getByRole("table", { name: "Usage by Model" })).toBeVisible();
+  await expect(page.getByRole("status", { name: /^Loading/ })).toHaveCount(0);
+};
+
+const VIEW_STATES: { name: string; fixture: FixtureName; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: "the default page",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage");
+      await expect(tile(page, "Tokens, last 14 days")).toContainText("11.4M");
+      await expect(tile(page, "Month outlook")).toBeVisible();
+    },
+  },
+  {
+    name: "a client scope",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage?client=acme");
+      await expect(tile(page, "Tokens, last 14 days")).toContainText("8M");
+    },
+  },
+  {
+    name: "no usage",
+    fixture: "usage-empty",
+    open: async (page) => {
+      await page.goto("/usage");
+      await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(4);
+    },
+  },
+  {
+    name: "the Project page",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage");
+      await openFirstProject(page);
+    },
+  },
+  {
+    name: "the Turns metric with the Session tab",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage?metric=turns&tab=session");
+      await expect(page.getByRole("table", { name: "Turns by day" })).toBeAttached();
+    },
+  },
+  {
+    name: "a range of 30 days",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage?range=30d");
+      await expect(tile(page, "Tokens, last 30 days")).toContainText("11.5M");
+    },
+  },
+  {
+    name: "a link that is not valid",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage?range=0d");
+      await expect(page.getByText("The link has a value that is not valid.")).toBeVisible();
+    },
+  },
+  {
+    name: "a Project outside the scope",
+    fixture: "usage",
+    open: async (page) => {
+      await page.goto("/usage/projects/ffffffffffff?client=acme");
+      await expect(page.getByText("No such Project in this scope.")).toBeVisible();
+    },
+  },
+];
+
+for (const scheme of ["light", "dark"] as const) {
+  for (const { name, fixture, open } of VIEW_STATES) {
+    test(`at 375 pixels wide ${name} has no horizontal page scroll in the ${scheme} theme`, async ({
+      page,
+    }) => {
+      await useFixture(fixture);
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width: 375, height: 800 });
+      await open(page);
+      await noSidewaysScroll(page);
+    });
+  }
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  for (const { name, fixture, open } of VIEW_STATES.slice(4)) {
+    test(`${name} has no WCAG 2.2 AA violations in the ${scheme} theme`, async ({ page }) => {
+      await useFixture(fixture);
+      await page.emulateMedia({ colorScheme: scheme });
+      await open(page);
+      await expect(page.getByRole("status", { name: /^Loading/ })).toHaveCount(0);
+      const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+      expect(results.violations).toEqual([]);
+    });
+  }
+}
