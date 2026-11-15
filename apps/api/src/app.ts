@@ -10,6 +10,7 @@ import {
 import type { Config } from "./config.ts";
 import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
+import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
 import { usageRoutes } from "./routes/usage.ts";
@@ -119,6 +120,11 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
   });
 
   await app.register(healthRoutes, { prefix: "/api", db });
+  await app.register(factoryHealthRoutes, {
+    prefix: "/api/factory-health",
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    marketplaceDir: config.FOREMAN_MARKETPLACE_DIR,
+  });
   await app.register(workRoutes, {
     prefix: "/api",
     db,

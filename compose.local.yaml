@@ -3,7 +3,9 @@
 # first. The database has no host port and only the Compose network can reach
 # it. It accepts connections without a password (trust), so never use these
 # settings for a shared or hosted environment. Only the web port is published,
-# on 127.0.0.1. The config folder and the Foreman data folder are read-only.
+# on 127.0.0.1. The config folder, the Foreman data folder and the Marketplace
+# folder are read-only. FOREMAN_MARKETPLACE_DIR is optional: when it is empty,
+# the API gets an empty volume and reads no `directory` Marketplace.
 services:
   db:
     image: postgres:18-alpine
@@ -38,9 +40,13 @@ services:
       CORS_ORIGINS: http://127.0.0.1:${LOCAL_PORT:-47100},http://localhost:${LOCAL_PORT:-47100}
       FOREMAN_CLAUDE_DIR: /mnt/claude
       FOREMAN_DATA_DIR: /mnt/foreman
+      FOREMAN_MARKETPLACE_DIR: ${FOREMAN_MARKETPLACE_DIR:-}
     volumes:
       - ${FOREMAN_CLAUDE_DIR:?run pnpm local:up}:/mnt/claude:ro
       - ${FOREMAN_DATA_DIR:?run pnpm local:up}:/mnt/foreman:ro
+      # The same path in the container as on the host, so that the `installLocation`
+      # in known_marketplaces.json is the path in the container.
+      - ${FOREMAN_MARKETPLACE_DIR:-marketplace-none}:${FOREMAN_MARKETPLACE_DIR:-/mnt/marketplace-none}:ro
     secrets:
       - foreman_tokens
     depends_on:
@@ -69,3 +75,4 @@ secrets:
 
 volumes:
   db-data:
+  marketplace-none:
