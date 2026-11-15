@@ -1,11 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { fetchUsageBreakdown, fetchUsageSeries, type UsageQuery } from "../api.ts";
+import {
+  fetchUsageBreakdown,
+  fetchUsageLimits,
+  fetchUsageSeries,
+  type UsageQuery,
+} from "../api.ts";
 import { browserTimeZone, formatDay } from "../format/index.ts";
 import { useScope } from "../scope/index.ts";
 import { FilterBar, rangeName } from "./FilterBar.tsx";
+import { LimitHistory, LimitTiles } from "./LimitPanels.tsx";
+import { limitsTo } from "./limits.ts";
 import { TokensTile, UsageOverTime } from "./Panels.tsx";
 import {
+  addDays,
   effectiveGrain,
   localDay,
   relativeRangeValue,
@@ -24,7 +32,9 @@ export function UsagePage() {
     void queryClient.invalidateQueries({ queryKey: PANEL_KEY });
   }, [queryClient]);
 
-  const resolved = resolveRange(state.range, localDay(new Date()));
+  const now = new Date();
+  const today = localDay(now);
+  const resolved = resolveRange(state.range, today);
   const { grain, tooLong } = effectiveGrain(resolved, state.grain);
   const timeZone = browserTimeZone();
   const query: UsageQuery = { ...resolved, tz: timeZone, client: scope };
@@ -40,6 +50,18 @@ export function UsagePage() {
     queryKey: [...PANEL_KEY, "series", query, grain],
     queryFn: ({ signal }) => fetchUsageSeries(query, grain, signal),
     enabled,
+  });
+
+  // Limit windows are plan-wide: a client scope sends no request to /limits.
+  const limitsQuery = {
+    from: resolved.from,
+    to: limitsTo(resolved.to, today, addDays(today, 7)),
+    tz: timeZone,
+  };
+  const limits = useQuery({
+    queryKey: [...PANEL_KEY, "limits", limitsQuery],
+    queryFn: ({ signal }) => fetchUsageLimits(limitsQuery, signal),
+    enabled: enabled && scope === null,
   });
 
   if (unknownClient) return null;
@@ -65,11 +87,16 @@ export function UsagePage() {
       ) : null}
       <div className="tiles">
         <TokensTile query={totals} rangeLabel={rangeLabel} />
-        {scope === null ? null : (
+        {scope === null ? (
+          <LimitTiles query={limits} now={now} />
+        ) : (
           <p className="note">Limit windows are plan-wide. They show only in the scope All.</p>
         )}
       </div>
       <UsageOverTime query={series} metric={state.metric} grain={grain} />
+      {scope === null ? (
+        <LimitHistory query={limits} now={now} includesToday={resolved.to === today} />
+      ) : null}
       <p className="muted">Times in {timeZone}</p>
     </>
   );
