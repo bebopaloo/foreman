@@ -349,8 +349,8 @@ describe("no usage in the range", () => {
       series: days().map((bucket) => ({ ...bucket, turns: 0, inputTokens: 0 })),
     });
     renderApp();
-    // The tokens tile, Usage over time and Cache efficiency use this sentence.
-    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(3);
+    // The tokens tile, Usage over time, Usage by dimension and Cache efficiency use this sentence.
+    expect(await screen.findAllByText("No usage in this range in this scope.")).toHaveLength(4);
   });
 });
 
