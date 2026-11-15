@@ -15,6 +15,7 @@ import { z } from "zod";
 import { originGuard } from "../host-check.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
 import { bucketStarts, findProjectKey, queryBreakdown, querySeries } from "../usage/queries.ts";
+import type { PriceTable } from "../usage/prices.ts";
 import type { Refresher } from "../usage/refresh.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
@@ -22,6 +23,8 @@ const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).
 export interface UsageOptions {
   db: Database;
   refresher: Refresher;
+  /** The list prices, read at start-up. */
+  priceTable: PriceTable;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
 }
@@ -29,7 +32,7 @@ export interface UsageOptions {
 // Foreman has no sign-in: the loopback bind and the Host check are its access control.
 export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
   app,
-  { db, refresher, allowedOrigins },
+  { db, refresher, priceTable, allowedOrigins },
   done,
 ) => {
   app.get(
@@ -107,7 +110,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       if (projectKey === undefined) {
         return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
       }
-      return { buckets: await querySeries(db, range, grain, projectKey) };
+      return querySeries(db, priceTable, range, grain, projectKey);
     },
   );
 
@@ -126,7 +129,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       if (projectKey === undefined) {
         return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
       }
-      return queryBreakdown(db, range, dimension, limit, projectKey);
+      return queryBreakdown(db, priceTable, range, dimension, limit, projectKey);
     },
   );
 

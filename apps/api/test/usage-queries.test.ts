@@ -227,6 +227,8 @@ describe("GET /api/usage/breakdown", () => {
           cacheWriteTokens: 0,
           cacheReadTokens: 10,
           turns: 2,
+          estimate: null,
+          unpricedTurns: 2,
         },
         {
           key: "m-small",
@@ -236,6 +238,8 @@ describe("GET /api/usage/breakdown", () => {
           cacheWriteTokens: 0,
           cacheReadTokens: 0,
           turns: 1,
+          estimate: null,
+          unpricedTurns: 1,
         },
       ],
       totals: {
@@ -244,8 +248,15 @@ describe("GET /api/usage/breakdown", () => {
         cacheWriteTokens: 0,
         cacheReadTokens: 10,
         turns: 3,
+        estimate: null,
+        unpricedTurns: 3,
       },
       rowCount: 2,
+      unpricedModels: [
+        { model: "m-big (fast)", turns: 2 },
+        { model: "m-small", turns: 1 },
+      ],
+      note: expect.stringContaining("List-price estimate") as unknown,
     });
   });
 

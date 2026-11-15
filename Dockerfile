@@ -32,6 +32,7 @@ RUN pnpm install --frozen-lockfile --prod
 COPY packages/db packages/db
 COPY packages/shared packages/shared
 COPY apps/api/src apps/api/src
+COPY data data
 USER node
 EXPOSE 3000
 CMD ["node", "apps/api/src/server.ts"]
