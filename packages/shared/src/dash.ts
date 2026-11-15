@@ -102,6 +102,21 @@ export const ReviewHealth = z
   .strict();
 export type ReviewHealth = z.infer<typeof ReviewHealth>;
 
+/** The count of cached issues in each stage of the pipeline strip. */
+export const PipelineCounts = z
+  .object({
+    spec: z.number().int().min(0),
+    issues: z.number().int().min(0),
+    ready: z.number().int().min(0),
+    inProgress: z.number().int().min(0),
+    inReview: z.number().int().min(0),
+    blocked: z.number().int().min(0),
+    done: z.number().int().min(0),
+    release: z.number().int().min(0),
+  })
+  .strict();
+export type PipelineCounts = z.infer<typeof PipelineCounts>;
+
 export const DashResponse = z
   .object({
     run: z
@@ -118,6 +133,36 @@ export const DashResponse = z
     /** The newest run in scope, or null with no run in the last 30 days. */
     lastRun: LastRun.nullable(),
     reviewHealth: ReviewHealth,
+    /** The numbers of the tiles. The first-round pass rate is in `reviewHealth`. */
+    tiles: z
+      .object({
+        /** The builds of the last run, or null with no run. */
+        builds: z.number().int().min(0).nullable(),
+        /** The most builds at one time in the last run, or null with no run. */
+        peak: z.number().int().min(0).nullable(),
+        merged: z.number().int().min(0).nullable(),
+        /** The items that wait for the Operator, or null when no repo in scope is connected. */
+        waits: z.number().int().min(0).nullable(),
+      })
+      .strict(),
+    /** The running builds from the Work cache, or null when no repo in scope is connected. */
+    running: z
+      .object({
+        count: z.number().int().min(0),
+        /** The count of build slots. Only in the scope "All", and only while a run is in progress. */
+        slotLimit: z.number().int().positive().nullable(),
+      })
+      .strict()
+      .nullable(),
+    /** The pipeline strip, or null when no repo in scope is connected. */
+    pipeline: PipelineCounts.nullable(),
+    /** The repos in scope with Work cache rows, and those with none or with a fetch error. */
+    complete: z
+      .object({
+        connectedRepos: z.number().int().min(0),
+        missingRepos: z.number().int().min(0),
+      })
+      .strict(),
     /** The state of the two factory folders. */
     sources: z.object({ runs: FolderState, controls: FolderState }).strict(),
     skipped: z

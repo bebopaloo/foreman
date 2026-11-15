@@ -6,6 +6,14 @@ import { readRepoList, type RepoListResult } from "../work/repo-list.ts";
 import { readControlEvents, type ControlEventsRead } from "./control-events.ts";
 import type { SkippedFile } from "./jsonl-window.ts";
 import { readNightLog, readRunLock, type NightLogRead, type RunLockRead } from "./night-log.ts";
+import {
+  BUILD_SLOTS,
+  pipelineCounts,
+  runningBuilds,
+  waitsTotal,
+  type CachedIssue,
+  type CachedPullRequest,
+} from "./pipeline.ts";
 import { reviewHealth, type ConnectedRepo } from "./review-health.ts";
 import { folderLabel, runsInWindow, type Run, type RunRepo, type RunScope } from "./runs.ts";
 
@@ -20,12 +28,51 @@ export interface DashSources {
   factoryLogins: ReadonlySet<string>;
   /** The repos with a connected forge in the Work cache, by repo ID: the counts of factory pull requests, or null. */
   connected: Map<string, { reviewed: number; unreviewed: number } | null>;
+  work: WorkCache;
+}
+
+/** The Work cache rows that the pipeline strip, the running builds and the Waits total use. */
+export interface WorkCache {
+  /** The fetch state of the tracker role of each cached repo, by repo ID. */
+  trackerStates: Map<string, string | null>;
+  issues: CachedIssue[];
+  pullRequests: CachedPullRequest[];
 }
 
 export interface DashRead {
   response: DashResponse;
   /** The files with skipped lines: the log shows the names and the counts, never a line. */
   reports: { folder: "runs" | "controls"; files: SkippedFile[] }[];
+}
+
+async function readWorkCache(db: Database): Promise<WorkCache> {
+  const [repos, issues, pulls] = await Promise.all([
+    db
+      .select({ id: schema.workRepos.id, trackerState: schema.workRepos.trackerState })
+      .from(schema.workRepos),
+    db
+      .select({
+        repoId: schema.workIssues.repoId,
+        state: schema.workIssues.state,
+        issueState: schema.workIssues.issueState,
+        labels: schema.workIssues.labels,
+        hasChildren: sql<boolean>`cardinality(${schema.workIssues.children}) > 0`,
+      })
+      .from(schema.workIssues),
+    db
+      .select({
+        repoId: schema.workPullRequests.repoId,
+        state: schema.workPullRequests.state,
+        baseBranch: schema.workPullRequests.baseBranch,
+      })
+      .from(schema.workPullRequests)
+      .where(eq(schema.workPullRequests.state, "open")),
+  ]);
+  return {
+    trackerStates: new Map(repos.map((repo) => [repo.id, repo.trackerState])),
+    issues,
+    pullRequests: pulls,
+  };
 }
 
 async function readParents(db: Database): Promise<Set<string>> {
@@ -92,15 +139,16 @@ export async function readDashSources(
   factoryLogins: readonly string[] = [],
 ): Promise<DashSources> {
   const logins = new Set(factoryLogins.map((login) => login.toLowerCase()));
-  const [nightLog, lock, controls, repoList, parents, connected] = await Promise.all([
+  const [nightLog, lock, controls, repoList, parents, connected, work] = await Promise.all([
     readNightLog(claudeDir, now),
     readRunLock(claudeDir, now),
     readControlEvents(claudeDir, now),
     readRepoList(claudeDir),
     readParents(db),
     readConnected(db, logins),
+    readWorkCache(db),
   ]);
-  return { nightLog, lock, controls, repoList, parents, factoryLogins: logins, connected };
+  return { nightLog, lock, controls, repoList, parents, factoryLogins: logins, connected, work };
 }
 
 /** The repo of a night log line: the repo list entry whose `path` is the line's `repo`. */
@@ -128,7 +176,7 @@ function lastRunOf(
   { nightLog, lock, repoList, parents }: DashSources,
   scope: RunScope,
   now: Date,
-): DashResponse["lastRun"] {
+): { lastRun: DashResponse["lastRun"]; peak: number } {
   const [run]: (Run | undefined)[] = runsInWindow({
     entries: nightLog.entries,
     repoOf: repoResolver(repoList),
@@ -137,8 +185,8 @@ function lastRunOf(
     lockRunId: lock.state === "held" && !lock.stale ? lock.runId : null,
     now,
   });
-  if (run === undefined) return null;
-  return {
+  if (run === undefined) return { lastRun: null, peak: 0 };
+  const lastRun = {
     runId: run.runId,
     start: run.start.toISOString(),
     end: run.end.toISOString(),
@@ -156,6 +204,7 @@ function lastRunOf(
       lane: build.lane,
     })),
   };
+  return { lastRun, peak: run.peak };
 }
 
 /** The repos of the repo list in scope that have a forge name. */
@@ -198,6 +247,44 @@ function reviewHealthOf(
   });
 }
 
+/** The data of the forge sections, from the Work cache rows of the connected repos in scope. */
+function workOf(
+  { repoList, work }: DashSources,
+  scope: RunScope,
+  runState: DashResponse["run"]["state"],
+): Pick<DashResponse, "tiles" | "running" | "pipeline" | "complete"> {
+  const entries = reposInScope(repoList, scope);
+  const connected = entries.filter((entry) => hasCacheRows(work.trackerStates.get(entry.id)));
+  const ids = new Set(connected.map((entry) => entry.id));
+  const complete = {
+    connectedRepos: connected.length,
+    missingRepos: entries.length - connected.length,
+  };
+  if (connected.length === 0) {
+    return { tiles: noTiles, running: null, pipeline: null, complete };
+  }
+  const issues = work.issues.filter((issue) => ids.has(issue.repoId));
+  const pulls = work.pullRequests.filter((pull) => ids.has(pull.repoId));
+  const enabled = new Set(connected.filter((entry) => entry.enabled).map((entry) => entry.id));
+  return {
+    tiles: { ...noTiles, waits: waitsTotal(issues, pulls) },
+    running: {
+      count: runningBuilds(issues, enabled),
+      // A client scope shows no slot count, so that the load of other clients does not show.
+      slotLimit: scope.kind === "all" && runState === "in_progress" ? BUILD_SLOTS : null,
+    },
+    pipeline: pipelineCounts(issues, pulls),
+    complete,
+  };
+}
+
+const noTiles = { builds: null, peak: null, merged: null, waits: null };
+
+/** A repo has cache rows after a fetch that did not fail. */
+function hasCacheRows(state: string | null | undefined): boolean {
+  return state === "ok" || state === "partial" || state === "connected";
+}
+
 function runOf(lock: RunLockRead): DashResponse["run"] {
   if (lock.state === "unreadable") {
     return { state: "unreadable", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null };
@@ -219,11 +306,23 @@ export function buildDash(
   now: Date = new Date(),
 ): DashRead {
   const { nightLog, lock, controls } = sources;
+  const run = runOf(lock);
+  const { lastRun, peak } = lastRunOf(sources, scope, now);
+  const forge = workOf(sources, scope, run.state);
   return {
     response: {
-      run: runOf(lock),
-      lastRun: lastRunOf(sources, scope, now),
+      run,
+      lastRun,
       reviewHealth: reviewHealthOf(sources, scope),
+      tiles: {
+        ...forge.tiles,
+        builds: lastRun?.builds.length ?? null,
+        peak: lastRun === null ? null : peak,
+        merged: lastRun?.builds.filter((build) => build.result === "merged").length ?? null,
+      },
+      running: forge.running,
+      pipeline: forge.pipeline,
+      complete: forge.complete,
       sources: { runs: nightLog.folder, controls: controls.folder },
       skipped: {
         nightLogLines: nightLog.skippedLines,
