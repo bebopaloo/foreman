@@ -2,7 +2,8 @@ import {
   Bar,
   BarChart as RechartsBarChart,
   CartesianGrid,
-  Cell,
+  Rectangle,
+  type BarShapeProps,
   ReferenceLine,
   Tooltip,
   XAxis,
@@ -35,6 +36,12 @@ export interface LimitChartProps {
   height?: number;
   /** A fixed width in pixels. The default follows the width of the container. */
   width?: number;
+}
+
+/** A bar in the colour of its band. The inline style wins over the default bar colour of the CSS. */
+function barShape(props: BarShapeProps) {
+  const color = LIMIT_COLORS[limitBand(typeof props.value === "number" ? props.value : 0)];
+  return <Rectangle {...props} fill={color} style={{ fill: color }} />;
 }
 
 const percent = (value: number): string => `${String(Math.round(value))}%`;
@@ -81,14 +88,7 @@ export function LimitChart({ title, data, height = 220, width }: LimitChartProps
             wrapperClassName="bar-chart-tooltip"
             contentStyle={{ background: "transparent", border: 0, padding: 0 }}
           />
-          <Bar dataKey="value" name="Peak used" isAnimationActive={false}>
-            {points.map((point, index) => (
-              <Cell
-                key={`${point.label}-${index.toString()}`}
-                fill={LIMIT_COLORS[limitBand(point.value)]}
-              />
-            ))}
-          </Bar>
+          <Bar dataKey="value" name="Peak used" isAnimationActive={false} shape={barShape} />
         </RechartsBarChart>
       </div>
       <ul className="limit-legend" aria-hidden="true">

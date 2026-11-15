@@ -65,8 +65,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const latest = (fiveHour: LimitsResponse["latest"]["five_hour"], sevenDay = null) =>
-  ({ windows: [], latest: { five_hour: fiveHour, seven_day: sevenDay } }) as LimitsResponse;
+const latest = (
+  fiveHour: LimitsResponse["latest"]["five_hour"],
+  sevenDay: LimitsResponse["latest"]["seven_day"] = null,
+) => ({ windows: [], latest: { five_hour: fiveHour, seven_day: sevenDay } }) as LimitsResponse;
 
 describe("the latest Limit readings", () => {
   it("shows the percentage, the reset time and the reading time in each tile", async () => {
@@ -157,6 +159,12 @@ describe("no limit reading", () => {
   });
 });
 
+function row(rows: HTMLElement[], index: number): HTMLElement {
+  const found = rows[index];
+  if (found === undefined) throw new Error(`No row ${String(index)}`);
+  return found;
+}
+
 describe("Limit history", () => {
   const peaks = [35, 52, 64, 71, 88, 90, 93, 60, 97, 45, 91, 69];
   const history: LimitsResponse = {
@@ -175,9 +183,9 @@ describe("Limit history", () => {
     const table = await screen.findByRole("table", { name: "7-day windows" });
     const rows = within(table).getAllByRole("row");
     expect(rows).toHaveLength(13);
-    expect(within(rows[1] as HTMLElement).getByText("under 70%")).toBeInTheDocument();
-    expect(within(rows[4] as HTMLElement).getByText("70% or more")).toBeInTheDocument();
-    expect(within(rows[7] as HTMLElement).getByText("90% or more")).toBeInTheDocument();
+    expect(within(row(rows, 1)).getByText("under 70%")).toBeInTheDocument();
+    expect(within(row(rows, 4)).getByText("70% or more")).toBeInTheDocument();
+    expect(within(row(rows, 7)).getByText("90% or more")).toBeInTheDocument();
     expect(
       screen.getByText("4 of the last 12 7-day windows reached 90% or more"),
     ).toBeInTheDocument();
