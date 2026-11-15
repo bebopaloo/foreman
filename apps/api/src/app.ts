@@ -142,6 +142,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
+    factoryLogins: config.FOREMAN_FACTORY_LOGINS,
     ...(now === undefined ? {} : { now }),
   });
   await app.register(usageRoutes, {
