@@ -77,7 +77,7 @@ async function readWorkCache(db: Database): Promise<WorkCache> {
   };
 }
 
-async function readParents(db: Database): Promise<Set<string>> {
+export async function readParents(db: Database): Promise<Set<string>> {
   const rows = await db
     .select({ repoId: schema.workIssues.repoId, number: schema.workIssues.number })
     .from(schema.workIssues)

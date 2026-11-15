@@ -130,6 +130,8 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api/factory-health",
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     marketplaceDir: config.FOREMAN_MARKETPLACE_DIR,
+    db,
+    ...(now === undefined ? {} : { now }),
   });
   await app.register(workRoutes, {
     prefix: "/api",

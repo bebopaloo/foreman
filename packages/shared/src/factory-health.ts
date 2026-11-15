@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ClientName } from "./client.ts";
+import { BuildResult } from "./dash.ts";
 import { pageQueryShape, pageResponseSchema } from "./paging.ts";
 
 export const PLUGINS_DEFAULT_LIMIT = 100;
@@ -59,3 +61,64 @@ export const PluginVersionsResponse = pageResponseSchema(PluginRow)
   })
   .strict();
 export type PluginVersionsResponse = z.infer<typeof PluginVersionsResponse>;
+
+export const RUNS_DEFAULT_LIMIT = 30;
+export const RUNS_MAX_LIMIT = 100;
+
+/** `client` is the Client scope; the route holds no data of other clients. */
+export const FactoryRunsQuery = z
+  .object({
+    client: ClientName.optional(),
+    ...pageQueryShape({ defaultLimit: RUNS_DEFAULT_LIMIT, maxLimit: RUNS_MAX_LIMIT }),
+  })
+  .strict();
+export type FactoryRunsQuery = z.infer<typeof FactoryRunsQuery>;
+
+/** A build that a run left before its end. */
+export const StoppedItem = z
+  .object({
+    /** The repo ID, or null for a repo folder that is not in the repo list. */
+    repoId: z.string().nullable(),
+    /** `owner/name`, or the last part of the repo folder. */
+    repo: z.string(),
+    issue: z.number().int().positive(),
+    result: z.enum(["in review", "stopped at run end"]),
+    /** From the Work cache. Null when the cache has no row for the issue. */
+    title: z.string().nullable(),
+    link: z.string().nullable(),
+    /** The window start of the first later run with a line for the issue, or null. */
+    resumedBy: z.iso.datetime().nullable(),
+  })
+  .strict();
+export type StoppedItem = z.infer<typeof StoppedItem>;
+
+export const FactoryRunRow = z
+  .object({
+    runId: z.string(),
+    start: z.iso.datetime(),
+    /** The time of the last line, or now for a run in progress. */
+    end: z.iso.datetime(),
+    running: z.boolean(),
+    builds: z.number().int().min(0),
+    /** The count of builds for each result. */
+    results: z.record(BuildResult, z.number().int().min(0)),
+    peak: z.number().int().min(0),
+    /** The count of build slots. Only in the scope "All". */
+    slotLimit: z.number().int().positive().nullable(),
+    skips: z.number().int().min(0),
+    blockedAtSelection: z.number().int().min(0),
+    stoppedItems: z.array(StoppedItem),
+  })
+  .strict();
+export type FactoryRunRow = z.infer<typeof FactoryRunRow>;
+
+export const FactoryRunsResponse = pageResponseSchema(FactoryRunRow)
+  .extend({
+    /** The state of the `runs/` folder. */
+    sources: z.object({ runs: z.enum(["ok", "missing", "unreadable"]) }).strict(),
+    skipped: z
+      .object({ nightLogLines: z.number().int().min(0), files: z.number().int().min(0) })
+      .strict(),
+  })
+  .strict();
+export type FactoryRunsResponse = z.infer<typeof FactoryRunsResponse>;
