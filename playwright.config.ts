@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:net";
 import path from "node:path";
 import { createDatabase, ensureDatabase, migrateDatabase } from "@foreman/db";
 import { defineConfig, devices } from "@playwright/test";
+import { SYNTHETIC_HOST } from "./e2e/fixtures/adapter/host.ts";
 
 // E2E_BASE_URL points the tests at a running preview. Without it, Playwright
 // starts the dev servers itself, on free ports, so two worktrees can run their
@@ -93,6 +94,9 @@ export default defineConfig({
             CORS_ORIGINS: devURL,
             DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
             FOREMAN_CLAUDE_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "claude"),
+            // The synthetic host only: the adapter that the API resolves is the synthetic one, and no
+            // real host is allowed.
+            FOREMAN_ALLOWED_HOSTS: SYNTHETIC_HOST,
             FOREMAN_FACTORY_LOGINS: "synthetic-factory[bot]",
             FOREMAN_DATA_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "data"),
             FOREMAN_PRICE_TABLE: path.join(

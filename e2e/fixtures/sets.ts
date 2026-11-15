@@ -1,4 +1,5 @@
 import { ledgerLongTranscripts, ledgerTranscripts } from "./ledger-transcripts.ts";
+import { ADAPTER_PLUGINS, SYNTHETIC_HOST, type AdapterData } from "./adapter/index.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
@@ -11,6 +12,12 @@ export interface FixtureSet {
   work?: WorkSeed;
   /** The owners (`host/owner`) that have a token in the tokens file. With none, no owner has a token. */
   tokenOwners?: readonly string[];
+  /**
+   * What the synthetic forge and tracker adapter answers, by `owner/name`. With it, the synthetic
+   * adapter plugins are installed in the Claude folder and a real fetch fills the Work cache, so the
+   * set needs no `work` seed. Without it, no plugin is installed and no fetch has an adapter.
+   */
+  adapter?: AdapterData;
   /** True when the set holds transcripts: the Usage index is cleared and read again for it. */
   usage?: boolean;
 }
@@ -521,6 +528,38 @@ const MANY_ISSUES_CACHE: WorkSeed = {
   })),
 };
 
+/** A repo list of repos that the synthetic adapter plugins serve. `host` is the synthetic host by default. */
+function adapterRepoList(
+  repos: readonly { repo: string; client?: string; host?: string }[],
+): string {
+  return JSON.stringify({
+    repos: repos.map(({ repo, client, host }) => ({
+      path: repoFolder(repo),
+      forge: ADAPTER_PLUGINS.forge,
+      tracker: ADAPTER_PLUGINS.tracker,
+      enabled: true,
+      repo,
+      host: host ?? SYNTHETIC_HOST,
+      ...(client === undefined ? {} : { client }),
+    })),
+  });
+}
+
+const FETCHED_APP: AdapterData[string] = {
+  issues: [
+    { number: 21, title: "Fetched export", issueState: "IN PROGRESS" },
+    { number: 22, title: "Fetched sort order", issueState: "READY", relations: { parent: 21 } },
+  ],
+  pullRequests: [
+    {
+      number: 60,
+      title: "Change for the export",
+      head: "21-export",
+      reviewers: ["synthetic-factory[bot]"],
+    },
+  ],
+};
+
 const REVIEWS_OWNERS = [...OWNERS, "github.com/misc"] as const;
 
 /** All four repos connected, with the pull requests 40, 41 and 46 of `acme/app` in the cache. */
@@ -534,6 +573,66 @@ const REVIEWS_CACHE: WorkSeed = {
 };
 
 export const FIXTURE_SETS = {
+  /** Every owner has a token: a real fetch of the synthetic adapter connects both repos. */
+  "fetch-connected": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "acme/site", client: "acme" },
+      ]),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: {
+      "acme/app": FETCHED_APP,
+      "acme/site": { issues: [{ number: 5, title: "Fetched footer", issueState: "TODO" }] },
+    },
+  },
+
+  /** Partly connected: `acme/app` fetches, `acme/site` fails one command, `bebopaloo/tools` has no token. */
+  "fetch-partial": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "acme/site", client: "acme" },
+        { repo: "bebopaloo/tools", client: "bebopaloo" },
+      ]),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`],
+    adapter: {
+      "acme/app": FETCHED_APP,
+      "acme/site": {
+        issues: [{ number: 5, title: "Fetched footer", issueState: "TODO" }],
+        fail: { "issue relations 5": "HTTP 404: Not Found" },
+      },
+      "bebopaloo/tools": {
+        issues: [{ number: 3, title: "Fetched guide", issueState: "TODO" }],
+      },
+    },
+  },
+
+  /** No owner has a token: the fetch calls no adapter command. */
+  "fetch-not-connected": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList([{ repo: "acme/app", client: "acme" }]),
+    }),
+    adapter: { "acme/app": FETCHED_APP },
+  },
+
+  /** A repo on the real `github.com` has a token and an adapter, but the host is not allowed. */
+  "fetch-real-host": {
+    files: () => ({
+      "factory/repos.json": adapterRepoList([
+        { repo: "acme/app", client: "acme" },
+        { repo: "acme/real", client: "acme", host: "github.com" },
+      ]),
+    }),
+    tokenOwners: [`${SYNTHETIC_HOST}/acme`, "github.com/acme"],
+    adapter: {
+      "acme/app": FETCHED_APP,
+      "acme/real": { issues: [{ number: 9, title: "Real host issue" }] },
+    },
+  },
+
   work: {
     files: (now) => {
       const time = stamp(new Date(now.getTime() - 20 * MINUTE_MS));
