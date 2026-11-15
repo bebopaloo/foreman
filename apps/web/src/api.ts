@@ -1,4 +1,5 @@
 import {
+  DashResponse,
   HealthResponse,
   RefreshStatusResponse,
   WorkClientsResponse,
@@ -55,3 +56,10 @@ export const refreshWork = (): Promise<WorkStatusResponse> =>
 
 export const refreshUsage = (): Promise<RefreshStatusResponse> =>
   postJson("/api/usage/refresh", RefreshStatusResponse);
+
+export const fetchDash = (client: string | null, signal?: AbortSignal): Promise<DashResponse> =>
+  getJson(
+    client === null ? "/api/dash" : `/api/dash?${new URLSearchParams({ client }).toString()}`,
+    DashResponse,
+    signal,
+  );
