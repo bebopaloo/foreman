@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "@playwright/test";
-import { FIXTURE_SETS, type FixtureName } from "./sets.ts";
+import { FIXTURE_SETS, type FixtureName, type FixtureSet } from "./sets.ts";
 import { clearUsageIndex } from "./usage-seed.ts";
 import { seedWorkCache } from "./work-seed.ts";
 
@@ -72,12 +72,7 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
   test.skip(databaseUrl === undefined || apiPort === undefined, DEV_ONLY);
   if (databaseUrl === undefined || apiPort === undefined) return;
 
-  const set: {
-    files(now: Date): Record<string, string>;
-    usage?: boolean;
-    work?: Parameters<typeof seedWorkCache>[1];
-    tokenOwners?: readonly string[];
-  } = FIXTURE_SETS[name];
+  const set: FixtureSet = FIXTURE_SETS[name];
   await waitForFetchIdle(apiPort);
   if (set.usage === true) {
     await waitForUsageIdle(apiPort);
@@ -96,6 +91,6 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
       Object.fromEntries((set.tokenOwners ?? []).map((owner) => [owner, "synthetic-token"])),
     ),
   );
-  await seedWorkCache(databaseUrl, set.work, now);
+  await seedWorkCache(databaseUrl, typeof set.work === "function" ? set.work(now) : set.work, now);
   if (set.usage === true) await refreshUsage(apiPort);
 }

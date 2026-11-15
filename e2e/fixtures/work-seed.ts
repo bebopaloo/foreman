@@ -58,8 +58,33 @@ export interface SeedReview {
 /** A cached repo config of a repo: the parsed fields only. */
 export interface SeedRepoConfig {
   repo: string;
-  /** The Control modules that the repo turns on. */
+  /** The Control modules that the repo turns on. With none, the repo has no `controls` key. */
   modules: readonly string[];
+  /** The Control profile. The default is `synthetic`. */
+  profile?: string;
+  /** The `releases` key of the repo config. */
+  releases?: { productionBranch: string; switchedOver: string };
+}
+
+/** A cached Forge file of a Control module: its parsed fields only. */
+export interface SeedForgeFile {
+  repo: string;
+  path: string;
+  fields: unknown;
+  /** The skipped entries of the parser. */
+  skipped?: { position: number; field: string }[];
+}
+
+/** A tracker Release with its forge release and its Release record. */
+export interface SeedRelease {
+  repo: string;
+  name: string;
+  state: "open" | "released";
+  issueNumbers: number[];
+  /** The asset names of the forge release. With none given, the Release has no forge release row. */
+  assetNames?: string[];
+  /** The parsed fields of the Release record, as the API keeps them. */
+  record?: unknown;
 }
 
 /** The synthetic Work cache of one fixture set. */
@@ -70,6 +95,8 @@ export interface WorkSeed {
   reviews?: SeedReview[];
   statuses?: SeedStatus[];
   repoConfigs?: SeedRepoConfig[];
+  forgeFiles?: SeedForgeFile[];
+  releases?: SeedRelease[];
 }
 
 export function idOf(fullName: string): string {
@@ -87,6 +114,7 @@ export async function seedWorkCache(
   try {
     await database.db.transaction(async (tx) => {
       await tx.delete(schema.workForgeFiles);
+      await tx.delete(schema.workReleaseRecords);
       await tx.delete(schema.workCommitStatuses);
       await tx.delete(schema.workReviews);
       await tx.delete(schema.workPullRequests);
@@ -109,6 +137,9 @@ export async function seedWorkCache(
           forgeState: state,
           trackerState: state,
           lastGoodFetchAt: state === "ok" || state === "partial" ? now : null,
+          ...(state === "ok" || state === "partial"
+            ? { defaultBranch: "main", fileBranch: "main", repoState: "ok" }
+            : {}),
         });
       }
       for (const issue of seed.issues ?? []) {
@@ -161,14 +192,65 @@ export async function seedWorkCache(
         await tx.insert(schema.workForgeFiles).values({
           repoId: idOf(config.repo),
           path: ".claude/factory.json",
+          ref: "main",
+          sha: "c".repeat(40),
           fetchedAt: now,
           state: "ok",
           fields: {
             mainBranch: null,
-            controls: { state: "ok", profile: "synthetic", modules: config.modules },
-            releases: null,
+            rules: { state: "ok", value: [] },
+            compliance: { state: "ok", value: [] },
+            stackPack: { state: "ok", value: null },
+            factoryCoreVersion: { state: "ok", value: null },
+            controls:
+              config.modules.length === 0
+                ? { state: "none" }
+                : { state: "ok", profile: config.profile ?? "synthetic", modules: config.modules },
+            releases: config.releases ?? null,
           },
         });
+      }
+      for (const file of seed.forgeFiles ?? []) {
+        await tx.insert(schema.workForgeFiles).values({
+          repoId: idOf(file.repo),
+          path: file.path,
+          ref: "main",
+          sha: "abcdef0123456789abcdef0123456789abcdef01",
+          size: 100,
+          fetchedAt: now,
+          state: "ok",
+          skipped: file.skipped ?? [],
+          fields: file.fields,
+        });
+      }
+      for (const release of seed.releases ?? []) {
+        const repo = idOf(release.repo);
+        await tx.insert(schema.workReleases).values({
+          repoId: repo,
+          name: release.name,
+          state: release.state,
+          link: `https://github.com/${release.repo}/milestone/${release.name.replace(/\D/g, "")}`,
+          issueNumbers: release.issueNumbers,
+        });
+        if (release.assetNames !== undefined) {
+          await tx.insert(schema.workForgeReleases).values({
+            repoId: repo,
+            tag: release.name,
+            assetNames: release.assetNames,
+            link: `https://github.com/${release.repo}/releases/tag/${release.name}`,
+          });
+        }
+        if (release.record !== undefined) {
+          await tx.insert(schema.workReleaseRecords).values({
+            repoId: repo,
+            tag: release.name,
+            assetName: `record-${release.name}.json`,
+            size: 100,
+            fetchedAt: now,
+            state: "ok",
+            fields: release.record,
+          });
+        }
       }
       for (const [position, review] of (seed.reviews ?? []).entries()) {
         await tx.insert(schema.workReviews).values({

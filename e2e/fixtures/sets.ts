@@ -1,3 +1,4 @@
+import { controlsFiles, controlsWork } from "./controls-files.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
@@ -6,8 +7,8 @@ import type { WorkSeed } from "./work-seed.ts";
 export interface FixtureSet {
   /** The files below the Claude folder, by relative path. `now` is the time of the test. */
   files(now: Date): Record<string, string>;
-  /** The Work cache. With none, the cache is empty. */
-  work?: WorkSeed;
+  /** The Work cache, or a function of the time of the test. With none, the cache is empty. */
+  work?: WorkSeed | ((now: Date) => WorkSeed);
   /** The owners (`host/owner`) that have a token in the tokens file. With none, no owner has a token. */
   tokenOwners?: readonly string[];
   /** True when the set holds transcripts: the Usage index is cleared and read again for it. */
@@ -700,6 +701,43 @@ export const FIXTURE_SETS = {
       ],
     },
     tokenOwners: REVIEWS_OWNERS,
+  },
+
+  /** The Controls view: Control modules, 3 escalations, 4 Waivers, 4 Releases and the security artefacts of `acme/app`. */
+  controls: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...controlsFiles(now) }),
+    work: (now) => controlsWork(now, REVIEWS_CACHE),
+    tokenOwners: REVIEWS_OWNERS,
+  },
+
+  /** The Controls data, with `acme/site` not connected: no token, so no cache rows. */
+  "controls-incomplete": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...controlsFiles(now) }),
+    work: (now) => {
+      const work = controlsWork(now, REVIEWS_CACHE);
+      return {
+        ...work,
+        repos: REPOS.map(({ repo, client }) => ({
+          fullName: repo,
+          client,
+          ...(repo === "acme/site" ? { state: "not connected: no token" } : {}),
+        })),
+        repoConfigs: (work.repoConfigs ?? []).filter(({ repo }) => repo !== "acme/site"),
+      };
+    },
+    tokenOwners: REVIEWS_OWNERS,
+  },
+
+  /** The Control events with no token for any repo. */
+  "controls-not-connected": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...controlsFiles(now) }),
+    work: {
+      repos: REPOS.map(({ repo, client }) => ({
+        fullName: repo,
+        client,
+        state: "not connected: no token",
+      })),
+    },
   },
 
   /** No repo list and no factory folder: Foreman has no client and no data. */

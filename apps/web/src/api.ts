@@ -1,5 +1,9 @@
 import {
   BreakdownResponse,
+  ControlsRegisterResponse,
+  ControlsReleasesResponse,
+  ControlsResponse,
+  ControlsWaiversResponse,
   DashResponse,
   HealthResponse,
   RefreshStatusResponse,
@@ -188,3 +192,42 @@ export const fetchReviewsPullRequests = (
     signal,
   );
 };
+
+const scopedPath = (path: string, client: string | null, cursor: string | null = null): string => {
+  const params = new URLSearchParams();
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return text === "" ? path : `${path}?${text}`;
+};
+
+/** The Controls document. */
+export const fetchControls = (
+  client: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsResponse> =>
+  getJson(scopedPath("/api/controls", client), ControlsResponse, signal);
+
+/** One page of the Waiver rows of the Controls view. */
+export const fetchControlsWaivers = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsWaiversResponse> =>
+  getJson(scopedPath("/api/controls/waivers", client, cursor), ControlsWaiversResponse, signal);
+
+/** One page of the Release rows of the Controls view. */
+export const fetchControlsReleases = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsReleasesResponse> =>
+  getJson(scopedPath("/api/controls/releases", client, cursor), ControlsReleasesResponse, signal);
+
+/** One page of the Control register list of the Controls view. */
+export const fetchControlsRegister = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsRegisterResponse> =>
+  getJson(scopedPath("/api/controls/register", client, cursor), ControlsRegisterResponse, signal);
