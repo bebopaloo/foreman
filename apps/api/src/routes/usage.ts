@@ -11,10 +11,12 @@ import {
   SeriesQuery,
   SeriesResponse,
 } from "@foreman/shared";
-import { eq, max, min } from "drizzle-orm";
+import { eq, inArray, max, min } from "drizzle-orm";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { originGuard } from "../host-check.ts";
+import { clientProjectKeys } from "../work/clients.ts";
+import { readRepoList } from "../work/repo-list.ts";
 import { queryLimits } from "../usage/limits.ts";
 import { labelProjects, projectId } from "../usage/projects.ts";
 import { bucketStarts, findProjectKey, queryBreakdown, querySeries } from "../usage/queries.ts";
@@ -28,6 +30,8 @@ export interface UsageOptions {
   refresher: Refresher;
   /** The list prices, read at start-up. */
   priceTable: PriceTable;
+  /** The folder of the repo list, which names the client of each Project. */
+  claudeDir: string;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
 }
@@ -35,7 +39,7 @@ export interface UsageOptions {
 // Foreman has no sign-in: the loopback bind and the Host check are its access control.
 export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
   app,
-  { db, refresher, priceTable, allowedOrigins },
+  { db, refresher, priceTable, claudeDir, allowedOrigins },
   done,
 ) => {
   app.get(
@@ -62,9 +66,16 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
     "/projects",
     {
       config: { public: true },
-      schema: { querystring: ProjectsQuery, response: { 200: ProjectsResponse } },
+      schema: {
+        querystring: ProjectsQuery,
+        response: { 200: ProjectsResponse, 400: RejectedResponse },
+      },
     },
-    async (request) => {
+    async (request, reply) => {
+      const clientKeys = await resolveClient(request.query.client);
+      if (clientKeys === undefined) {
+        return reply.status(400).send({ error: "Unknown client", requestId: request.id });
+      }
       const rows = await db
         .select({
           key: schema.turns.projectKey,
@@ -74,6 +85,7 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
         })
         .from(schema.turns)
         .leftJoin(schema.projects, eq(schema.projects.projectKey, schema.turns.projectKey))
+        .where(clientKeys === null ? undefined : inArray(schema.turns.projectKey, clientKeys))
         .groupBy(schema.turns.projectKey, schema.projects.noRepo);
       const refs = rows.map((row) => ({ key: row.key, noRepo: row.noRepo ?? false }));
       const labels = labelProjects(refs);
@@ -105,15 +117,15 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       },
     },
     async (request, reply) => {
-      const { grain, ...range } = request.query;
+      const { grain, client, ...range } = request.query;
       if (bucketStarts(range.from, range.to, grain).length > MAX_SERIES_BUCKETS) {
         return reply.status(400).send({ error: "Too many buckets", requestId: request.id });
       }
-      const projectKey = await resolveProject(range.project);
-      if (projectKey === undefined) {
-        return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
+      const scope = await resolveScope(range.project, client);
+      if (typeof scope === "string") {
+        return reply.status(400).send({ error: scope, requestId: request.id });
       }
-      return querySeries(db, priceTable, range, grain, projectKey);
+      return querySeries(db, priceTable, range, grain, scope.projectKey, scope.clientKeys);
     },
   );
 
@@ -127,12 +139,20 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
       },
     },
     async (request, reply) => {
-      const { dimension, limit, ...range } = request.query;
-      const projectKey = await resolveProject(range.project);
-      if (projectKey === undefined) {
-        return reply.status(400).send({ error: "Unknown Project", requestId: request.id });
+      const { dimension, limit, client, ...range } = request.query;
+      const scope = await resolveScope(range.project, client);
+      if (typeof scope === "string") {
+        return reply.status(400).send({ error: scope, requestId: request.id });
       }
-      return queryBreakdown(db, priceTable, range, dimension, limit, projectKey);
+      return queryBreakdown(
+        db,
+        priceTable,
+        range,
+        dimension,
+        limit,
+        scope.projectKey,
+        scope.clientKeys,
+      );
     },
   );
 
@@ -149,6 +169,29 @@ export const usageRoutes: FastifyPluginCallbackZod<UsageOptions> = (
   async function resolveProject(id: string | undefined): Promise<string | null | undefined> {
     if (id === undefined) return null;
     return (await findProjectKey(db, id)) ?? undefined;
+  }
+
+  /** The Project keys of a client, null for "All", undefined for a client that is not in the repo list. */
+  async function resolveClient(client: string | undefined): Promise<string[] | null | undefined> {
+    if (client === undefined) return null;
+    const list = await readRepoList(claudeDir);
+    if (list.status !== "ok") return undefined;
+    return clientProjectKeys(list.repos, client) ?? undefined;
+  }
+
+  /** The filters of a request, or the text of the error when the request names an unknown or foreign scope. */
+  async function resolveScope(
+    project: string | undefined,
+    client: string | undefined,
+  ): Promise<{ projectKey: string | null; clientKeys: string[] | null } | string> {
+    const clientKeys = await resolveClient(client);
+    if (clientKeys === undefined) return "Unknown client";
+    const projectKey = await resolveProject(project);
+    if (projectKey === undefined) return "Unknown Project";
+    if (projectKey !== null && clientKeys !== null && !clientKeys.includes(projectKey)) {
+      return "Project outside the client";
+    }
+    return { projectKey, clientKeys };
   }
   done();
 };

@@ -97,6 +97,7 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
     db,
     refresher: activeRefresher,
     priceTable,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
     allowedOrigins: config.CORS_ORIGINS,
   });
 

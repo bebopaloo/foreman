@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listClients } from "./clients.ts";
+import { clientProjectKeys, listClients } from "./clients.ts";
 import type { RepoEntry } from "./repo-list.ts";
 
 function repo(name: string, client: string | null): RepoEntry {
@@ -41,5 +41,16 @@ describe("listClients", () => {
 
   it("returns no clients for no repos", () => {
     expect(listClients([])).toEqual({ clients: [], unassignedCount: 0 });
+  });
+});
+
+describe("clientProjectKeys", () => {
+  it("returns the paths of the repos of the client", () => {
+    const repos = [repo("a", "acme"), repo("b", "acme"), repo("c", "other")];
+    expect(clientProjectKeys(repos, "acme")).toEqual(["/p/a", "/p/b"]);
+  });
+
+  it("returns null for a client that is not in the list", () => {
+    expect(clientProjectKeys([repo("a", null)], "acme")).toBeNull();
   });
 });
