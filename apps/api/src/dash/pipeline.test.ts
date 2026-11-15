@@ -8,31 +8,13 @@ import {
 } from "./pipeline.ts";
 
 function issue(issueState: string, over: Partial<CachedIssue> = {}): CachedIssue {
-  return {
-    repoId: "r1",
-    number: 1,
-    title: "Synthetic",
-    priority: "medium",
-    link: null,
-    state: "open",
-    issueState,
-    labels: [],
-    hasChildren: false,
-    ...over,
-  };
+  return { repoId: "r1", state: "open", issueState, labels: [], hasChildren: false, ...over };
 }
 
 const many = (count: number, make: () => CachedIssue): CachedIssue[] =>
   Array.from({ length: count }, make);
 
-const production: CachedPullRequest = {
-  repoId: "r1",
-  number: 200,
-  title: "Release",
-  link: null,
-  state: "open",
-  baseBranch: "production",
-};
+const production: CachedPullRequest = { repoId: "r1", state: "open", baseBranch: "production" };
 
 describe("pipelineCounts", () => {
   it("counts each stage from the open issues, and the gate steps of the TODO issues", () => {

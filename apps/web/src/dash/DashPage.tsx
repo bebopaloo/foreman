@@ -8,7 +8,6 @@ import { PipelineStrip } from "./PipelineStrip.tsx";
 import { ReviewHealth } from "./ReviewHealth.tsx";
 import { summariseNow } from "./run-state.ts";
 import { Tiles } from "./Tiles.tsx";
-import { WaitsForYou } from "./WaitsForYou.tsx";
 
 /** The dash asks again each 60 seconds while the tab is visible. The query pauses in a hidden tab. */
 export const DASH_REFRESH_MS = 60_000;
@@ -65,7 +64,10 @@ export function DashPage() {
         )}
       </section>
       {dash.data === undefined ? null : <PipelineStrip dash={dash.data} />}
-      <WaitsForYou dash={dash.data} />
+      <section className="card" aria-labelledby="dash-waits">
+        <h2 id="dash-waits">Waits for you</h2>
+        <p className="muted">Not shown yet.</p>
+      </section>
       <section className="card" aria-labelledby="dash-last-run">
         <h2 id="dash-last-run">Last run</h2>
         <LastRun dash={dash.data} />

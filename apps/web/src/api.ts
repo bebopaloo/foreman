@@ -2,6 +2,7 @@ import {
   BreakdownResponse,
   DashResponse,
   HealthResponse,
+  ProjectsResponse,
   RefreshStatusResponse,
   SessionResponse,
   SessionsResponse,
@@ -98,11 +99,14 @@ export interface UsageQuery {
   tz: string;
   /** The Client scope. Null is "All". */
   client: string | null;
+  /** A Project ID. It limits the usage to this Project. */
+  project?: string;
 }
 
 function usageParams(query: UsageQuery, extra: Record<string, string>): string {
   const params = new URLSearchParams({ from: query.from, to: query.to, tz: query.tz, ...extra });
   if (query.client !== null) params.set("client", query.client);
+  if (query.project !== undefined) params.set("project", query.project);
   return params.toString();
 }
 
@@ -124,6 +128,16 @@ export const fetchUsageSeries = (
   signal?: AbortSignal,
 ): Promise<SeriesResponse> =>
   getJson(`/api/usage/series?${usageParams(query, { grain })}`, SeriesResponse, signal);
+
+export const fetchUsageProjects = (
+  client: string | null,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<ProjectsResponse> => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (client !== null) params.set("client", client);
+  return getJson(`/api/usage/projects?${params.toString()}`, ProjectsResponse, signal);
+};
 
 export interface SessionsQuery {
   /** A calendar day, `YYYY-MM-DD`, in the time zone `tz`. */

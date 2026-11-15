@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { useFixture } from "./fixtures/use-fixture.ts";
-import { HOSTILE_TITLE, type FixtureName } from "./fixtures/sets.ts";
+import type { FixtureName } from "./fixtures/sets.ts";
 
 const WCAG_22_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -232,59 +232,7 @@ test("the strip says that nothing is connected, and the local sections still sho
   await expect(tile(page, "Waits for you")).toContainText("not connected");
 });
 
-const waitsSection = (page: Page) => page.getByRole("region", { name: "Waits for you" });
-
-test("Waits for you lists the items in the order of factory-next, with reasons and sources", async ({
-  page,
-}) => {
-  await useFixture("waits");
-  await page.goto("/?client=acme");
-  const items = waitsSection(page).getByRole("list", { name: "Items that wait for you" });
-  await expect(items.getByRole("listitem")).toHaveCount(7);
-  const rows = await items.getByRole("listitem").allInnerTexts();
-  const refs = rows.map((row) => /#\d+/.exec(row)?.[0]);
-  expect(refs).toEqual(["#50", "#51", "#60", "#52", "#55", "#53", "#54"]);
-  expect(rows[0]).toContain("auto mode refused the migration");
-  expect(rows[0]).toContain("source: night log");
-  expect(rows[1]).toContain("see the comment in the tracker");
-  expect(rows[2]).toContain("Release to perform");
-  expect(rows[2]).toContain("source: forge");
-  expect(rows[3]).toContain("merge-ready, waits for G3");
-  expect(rows[4]).toContain("G2");
-  expect(rows[5]).toContain("Spec and G1");
-  expect(rows[6]).toContain("make it READY");
-  await expect(tile(page, "Waits for you")).toContainText("7");
-  await expect(waitsSection(page)).toContainText("run factory-next to act");
-  await expect(waitsSection(page)).not.toContainText(/and \d+ more/);
-  await expect(items.getByRole("link").first()).toHaveAttribute(
-    "href",
-    "https://github.com/acme/app/issues/50",
-  );
-});
-
-test("Waits for you shows a title with HTML and Markdown as text and loads nothing from another host", async ({
-  page,
-}) => {
-  const external: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (!["127.0.0.1", "localhost"].includes(url.hostname)) external.push(request.url());
-  });
-  await useFixture("waits");
-  await page.goto("/?client=acme");
-  await expect(waitsSection(page).getByText(HOSTILE_TITLE, { exact: true })).toBeVisible();
-  await expect(waitsSection(page).locator("img")).toHaveCount(0);
-  expect(external).toEqual([]);
-});
-
-test("Waits for you says that nothing waits", async ({ page }) => {
-  await useFixture("waits-none");
-  await page.goto("/");
-  await expect(waitsSection(page)).toContainText("Nothing waits for you in this scope.");
-});
-
 const AXE_SETS: FixtureName[] = [
-  "waits",
   "pipeline",
   "pipeline-incomplete",
   "review-health",

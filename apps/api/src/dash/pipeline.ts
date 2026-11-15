@@ -6,10 +6,6 @@ export const BUILD_SLOTS = 5;
 
 export interface CachedIssue {
   repoId: string;
-  number: number;
-  title: string;
-  priority: string;
-  link: string | null;
   state: string;
   issueState: string;
   labels: readonly string[];
@@ -18,9 +14,6 @@ export interface CachedIssue {
 
 export interface CachedPullRequest {
   repoId: string;
-  number: number;
-  title: string;
-  link: string | null;
   state: string;
   baseBranch: string;
 }
@@ -35,10 +28,10 @@ export function isConnectedState(state: string | null | undefined): boolean {
   return state != null && CONNECTED_STATES.includes(state);
 }
 
-export const isOpen = (issue: CachedIssue): boolean => issue.state === "open";
-export const mergeReady = (issue: CachedIssue): boolean => issue.labels.includes("merge-ready");
-export const releasePullRequests = (pulls: readonly CachedPullRequest[]): CachedPullRequest[] =>
-  pulls.filter((pull) => pull.state === "open" && pull.baseBranch === PRODUCTION);
+const isOpen = (issue: CachedIssue): boolean => issue.state === "open";
+const mergeReady = (issue: CachedIssue): boolean => issue.labels.includes("merge-ready");
+const releasePulls = (pulls: readonly CachedPullRequest[]): number =>
+  pulls.filter((pull) => pull.state === "open" && pull.baseBranch === PRODUCTION).length;
 
 /** The gate step of an open TODO issue, from the first rule that applies. Null is no stage. */
 export function todoStep(issue: CachedIssue): "spec" | "issues" | "ready" | null {
@@ -66,7 +59,7 @@ export function pipelineCounts(
     inReview: inReview.filter((issue) => !mergeReady(issue)).length,
     blocked: inState("BLOCKED"),
     done: issues.filter((issue) => issue.issueState === "DONE").length,
-    release: inReview.filter(mergeReady).length + releasePullRequests(pulls).length,
+    release: inReview.filter(mergeReady).length + releasePulls(pulls),
   };
 }
 
@@ -82,7 +75,7 @@ export function waitsTotal(
     (issue) => issue.issueState === "TODO" && todoStep(issue) !== null,
   ).length;
   // todoStep returns null for `finding` and `issues-approved`. `spec-waived` has the step "make it READY".
-  return blocked + releasePullRequests(pulls).length + merged.length + todo;
+  return blocked + releasePulls(pulls) + merged.length + todo;
 }
 
 /** The open issues in IN PROGRESS, or in IN REVIEW without `merge-ready`, that have no children. */
