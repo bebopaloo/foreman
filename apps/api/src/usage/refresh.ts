@@ -33,7 +33,7 @@ export interface Refresher {
   stop(): Promise<void>;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const UNAVAILABLE_CODES = new Set([
   "ECONNREFUSED",
   "ECONNRESET",
@@ -70,13 +70,14 @@ function later(a: Date | null, b: Date | null): Date | null {
 export function createRefresher(options: RefresherOptions): Refresher {
   const { db, claudeDir, dataDir, log } = options;
   const ingest = options.ingest ?? ingestTranscripts;
-  const intervalMs = options.intervalMs ?? DAY_MS;
+  const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   let current: Promise<void> | null = null;
   let state: RefreshStatus["state"] = "idle";
   let progress: { filesRead: number; filesTotal: number } | null = null;
   let reason: string | null = null;
   let lastGood: Date | null = null;
   let timer: NodeJS.Timeout | null = null;
+  let stopped = true;
 
   async function run(): Promise<void> {
     const before = { state, reason };
@@ -134,6 +135,19 @@ export function createRefresher(options: RefresherOptions): Refresher {
     return lastGood;
   }
 
+  /** The wait starts when a refresh ends, so two timer refreshes never overlap. */
+  function schedule(immediate: boolean): void {
+    timer = setTimeout(
+      () => {
+        void trigger().finally(() => {
+          if (!stopped) schedule(false);
+        });
+      },
+      immediate ? 0 : intervalMs,
+    );
+    timer.unref();
+  }
+
   return {
     trigger,
     async status() {
@@ -148,12 +162,12 @@ export function createRefresher(options: RefresherOptions): Refresher {
     },
     start() {
       if (timer !== null) return;
-      void trigger();
-      timer = setInterval(() => void trigger(), intervalMs);
-      timer.unref();
+      stopped = false;
+      schedule(true);
     },
     async stop() {
-      if (timer !== null) clearInterval(timer);
+      stopped = true;
+      if (timer !== null) clearTimeout(timer);
       timer = null;
       await current;
     },
