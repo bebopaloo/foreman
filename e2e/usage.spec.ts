@@ -119,9 +119,70 @@ test("a link with values that are not valid shows the defaults and a message", a
 test("no usage in the range shows one sentence in each panel", async ({ page }) => {
   await useFixture("usage-empty");
   await page.goto("/usage");
-  await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(2);
+  await expect(page.getByText("No usage in this range in this scope.")).toHaveCount(3);
   await expect(tile(page, "5-hour window")).toContainText("No reading");
 });
+
+test("the By Project table opens a Project page, and a tab shows its table", async ({ page }) => {
+  await useFixture("usage");
+  await page.goto("/usage");
+  const projects = page.getByRole("table", { name: "Usage by Project" });
+  await expect(projects.getByRole("row")).toHaveCount(5);
+  await expect(projects.getByRole("row").last()).toContainText("Total");
+  await expect(projects.getByRole("cell", { name: "Unassigned" })).toBeVisible();
+  await page.getByRole("tab", { name: "Model" }).click();
+  await expect(page).toHaveURL(/tab=model/);
+  await expect(page.getByRole("table", { name: "Usage by Model" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "synthetic-priced-1" })).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByRole("table", { name: "Usage by Project" })).toBeVisible();
+
+  await projects.getByRole("link").first().click();
+  await expect(page).toHaveURL(/\/usage\/projects\/[0-9a-f]{12}\?.*range=14d/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("acme");
+  await expect(page.getByRole("tab")).toHaveText([
+    "Model",
+    "Agent type",
+    "Skill",
+    "Branch",
+    "Session",
+  ]);
+  await expect(page.getByRole("table", { name: "Usage by Model" })).toBeVisible();
+  await expect(tile(page, "Tokens, last 14 days")).toContainText("8M");
+});
+
+test("a Project outside the scope shows a message and asks for no usage", async ({ page }) => {
+  await useFixture("usage");
+  await page.goto("/usage");
+  const outside = page
+    .getByRole("table", { name: "Usage by Project" })
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell", { name: "bebopaloo", exact: true }) })
+    .getByRole("link");
+  const href = (await outside.getAttribute("href")) ?? "";
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (/\/api\/usage\/(breakdown|series)/.test(request.url())) requests.push(request.url());
+  });
+  await page.goto(`${href.split("?")[0] ?? ""}?client=acme`);
+  await expect(page.getByText("No such Project in this scope.")).toBeVisible();
+  await page.goto("/usage/projects/ffffffffffff?client=acme");
+  await expect(page.getByText("No such Project in this scope.")).toBeVisible();
+  expect(requests).toEqual([]);
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`a Project page has no WCAG 2.2 AA violations in the ${scheme} theme`, async ({ page }) => {
+    await useFixture("usage");
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/usage");
+    await page.getByRole("table", { name: "Usage by Project" }).getByRole("link").first().click();
+    await expect(page.getByRole("table", { name: "Usage by Model" })).toBeVisible();
+    await expect(page.getByRole("status", { name: /^Loading/ })).toHaveCount(0);
+    const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+    expect(results.violations).toEqual([]);
+  });
+}
 
 const AXE_SETS: { name: FixtureName; path: string }[] = [
   { name: "usage", path: "/usage" },
