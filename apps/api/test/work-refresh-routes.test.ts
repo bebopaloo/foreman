@@ -39,10 +39,11 @@ beforeEach(async () => {
 });
 
 function fakeSchedule(state: FetchState = { state: "running", reason: null }) {
-  const seen = { triggers: 0 };
+  const seen = { triggers: 0, refreshes: 0 };
   const schedule: FetchSchedule = {
-    trigger: () => {
+    trigger: (request) => {
       seen.triggers += 1;
+      if (request?.refresh === true) seen.refreshes += 1;
       return Promise.resolve();
     },
     state: () => state,
@@ -67,6 +68,7 @@ describe("POST /api/work/refresh", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({ state: "running" });
     expect(seen.triggers).toBe(1);
+    expect(seen.refreshes).toBe(1);
   });
 
   it("accepts an Origin that is in the allow-list", async () => {

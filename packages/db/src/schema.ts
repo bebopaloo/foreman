@@ -162,6 +162,11 @@ export const workRepos = pgTable("work_repos", {
   trackerState: text("tracker_state"),
   trackerErrorClass: text("tracker_error_class"),
   lastGoodFetchAt: timestamp("last_good_fetch_at", { withTimezone: true }),
+  defaultBranch: text("default_branch"),
+  fileBranch: text("file_branch"),
+  repoState: text("repo_state"),
+  repoErrorClass: text("repo_error_class"),
+  forgeFilesEndedAt: timestamp("forge_files_ended_at", { withTimezone: true }),
 });
 
 // The Issue rows keep no body and no comment. `labels`, `children` and
@@ -300,6 +305,27 @@ export const workReleaseRecords = pgTable(
   (table) => [
     primaryKey({ columns: [table.repoId, table.tag] }),
     index("work_release_records_repo_id_idx").on(table.repoId),
+  ],
+);
+
+// A Forge file row keeps parsed fields only, never the content of the file.
+export const workForgeFiles = pgTable(
+  "work_forge_files",
+  {
+    repoId: text("repo_id").notNull(),
+    path: text("path").notNull(),
+    ref: text("ref"),
+    sha: text("sha"),
+    size: integer("size"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    state: text("state").notNull(),
+    errorClass: text("error_class"),
+    skipped: jsonb("skipped"),
+    fields: jsonb("fields"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.path] }),
+    index("work_forge_files_repo_id_idx").on(table.repoId),
   ],
 );
 

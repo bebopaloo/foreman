@@ -76,6 +76,18 @@ describe("the fetch schedule", () => {
     expect(schedule.state()).toEqual({ state: "idle", reason: null });
   });
 
+  it("tells the fetch that a refresh request started it, and not the timer", async () => {
+    const seen: (boolean | undefined)[] = [];
+    const { schedule } = scheduleWith((options) => {
+      seen.push(options.refresh);
+      return Promise.resolve();
+    });
+    await schedule.trigger();
+    await schedule.trigger({ refresh: true });
+    await schedule.trigger();
+    expect(seen).toEqual([false, true, false]);
+  });
+
   it("fetches on start and each interval, and skips the timer while a fetch runs", async () => {
     const control = controlledFetch();
     const { schedule } = scheduleWith(control.fetch, 1000);

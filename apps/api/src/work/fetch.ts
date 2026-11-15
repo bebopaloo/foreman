@@ -23,6 +23,8 @@ export interface FetchOptions {
   /** The hosts that an adapter may call, in lower case. */
   allowedHosts?: readonly string[];
   timeoutMs?: number;
+  /** True when a refresh request started this fetch. */
+  refresh?: boolean;
   log?: { warn(message: string): void; info?(message: string): void };
   now?: () => Date;
 }
@@ -35,6 +37,8 @@ const REPO_TABLES = [
   schema.workCommitStatuses,
   schema.workReleases,
   schema.workForgeReleases,
+  schema.workReleaseRecords,
+  schema.workForgeFiles,
 ] as const;
 
 /**
@@ -103,7 +107,7 @@ export async function runFetch(options: FetchOptions): Promise<FetchResult> {
     for (const repo of list.repos) {
       if (repo.owner === null || repo.name === null) continue;
       const outcome = await fetchRepo(
-        { db, claudeDir, tokens, runner, startedAt, full },
+        { db, claudeDir, tokens, runner, startedAt, full, refresh: options.refresh ?? false },
         { ...repo, owner: repo.owner, name: repo.name },
       );
       adapterCalls += outcome.calls;
