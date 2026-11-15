@@ -1,3 +1,4 @@
+import { ledgerLongTranscripts, ledgerTranscripts } from "./ledger-transcripts.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import { sessionTranscripts } from "./session-transcripts.ts";
 import type { WorkSeed } from "./work-seed.ts";
@@ -641,6 +642,20 @@ export const FIXTURE_SETS = {
   /** The repo list and the transcripts of 3 sessions on the day before `now`. */
   sessions: {
     files: (now) => ({ "factory/repos.json": repoList(), ...sessionTranscripts(now) }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The repo list and the transcripts of the ledger day: 3 projects, of which `spike-cli` has no repo list entry. */
+  ledger: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...ledgerTranscripts(now) }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The repo list and 130 days with one real message each in `acme/app`. */
+  "ledger-long": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...ledgerLongTranscripts(now) }),
     work: CONNECTED_CACHE,
     usage: true,
   },
