@@ -207,6 +207,28 @@ describe("checkPriceTable", () => {
     expect(findings[0]?.message).toContain(URL_A);
   });
 
+  it("reports a page that has the cache table but no model rate table", async () => {
+    const cacheOnly = page(cacheTable("1.25x", "2x", "0.1x"));
+    const findings = await checkPriceTable(table, fetchOf({ [URL_A]: cacheOnly }).fetchHtml);
+    expect(findings).toEqual([
+      { kind: "unparseable", message: `The page ${URL_A} has no model rate table.` },
+    ]);
+  });
+
+  it("reports a page that has the model rate table but no cache table", async () => {
+    const modelsOnly = page(
+      baseTable([
+        synthRow("Claude Synthetic 1", "$3", "$15"),
+        synthRow("Claude Tiered 2", "$0.10", "$0.50"),
+      ]),
+      fastTable([row(["Claude Synthetic 1", "$6 USD / MTok", "$30 USD / MTok"])]),
+    );
+    const findings = await checkPriceTable(table, fetchOf({ [URL_A]: modelsOnly }).fetchHtml);
+    expect(findings).toEqual([
+      { kind: "unparseable", message: `The page ${URL_A} has no cache table.` },
+    ]);
+  });
+
   it("reports a page that cannot be fetched", async () => {
     const findings = await checkPriceTable(table, fetchOf({}).fetchHtml);
     expect(findings).toHaveLength(1);
