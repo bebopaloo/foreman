@@ -339,3 +339,200 @@ describe("the status command", () => {
     expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
   });
 });
+
+describe("the forge file commands", () => {
+  const FILE = "_context/controls/waivers.toml";
+  const repoOutput = {
+    host: "github.com",
+    owner: "acme",
+    name: "app",
+    url: "https://github.com/acme/app",
+    default_branch: "main",
+  };
+  const fileOutput = { path: FILE, ref: "main", sha: SHA_A, size: 5, content: "hello" };
+  const assetOutput = { tag: "v1.2.0", name: "record-v1.2.0.json", size: 2, content: "{}" };
+
+  it.each([
+    ["repo", ["repo"], repoOutput],
+    ["file get", ["file", "get", FILE, "--ref", "main"], fileOutput],
+    ["release asset", ["release", "asset", "v1.2.0", "record-v1.2.0.json"], assetOutput],
+  ])("accepts %s", async (_name, command, output) => {
+    await control({ stdout: JSON.stringify(output) });
+    const result = await runAdapterCommand(request(command), options);
+    expect(result).toEqual({ ok: true, data: output });
+    expect((await record()).argv.slice(-command.length)).toEqual(command);
+  });
+
+  it.each([
+    ".claude/factory.json",
+    "_context/controls/risk-map.toml",
+    "_context/controls/controls.toml",
+    "_context/controls/waivers.toml",
+    "_context/threat-model.md",
+    ".claude/rules/fastify-api.md",
+  ])("accepts the path %s", async (file) => {
+    await control({ stdout: JSON.stringify({ ...fileOutput, path: file }) });
+    const result = await runAdapterCommand(
+      request(["file", "get", file, "--ref", "main"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["repo --json", ["repo", "--json"]],
+    ["a path that is not listed", ["file", "get", ".env", "--ref", "main"]],
+    ["a path with ..", ["file", "get", "_context/controls/../../.env", "--ref", "main"]],
+    ["a leading slash", ["file", "get", "/_context/threat-model.md", "--ref", "main"]],
+    ["a backslash", ["file", "get", "_context\\threat-model.md", "--ref", "main"]],
+    ["a rule name with a capital", ["file", "get", ".claude/rules/Api.md", "--ref", "main"]],
+    ["a rule name with a folder", ["file", "get", ".claude/rules/a/b.md", "--ref", "main"]],
+    ["a rule name that starts with -", ["file", "get", ".claude/rules/-a.md", "--ref", "main"]],
+    ["a ref that starts with -", ["file", "get", FILE, "--ref", "-x"]],
+    ["a ref with ..", ["file", "get", FILE, "--ref", "a..b"]],
+    ["an empty ref", ["file", "get", FILE, "--ref", ""]],
+    ["no --ref option", ["file", "get", FILE, "main"]],
+    ["no ref", ["file", "get", FILE]],
+    ["an extra argument", ["file", "get", FILE, "--ref", "main", "x"]],
+    ["another file verb", ["file", "put", FILE, "--ref", "main"]],
+    ["a name that is not json", ["release", "asset", "v1.2.0", "notes.md"]],
+    ["a name with ..", ["release", "asset", "v1.2.0", "../x.json"]],
+    ["a name that starts with a dot", ["release", "asset", "v1.2.0", ".x.json"]],
+    ["a tag that is not a release tag", ["release", "asset", "main", "r.json"]],
+    ["no name", ["release", "asset", "v1.2.0"]],
+    ["an extra argument on release asset", ["release", "asset", "v1.2.0", "r.json", "x"]],
+  ])("refuses %s and starts no subprocess", async (_name, command) => {
+    await expect(runAdapterCommand(request(command), options)).rejects.toBeInstanceOf(
+      CommandRefusedError,
+    );
+    expect(await exists(path.join(folder, "record.json"))).toBe(false);
+  });
+
+  it("refuses the commands for a tracker adapter", async () => {
+    const tracker = { ...adapter, role: "tracker" as const };
+    await expect(
+      runAdapterCommand(request(["repo"], { adapter: tracker }), options),
+    ).rejects.toBeInstanceOf(CommandRefusedError);
+  });
+
+  it.each(["trunk", "release/1.2", "feature_x+1", "v1.2.0"])("accepts the ref %s", async (ref) => {
+    await control({ stdout: JSON.stringify({ ...fileOutput, ref }) });
+    const result = await runAdapterCommand(request(["file", "get", FILE, "--ref", ref]), options);
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["file not found: x at main", "missing_file", "missing file"],
+    ["ref not found: main", "missing_ref", "missing ref"],
+    ["release not found: v1.2.0", "missing_tag", "missing tag"],
+    ["asset not found: r.json in release v1.2.0", "missing_asset", "missing asset"],
+    ["HTTP 401: Bad credentials", "auth", "token rejected"],
+    ["something else", "other", "adapter error"],
+  ])("maps the error %j to %s", async (text, errorClass, state) => {
+    for (const command of [
+      ["file", "get", FILE, "--ref", "main"],
+      ["release", "asset", "v1.2.0", "r.json"],
+    ]) {
+      await control({ stderr: JSON.stringify({ error: text }), exit: 1 });
+      const logged: string[] = [];
+      const result = await runAdapterCommand(request(command), {
+        ...options,
+        log: { warn: (message) => logged.push(message) },
+      });
+      expect(result).toEqual({ ok: false, errorClass, state });
+      expect(logged.join()).not.toContain(text);
+    }
+  });
+
+  it("maps a prefix only at the start of the message", async () => {
+    await control({ stderr: JSON.stringify({ error: "x: file not found: y" }), exit: 1 });
+    const result = await runAdapterCommand(
+      request(["file", "get", FILE, "--ref", "main"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: false, errorClass: "other" });
+  });
+
+  it("does not map the prefixes for another command", async () => {
+    await control({ stderr: JSON.stringify({ error: "file not found: x" }), exit: 1 });
+    const result = await runAdapterCommand(request(["pr", "reviews", "5"]), options);
+    expect(result).toMatchObject({ ok: false, errorClass: "other" });
+  });
+
+  it.each([
+    ["a path that differs", { path: "_context/controls/risk-map.toml" }],
+    ["a ref that differs", { ref: "develop" }],
+    ["a short sha", { sha: "abc123" }],
+    ["an upper case sha", { sha: SHA_A.toUpperCase() }],
+    ["an unknown key", { extra: 1 }],
+    ["a size of 2000000", { size: 2_000_000 }],
+    ["a negative size", { size: -1 }],
+    ["a size that is not whole", { size: 1.5 }],
+    ["content over 1048576 bytes", { size: 5, content: "x".repeat(1_048_577) }],
+    ["content that is not text", { content: 4 }],
+  ])("rejects file get output with %s", async (_name, over) => {
+    await control({ stdout: JSON.stringify({ ...fileOutput, ...over }) });
+    const logged: string[] = [];
+    const result = await runAdapterCommand(request(["file", "get", FILE, "--ref", "main"]), {
+      ...options,
+      log: { warn: (message) => logged.push(message) },
+    });
+    expect(result).toEqual({
+      ok: false,
+      errorClass: "invalid_output",
+      state: "invalid adapter output",
+    });
+    expect(logged).toEqual(['invalid adapter output for "file get"']);
+  });
+
+  it("accepts file get content of 1048576 bytes", async () => {
+    const content = "x".repeat(1_048_576);
+    await control({ stdout: JSON.stringify({ ...fileOutput, size: 1_048_576, content }) });
+    const result = await runAdapterCommand(
+      request(["file", "get", FILE, "--ref", "main"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("counts the content of file get in bytes, not characters", async () => {
+    const content = "é".repeat(600_000);
+    await control({ stdout: JSON.stringify({ ...fileOutput, size: 1_000, content }) });
+    const result = await runAdapterCommand(
+      request(["file", "get", FILE, "--ref", "main"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
+  });
+
+  it.each([
+    ["a tag that differs", { tag: "v1.2.1" }],
+    ["a name that differs", { name: "other.json" }],
+    ["an unknown key", { extra: 1 }],
+    ["a size over 5 MB", { size: 5_242_881 }],
+    ["content over 5 MB", { content: "x".repeat(5_242_881) }],
+  ])("rejects release asset output with %s", async (_name, over) => {
+    await control({ stdout: JSON.stringify({ ...assetOutput, ...over }) });
+    const result = await runAdapterCommand(
+      request(["release", "asset", "v1.2.0", "record-v1.2.0.json"]),
+      options,
+    );
+    expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
+  });
+
+  it.each([
+    ["an unknown key", { extra: 1 }],
+    ["a missing key", { url: undefined }],
+    ["a default_branch that is not text", { default_branch: 4 }],
+  ])("rejects repo output with %s", async (_name, over) => {
+    await control({ stdout: JSON.stringify({ ...repoOutput, ...over }) });
+    const result = await runAdapterCommand(request(["repo"]), options);
+    expect(result).toMatchObject({ ok: false, errorClass: "invalid_output" });
+  });
+
+  it("accepts repo output with an empty default_branch", async () => {
+    await control({ stdout: JSON.stringify({ ...repoOutput, default_branch: "" }) });
+    const result = await runAdapterCommand(request(["repo"]), options);
+    expect(result).toMatchObject({ ok: true });
+  });
+});
