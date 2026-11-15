@@ -32,6 +32,10 @@ const pullRequestSchema = z
     author: z.string(),
     checks: z.enum(["none", "pending", "success", "failure"]),
     labels: z.array(z.string()),
+    head_sha: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/)
+      .optional(),
   })
   .strict();
 

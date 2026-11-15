@@ -162,6 +162,107 @@ export const workRepos = pgTable("work_repos", {
   lastGoodFetchAt: timestamp("last_good_fetch_at", { withTimezone: true }),
 });
 
+// The Issue rows keep no body and no comment. `labels`, `children` and
+// `blocked_by` are lists; the relations stay as they were when a detail call fails.
+export const workIssues = pgTable(
+  "work_issues",
+  {
+    repoId: text("repo_id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    state: text("state").notNull(),
+    issueState: text("issue_state").notNull(),
+    priority: text("priority").notNull(),
+    labels: text("labels").array().notNull().default([]),
+    author: text("author").notNull(),
+    link: text("link"),
+    parent: integer("parent"),
+    children: integer("children").array().notNull().default([]),
+    blockedBy: integer("blocked_by").array().notNull().default([]),
+    lastListedAt: timestamp("last_listed_at", { withTimezone: true }).notNull(),
+    detailsFetchedAt: timestamp("details_fetched_at", { withTimezone: true }),
+    detailsErrorClass: text("details_error_class"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.number] }),
+    index("work_issues_repo_id_idx").on(table.repoId),
+    index("work_issues_issue_state_idx").on(table.issueState),
+  ],
+);
+
+export const workPullRequests = pgTable(
+  "work_pull_requests",
+  {
+    repoId: text("repo_id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    state: text("state").notNull(),
+    draft: boolean("draft").notNull(),
+    headBranch: text("head_branch").notNull(),
+    baseBranch: text("base_branch").notNull(),
+    author: text("author").notNull(),
+    checks: text("checks").notNull(),
+    labels: text("labels").array().notNull().default([]),
+    link: text("link"),
+    lastListedAt: timestamp("last_listed_at", { withTimezone: true }).notNull(),
+    detailsFetchedAt: timestamp("details_fetched_at", { withTimezone: true }),
+    detailsErrorClass: text("details_error_class"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.number] }),
+    index("work_pull_requests_repo_id_idx").on(table.repoId),
+  ],
+);
+
+// One row for each review. It has no body.
+export const workReviews = pgTable(
+  "work_reviews",
+  {
+    repoId: text("repo_id").notNull(),
+    pullRequestNumber: integer("pull_request_number").notNull(),
+    position: integer("position").notNull(),
+    author: text("author").notNull(),
+    state: text("state").notNull(),
+    commit: text("commit").notNull(),
+    time: timestamp("time", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.pullRequestNumber, table.position] }),
+    index("work_reviews_repo_id_idx").on(table.repoId),
+  ],
+);
+
+export const workReleases = pgTable(
+  "work_releases",
+  {
+    repoId: text("repo_id").notNull(),
+    name: text("name").notNull(),
+    state: text("state").notNull(),
+    link: text("link"),
+    issueNumbers: integer("issue_numbers").array().notNull().default([]),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.name] }),
+    index("work_releases_repo_id_idx").on(table.repoId),
+  ],
+);
+
+export const workForgeReleases = pgTable(
+  "work_forge_releases",
+  {
+    repoId: text("repo_id").notNull(),
+    tag: text("tag").notNull(),
+    targetCommit: text("target_commit"),
+    assetNames: text("asset_names").array().notNull().default([]),
+    link: text("link"),
+    noForgeRelease: boolean("no_forge_release").notNull().default(false),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.tag] }),
+    index("work_forge_releases_repo_id_idx").on(table.repoId),
+  ],
+);
+
 export const workFetchRuns = pgTable("work_fetch_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),

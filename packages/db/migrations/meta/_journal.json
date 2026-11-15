@@ -57,6 +57,13 @@
       "when": 1794746647931,
       "tag": "0007_steady_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794746894608,
+      "tag": "0008_red_firedrake",
+      "breakpoints": true
     }
   ]
 }
