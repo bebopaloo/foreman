@@ -10,4 +10,5 @@ export const VIEWS: readonly View[] = [
   { label: "Usage", path: "/usage" },
   { label: "Sessions", path: "/sessions" },
   { label: "Reviews", path: "/reviews" },
+  { label: "Factory health", path: "/health" },
 ];

@@ -1,11 +1,14 @@
 import {
   BreakdownResponse,
   DashResponse,
+  FactoryRunsResponse,
   HealthResponse,
+  PluginVersionsResponse,
   ProjectsResponse,
   RefreshStatusResponse,
   ReviewsPullRequestsResponse,
   ReviewsResponse,
+  RuleDriftResponse,
   SessionResponse,
   SessionsResponse,
   SeriesResponse,
@@ -202,3 +205,34 @@ export const fetchReviewsPullRequests = (
     signal,
   );
 };
+
+function pageParams(client: string | null, cursor: string | null): string {
+  const params = new URLSearchParams();
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return text === "" ? "" : `?${text}`;
+}
+
+/** One page of the plugin rows. The plugins belong to the whole factory, so the request has no client. */
+export const fetchPluginVersions = (
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<PluginVersionsResponse> =>
+  getJson(`/api/factory-health/plugins${pageParams(null, cursor)}`, PluginVersionsResponse, signal);
+
+/** One page of the repos of the Rule drift section. */
+export const fetchRuleDrift = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<RuleDriftResponse> =>
+  getJson(`/api/factory-health/rule-drift${pageParams(client, cursor)}`, RuleDriftResponse, signal);
+
+/** One page of the Unattended runs, newest first. */
+export const fetchFactoryRuns = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<FactoryRunsResponse> =>
+  getJson(`/api/factory-health/runs${pageParams(client, cursor)}`, FactoryRunsResponse, signal);

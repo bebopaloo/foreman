@@ -74,6 +74,18 @@ async function refreshWork(apiPort: string): Promise<void> {
   await waitForFetchIdle(apiPort);
 }
 
+const INSTALLED_PLUGINS = "plugins/installed_plugins.json";
+
+function mergeInstalled(first: string, second: string): string {
+  const plugins = (text: string): Record<string, unknown> => {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null || !("plugins" in parsed)) return {};
+    const value = parsed.plugins;
+    return typeof value === "object" && value !== null ? { ...value } : {};
+  };
+  return JSON.stringify({ version: 2, plugins: { ...plugins(first), ...plugins(second) } });
+}
+
 /**
  * Loads a named fixture set: writes its files into the live Claude folder and replaces the Work cache
  * of the e2e database. Call it first in each test, before `page.goto`. The API reads the folder on each
@@ -103,6 +115,12 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
     ...set.files(now),
     ...(set.adapter === undefined ? {} : adapterFiles(set.adapter)),
   };
+  const own = set.files(now)[INSTALLED_PLUGINS];
+  if (own !== undefined && set.adapter !== undefined) {
+    // The set and the synthetic adapter both install plugins: one file lists them all.
+    const adapterInstalled = adapterFiles(set.adapter)[INSTALLED_PLUGINS] ?? "{}";
+    files[INSTALLED_PLUGINS] = mergeInstalled(own, adapterInstalled);
+  }
   for (const [relative, content] of Object.entries(files)) {
     const file = path.join(LIVE_CLAUDE_DIR, relative);
     await mkdir(path.dirname(file), { recursive: true });
