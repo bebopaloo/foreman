@@ -1,4 +1,5 @@
 import { schema } from "@foreman/db";
+import { BreakdownResponse } from "@foreman/shared";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
@@ -16,7 +17,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await database.db.execute(sql`truncate table turns, projects, refresh_runs`);
+  await database.db.execute(sql`truncate table turns, projects, refresh_runs, skill_calls`);
 });
 
 interface Seed {
@@ -27,6 +28,7 @@ interface Seed {
   speed?: string | null;
   branch?: string | null;
   agentType?: string;
+  skill?: [string, "exact" | "estimate"];
   input?: number;
   output?: number;
   write5m?: number;
@@ -58,6 +60,8 @@ async function seed(rows: Seed[]) {
       projectKey: row.key,
       branch: row.branch === undefined ? "main" : row.branch,
       agentType: row.agentType ?? "main",
+      skillName: row.skill?.[0] ?? null,
+      skillBasis: row.skill?.[1] ?? null,
     });
   }
 }
@@ -313,5 +317,59 @@ describe("GET /api/usage/breakdown", () => {
       rowCount: 0,
     });
     expect((await get(`/api/usage/breakdown?dimension=color&${range}`)).statusCode).toBe(400);
+  });
+});
+
+describe("GET /api/usage/breakdown for skills", () => {
+  async function seedCall(callId: string, skillName: string, time: string, key = A) {
+    await database.db
+      .insert(schema.skillCalls)
+      .values({ callId, sessionId: "s1", time: new Date(time), skillName, projectKey: key });
+  }
+
+  it("shows the calls, the exact turns and the estimated turns of each skill", async () => {
+    await seed([
+      { key: A, time: "2026-11-01T10:00:00Z", skill: ["to-code", "exact"], input: 10 },
+      { key: A, time: "2026-11-01T10:01:00Z", skill: ["to-code", "estimate"], input: 10 },
+      { key: A, time: "2026-11-01T10:02:00Z", skill: ["to-code", "estimate"], input: 10 },
+      { key: A, time: "2026-11-01T10:03:00Z", input: 1 },
+    ]);
+    await seedCall("c1", "to-code", "2026-11-01T09:59:00Z");
+    await seedCall("c2", "to-spec", "2026-11-02T09:59:00Z");
+    await seedCall("c3", "to-code", "2026-12-01T09:59:00Z");
+
+    const response = await get(`/api/usage/breakdown?dimension=skill&${range}`);
+
+    expect(response.statusCode).toBe(200);
+    const body = BreakdownResponse.parse(response.json());
+    expect(
+      body.rows.map((row) => [row.key, row.turns, row.calls, row.exactTurns, row.estimatedTurns]),
+    ).toEqual([
+      ["to-code", 3, 1, 1, 2],
+      ["(no skill)", 1, 0, 0, 0],
+      ["to-spec", 0, 1, 0, 0],
+    ]);
+    expect(body.totals.turns).toBe(4);
+  });
+
+  it("filters the calls by Project", async () => {
+    await seed([{ key: A, time: "2026-11-01T10:00:00Z", skill: ["to-code", "exact"] }]);
+    await seedCall("c1", "to-code", "2026-11-01T09:59:00Z", A);
+    await seedCall("c2", "to-code", "2026-11-01T09:59:00Z", B);
+
+    const response = await get(
+      `/api/usage/breakdown?dimension=skill&${range}&project=${projectId(A)}`,
+    );
+
+    expect(BreakdownResponse.parse(response.json()).rows[0]).toMatchObject({
+      key: "to-code",
+      calls: 1,
+    });
+  });
+
+  it("gives no skill figures to a row of another dimension", async () => {
+    await seed([{ key: A, time: "2026-11-01T10:00:00Z", skill: ["to-code", "exact"] }]);
+    const response = await get(`/api/usage/breakdown?dimension=model&${range}`);
+    expect(BreakdownResponse.parse(response.json()).rows[0]).not.toHaveProperty("calls");
   });
 });

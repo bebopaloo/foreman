@@ -8,11 +8,19 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import type { Config } from "./config.ts";
+import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
+import { controlsRoutes } from "./routes/controls.ts";
+import { dashRoutes } from "./routes/dash.ts";
+import { factoryHealthRoutes } from "./routes/factory-health.ts";
+import { ledgerRoutes } from "./routes/ledger.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { reviewsRoutes } from "./routes/reviews.ts";
 import { workRoutes } from "./routes/work.ts";
+import { sessionsRoutes } from "./routes/sessions.ts";
 import { usageRoutes } from "./routes/usage.ts";
 import { loadPriceTable } from "./usage/prices.ts";
+import { createFetchSchedule, type FetchSchedule } from "./work/schedule.ts";
 import { createRefresher, type Refresher } from "./usage/refresh.ts";
 
 declare module "fastify" {
@@ -23,6 +31,8 @@ declare module "fastify" {
   interface FastifyInstance {
     /** The refresh schedule and state. `server.ts` starts it. */
     refresher: Refresher;
+    /** The fetch schedule and state. `server.ts` starts it. */
+    fetcher: FetchSchedule;
   }
 }
 
@@ -32,15 +42,17 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Tests pass a fake. The default reads the folders of the config. */
   refresher?: Refresher;
+  /** Tests pass a fake. The default runs the real fetch. */
+  fetcher?: FetchSchedule;
+  /** Tests pass a fixed clock for the dash and the default range of the ledger. */
+  now?: () => Date;
 }
 
-const REDACTED_KEYS = ["req.headers.authorization", "req.headers.cookie", "*.password", "*.token"];
-
-export async function buildApp({ config, db, logger, refresher }: AppOptions) {
+export async function buildApp({ config, db, logger, refresher, fetcher, now }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
-    logger: logger ?? { level: config.LOG_LEVEL, redact: REDACTED_KEYS },
+    logger: logger ?? loggerOptions(config.LOG_LEVEL),
   }).withTypeProvider<ZodTypeProvider>();
 
   const activeRefresher =
@@ -49,6 +61,7 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
       db,
       claudeDir: config.FOREMAN_CLAUDE_DIR,
       dataDir: config.FOREMAN_DATA_DIR,
+      intervalMs: config.FOREMAN_USAGE_REFRESH_MINUTES * 60 * 1000,
       log: {
         info: (message) => {
           app.log.info(message);
@@ -61,6 +74,29 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
   app.decorate("refresher", activeRefresher);
   app.addHook("onClose", async () => {
     await activeRefresher.stop();
+  });
+
+  const activeFetcher =
+    fetcher ??
+    createFetchSchedule({
+      db,
+      claudeDir: config.FOREMAN_CLAUDE_DIR,
+      tokensFile: config.FOREMAN_TOKENS_FILE,
+      allowedHosts: config.FOREMAN_ALLOWED_HOSTS,
+      timeoutMs: config.FOREMAN_ADAPTER_TIMEOUT_SECONDS * 1000,
+      intervalMs: config.FOREMAN_FETCH_MINUTES * 60_000,
+      log: {
+        info: (message) => {
+          app.log.info(message);
+        },
+        warn: (message) => {
+          app.log.warn(message);
+        },
+      },
+    });
+  app.decorate("fetcher", activeFetcher);
+  app.addHook("onClose", async () => {
+    await activeFetcher.stop();
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -91,13 +127,71 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
   });
 
   await app.register(healthRoutes, { prefix: "/api", db });
-  await app.register(workRoutes, { prefix: "/api", db, claudeDir: config.FOREMAN_CLAUDE_DIR });
+  await app.register(factoryHealthRoutes, {
+    prefix: "/api/factory-health",
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    marketplaceDir: config.FOREMAN_MARKETPLACE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
+    db,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(workRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    schedule: activeFetcher,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
+    allowedOrigins: config.CORS_ORIGINS,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(controlsRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(dashRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(reviewsRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
+    factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    usageDataAsOf: async () => (await activeRefresher.status()).dataAsOf,
+    ...(now === undefined ? {} : { now }),
+  });
   await app.register(usageRoutes, {
     prefix: "/api/usage",
     db,
     refresher: activeRefresher,
     priceTable,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
     allowedOrigins: config.CORS_ORIGINS,
+  });
+  await app.register(ledgerRoutes, {
+    prefix: "/api/ledger",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    rules: {
+      timeZone: config.FOREMAN_LEDGER_TIME_ZONE,
+      idleMinutes: config.FOREMAN_LEDGER_IDLE_MINUTES,
+      leadInMinutes: config.FOREMAN_LEDGER_LEAD_IN_MINUTES,
+    },
+    ...(now === undefined ? {} : { now }),
+  });
+
+  await app.register(sessionsRoutes, {
+    prefix: "/api/sessions",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    tokensFile: config.FOREMAN_TOKENS_FILE,
   });
 
   return app;

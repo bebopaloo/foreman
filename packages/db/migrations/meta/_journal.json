@@ -36,6 +36,62 @@
       "when": 1794698234384,
       "tag": "0004_cynical_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794745742621,
+      "tag": "0005_third_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794746042472,
+      "tag": "0006_whole_eternity",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794746647931,
+      "tag": "0007_steady_norrin_radd",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794746894608,
+      "tag": "0008_red_firedrake",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794748164442,
+      "tag": "0009_shallow_wallow",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794753618410,
+      "tag": "0010_large_silver_surfer",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794756218311,
+      "tag": "0011_needy_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794757044455,
+      "tag": "0012_late_echo",
+      "breakpoints": true
     }
   ]
 }

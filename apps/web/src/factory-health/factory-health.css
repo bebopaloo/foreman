@@ -1,0 +1,99 @@
+.health-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.health-view .card {
+  margin: 0;
+}
+
+.health-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.health-section h2,
+.health-section p,
+.health-section ul {
+  margin: 0;
+}
+
+.health-wide {
+  grid-column: 1 / -1;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.split-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.health-view .table-scroll {
+  margin-bottom: 0;
+}
+
+.health-view .health-table {
+  min-width: 0;
+}
+
+.health-view .plugins-table {
+  min-width: 440px;
+}
+
+.health-view .runs-table {
+  min-width: 720px;
+}
+
+.health-table th[scope="row"] {
+  font-weight: 400;
+}
+
+.health-pill {
+  margin-left: 8px;
+}
+
+.drift-list {
+  gap: 0;
+}
+
+.drift-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.drift-repo:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.drift-repo .plain-list {
+  gap: 6px;
+}
+
+.health-section .marker {
+  margin-left: 8px;
+}

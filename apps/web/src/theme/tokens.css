@@ -1,0 +1,52 @@
+/* The colour tokens of Foreman. `theme.test.ts` checks the text pairs for 4.5:1 and the Agent type bars for 3:1 contrast in both themes. */
+:root {
+  color-scheme: light;
+  --ink: #161a22;
+  --muted: #4a515e;
+  --line: #c9c9c1;
+  --surface: #ffffff;
+  --surface-hover: #f0f0ea;
+  --page: #f6f6f2;
+  --accent: #1d4f9e;
+  --accent-ink: #ffffff;
+  --all-bg: #e6e8ec;
+  --all-ink: #2f3540;
+  --warn-bg: #fdf1e3;
+  --warn-line: #e7b37a;
+  --warn-ink: #5e2d00;
+  --ok: #1e7a46;
+  --warn: #965000;
+  --danger: #b3261e;
+  --agent-main: #1d4f9e;
+  --agent-software-developer: #b45309;
+  --agent-review-finder: #0f766e;
+  --agent-review-verifier: #7c3aed;
+  --agent-review-resolver: #be185d;
+  --agent-other: #5f6673;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e8eaee;
+  --muted: #aab1bd;
+  --line: #3d4350;
+  --surface: #1b1f27;
+  --surface-hover: #262b35;
+  --page: #12151b;
+  --accent: #8ab4f8;
+  --accent-ink: #0b1220;
+  --all-bg: #2a303a;
+  --all-ink: #d5d9e0;
+  --warn-bg: #3a2a14;
+  --warn-line: #7a5321;
+  --warn-ink: #f7d9b0;
+  --ok: #5fd08a;
+  --warn: #f0a24b;
+  --danger: #ff8a80;
+  --agent-main: #8ab4f8;
+  --agent-software-developer: #f0a24b;
+  --agent-review-finder: #4fd1c5;
+  --agent-review-verifier: #b794f6;
+  --agent-review-resolver: #f687b3;
+  --agent-other: #9aa3b2;
+}

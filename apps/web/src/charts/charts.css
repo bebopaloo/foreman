@@ -1,0 +1,157 @@
+/* The chart colours come from the theme tokens, so the charts change with the theme. */
+.bar-chart .recharts-bar-rectangle path {
+  fill: var(--accent);
+}
+
+.bar-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+  font-size: 0.75rem;
+}
+
+.bar-chart .recharts-cartesian-axis-line,
+.bar-chart .recharts-cartesian-axis-tick-line,
+.bar-chart .recharts-cartesian-grid line {
+  stroke: var(--line);
+}
+
+.bar-chart .recharts-tooltip-cursor {
+  fill: var(--surface-hover);
+}
+
+.bar-chart-tooltip {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.chart-text-equivalent {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.limit-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.limit-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 2px;
+}
+
+/* The table for a screen reader is wider than its 1 pixel box, so the figure clips it. */
+.limit-chart {
+  position: relative;
+  overflow: hidden;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.activity-calendar table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+
+.activity-calendar th,
+.activity-calendar td {
+  padding: 0;
+  border: 0;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--muted);
+  text-align: left;
+}
+
+.activity-calendar thead td,
+.activity-calendar .calendar-weekday {
+  width: 28px;
+}
+
+.activity-calendar .calendar-week {
+  position: relative;
+  height: 14px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.calendar-cell {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 8px;
+  border-radius: 2px;
+}
+
+.level-0 {
+  background: var(--surface-hover);
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+}
+
+.level-1 {
+  background: color-mix(in srgb, var(--accent) 25%, var(--surface));
+}
+
+.level-2 {
+  background: color-mix(in srgb, var(--accent) 50%, var(--surface));
+}
+
+.level-3 {
+  background: color-mix(in srgb, var(--accent) 75%, var(--surface));
+}
+
+.level-4 {
+  background: var(--accent);
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.calendar-legend li {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.calendar-legend .calendar-cell {
+  width: 12px;
+}

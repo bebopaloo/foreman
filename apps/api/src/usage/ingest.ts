@@ -1,10 +1,20 @@
+import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { type ParsedTurn, parseLine } from "./parse.ts";
-import { resolveProjects } from "./projects.ts";
+import {
+  type ParsedAgentStart,
+  type ParsedSkillCall,
+  type ParsedTurn,
+  type ParsedUserMessage,
+  parseLine,
+} from "./parse.ts";
+import { type ParsedLimitReading, parseLimitLine } from "./limits.ts";
+import { resolveProjects, worktreeName } from "./projects.ts";
+import { attributeSessions, isBuiltInCommand } from "./skills.ts";
 import {
   type FileCursor,
+  LIMIT_CAPTURE_FILE,
   readAgentMeta,
   readArchiveLines,
   readNewLines,
@@ -41,7 +51,12 @@ export interface IngestResult {
 type CursorRow = typeof schema.fileCursors.$inferInsert;
 type ProjectRow = typeof schema.projects.$inferInsert;
 type AgentRow = typeof schema.agents.$inferInsert;
+type UserMessageRow = typeof schema.userMessages.$inferInsert;
+type SkillCallRow = typeof schema.skillCalls.$inferInsert;
+type AgentStartRow = typeof schema.agentStarts.$inferInsert;
+type LimitReadingRow = typeof schema.limitReadings.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
+type StoredTurn = IndexedTurn & { worktreeName: string | null };
 
 // 16 columns for each row, and Postgres allows 65,535 parameters in a query.
 const INSERT_BATCH_SIZE = 500;
@@ -55,6 +70,14 @@ const COUNT_COLUMNS = [
   ["web_search_count", "webSearchCount"],
 ] as const;
 
+function toSkillCallRow(call: ParsedSkillCall, agentId: string | null) {
+  return { ...call, agentId };
+}
+
+function toAgentStartRow(start: ParsedAgentStart, agentId: string | null): AgentStartRow {
+  return { ...start, agentId };
+}
+
 function keepLargestCounts(known: IndexedTurn, next: IndexedTurn): IndexedTurn {
   const merged = { ...known };
   for (const [, field] of COUNT_COLUMNS) merged[field] = Math.max(known[field], next[field]);
@@ -65,7 +88,7 @@ export function plural(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
-async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): Promise<void> {
+async function writeTurns(db: Pick<Database, "insert">, turns: StoredTurn[]): Promise<void> {
   for (let start = 0; start < turns.length; start += INSERT_BATCH_SIZE) {
     const batch = turns.slice(start, start + INSERT_BATCH_SIZE);
     await db
@@ -80,11 +103,95 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
           cacheWrite1hTokens: sql`greatest(${schema.turns.cacheWrite1hTokens}, excluded.cache_write_1h_tokens)`,
           cacheReadTokens: sql`greatest(${schema.turns.cacheReadTokens}, excluded.cache_read_tokens)`,
           webSearchCount: sql`greatest(${schema.turns.webSearchCount}, excluded.web_search_count)`,
+          worktreeName: sql`excluded.worktree_name`,
           agentType: sql`excluded.agent_type`,
           agentId: sql`excluded.agent_id`,
         },
       });
   }
+}
+
+async function writeUserMessages(
+  db: Pick<Database, "insert">,
+  messages: UserMessageRow[],
+): Promise<void> {
+  for (let start = 0; start < messages.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.userMessages)
+      .values(messages.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.userMessages.recordId });
+  }
+}
+
+async function writeSkillCalls(db: Pick<Database, "insert">, calls: SkillCallRow[]): Promise<void> {
+  for (let start = 0; start < calls.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.skillCalls)
+      .values(calls.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.skillCalls.callId });
+  }
+}
+
+async function writeAgentStarts(
+  db: Pick<Database, "insert">,
+  starts: AgentStartRow[],
+): Promise<void> {
+  for (let start = 0; start < starts.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.agentStarts)
+      .values(starts.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing({ target: schema.agentStarts.callId });
+  }
+}
+
+async function writeLimitReadings(
+  db: Pick<Database, "insert">,
+  readings: LimitReadingRow[],
+): Promise<void> {
+  for (let start = 0; start < readings.length; start += INSERT_BATCH_SIZE) {
+    await db
+      .insert(schema.limitReadings)
+      .values(readings.slice(start, start + INSERT_BATCH_SIZE))
+      .onConflictDoNothing();
+  }
+}
+
+/**
+ * Reads the new lines of the capture file. A missing file has no readings. An
+ * unreadable file is logged and counted, and does not fail the refresh.
+ */
+async function readLimitCapture(
+  options: IngestOptions,
+  missing: readonly string[],
+  known: ReadonlyMap<string, FileCursor>,
+): Promise<{
+  readings: ParsedLimitReading[];
+  cursor: CursorRow | null;
+  skipped: number;
+  unreadable: boolean;
+}> {
+  const file = path.join(options.dataDir, LIMIT_CAPTURE_FILE);
+  const none = { readings: [], cursor: null, skipped: 0, unreadable: false };
+  if (missing.includes(file)) return none;
+  let read;
+  try {
+    read = await readNewLines(file, known.get(file));
+  } catch {
+    options.log.warn(`unreadable file: ${file}`);
+    return { ...none, unreadable: true };
+  }
+  const readings: ParsedLimitReading[] = [];
+  let skipped = 0;
+  for (const line of read.lines) {
+    const parsed = parseLimitLine(line);
+    if (parsed.kind === "malformed") skipped += 1;
+    if (parsed.kind === "readings") readings.push(...parsed.readings);
+  }
+  if (read.lines.length > 0) {
+    options.log.info(`read ${plural(read.lines.length, "new line")} in ${file}`);
+  }
+  if (skipped > 0) options.log.warn(`skipped ${plural(skipped, "line")} in ${file}`);
+  return { readings, cursor: { path: file, ...read.cursor }, skipped, unreadable: false };
 }
 
 async function writeCursors(db: Pick<Database, "insert">, cursors: CursorRow[]): Promise<void> {
@@ -140,10 +247,14 @@ async function writeAgents(
 
 async function readSources(options: IngestOptions): Promise<
   IngestResult & {
-    rows: IndexedTurn[];
+    rows: StoredTurn[];
     projects: ProjectRow[];
     cursors: CursorRow[];
     agents: AgentRow[];
+    userMessages: UserMessageRow[];
+    skillCalls: SkillCallRow[];
+    agentStarts: AgentStartRow[];
+    limitReadings: LimitReadingRow[];
   }
 > {
   const { db, claudeDir, dataDir, log } = options;
@@ -155,6 +266,9 @@ async function readSources(options: IngestOptions): Promise<
   const cursors: CursorRow[] = [];
   const byKey = new Map<string, IndexedTurn>();
   const agents = new Map<string, AgentRow>();
+  const messages = new Map<string, ParsedUserMessage>();
+  const calls = new Map<string, SkillCallRow & { agentId: string | null }>();
+  const starts = new Map<string, AgentStartRow>();
   let files = 0;
   let skippedLines = 0;
   let unreadableFiles = 0;
@@ -196,7 +310,33 @@ async function readSources(options: IngestOptions): Promise<
     for (const line of lines) {
       const parsed = parseLine(line);
       if (parsed.kind === "malformed") skipped += 1;
+      if (parsed.kind === "userMessage") {
+        // A user record in a sub-agent transcript is a task prompt, not a real user message.
+        if (file.agent === undefined) {
+          const message = parsed.userMessage;
+          messages.set(message.recordId, message);
+          if (message.command !== undefined && !isBuiltInCommand(message.command)) {
+            calls.set(message.recordId, {
+              callId: message.recordId,
+              sessionId: message.sessionId,
+              agentId: null,
+              messageId: null,
+              time: message.time,
+              skillName: message.command,
+              projectKey: message.projectKey,
+            });
+          }
+        }
+        continue;
+      }
       if (parsed.kind !== "turn") continue;
+      const callingAgent = file.agent?.agentId ?? null;
+      for (const call of parsed.skillCalls) {
+        calls.set(call.callId, toSkillCallRow(call, callingAgent));
+      }
+      for (const start of parsed.agentStarts) {
+        starts.set(start.callId, toAgentStartRow(start, callingAgent));
+      }
       const next = { ...parsed.turn, agentType, agentId: file.agent?.agentId ?? null };
       const known = byKey.get(next.turnKey);
       byKey.set(next.turnKey, known ? keepLargestCounts(known, next) : next);
@@ -205,16 +345,35 @@ async function readSources(options: IngestOptions): Promise<
     skippedLines += skipped;
     options.onProgress?.({ filesRead: files + unreadableFiles, filesTotal });
   }
+  const capture = await readLimitCapture(options, scan.missing, known);
+  if (capture.cursor !== null) cursors.push(capture.cursor);
+  skippedLines += capture.skipped;
+  if (capture.unreadable) unreadableFiles += 1;
   const knownProjects = await db
     .selectDistinct({ key: schema.turns.projectKey })
     .from(schema.turns);
   const refs = await resolveProjects(
-    [...new Set([...byKey.values()].map((row) => row.projectKey))],
+    [
+      ...new Set([
+        ...[...byKey.values()].map((row) => row.projectKey),
+        ...[...messages.values()].map((message) => message.projectKey),
+        ...[...calls.values()].map((call) => call.projectKey),
+      ]),
+    ],
     knownProjects.map((row) => row.key),
   );
   const rows = [...byKey.values()].map((row) => ({
     ...row,
+    worktreeName: worktreeName(row.projectKey),
     projectKey: refs.get(row.projectKey)?.key ?? row.projectKey,
+  }));
+  const userMessages = [...messages.values()].map((message) => ({
+    ...message,
+    projectKey: refs.get(message.projectKey)?.key ?? message.projectKey,
+  }));
+  const skillCalls = [...calls.values()].map((call) => ({
+    ...call,
+    projectKey: refs.get(call.projectKey)?.key ?? call.projectKey,
   }));
   const projects = new Map<string, ProjectRow>();
   for (const ref of refs.values()) {
@@ -230,6 +389,10 @@ async function readSources(options: IngestOptions): Promise<
     projects: [...projects.values()],
     cursors,
     agents: [...agents.values()],
+    userMessages,
+    skillCalls,
+    agentStarts: [...starts.values()],
+    limitReadings: capture.readings,
   };
 }
 
@@ -245,16 +408,43 @@ export async function ingestTranscripts(options: IngestOptions): Promise<IngestR
     .returning({ id: schema.refreshRuns.id });
   if (run === undefined) throw new Error("The refresh run was not recorded.");
   try {
-    const { rows, projects, cursors, agents, ...result } = await readSources(options);
+    const {
+      rows,
+      projects,
+      cursors,
+      agents,
+      userMessages,
+      skillCalls,
+      agentStarts,
+      limitReadings,
+      ...result
+    } = await readSources(options);
     await db.transaction(async (tx) => {
       if (options.replaceAll === true) {
         await tx.delete(schema.turns);
         await tx.delete(schema.agents);
+        await tx.delete(schema.userMessages);
+        await tx.delete(schema.skillCalls);
+        await tx.delete(schema.agentStarts);
+        await tx.delete(schema.limitReadings);
         await tx.delete(schema.fileCursors);
       }
       await writeTurns(tx, rows);
       await writeCursors(tx, cursors);
       await writeAgents(tx, agents);
+      await writeUserMessages(tx, userMessages);
+      await writeSkillCalls(tx, skillCalls);
+      await writeAgentStarts(tx, agentStarts);
+      await writeLimitReadings(tx, limitReadings);
+      await attributeSessions(tx, [
+        ...new Set([
+          ...rows.map((row) => row.sessionId),
+          ...agents.map((agent) => agent.sessionId),
+          ...userMessages.map((message) => message.sessionId),
+          ...skillCalls.map((call) => call.sessionId),
+          ...agentStarts.map((start) => start.sessionId),
+        ]),
+      ]);
       if (projects.length > 0) {
         await tx
           .insert(schema.projects)

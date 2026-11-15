@@ -1,0 +1,118 @@
+import { screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dashRequests, fakeApi, renderApp } from "../test-render.tsx";
+
+const inProgress = {
+  run: {
+    state: "in_progress" as const,
+    stale: false,
+    heartbeatAt: "2026-11-15T11:56:00.000Z",
+    heartbeatAgeSeconds: 240,
+  },
+};
+
+describe("Now", () => {
+  it("shows a run in progress with the heartbeat age", async () => {
+    fakeApi({ dash: inProgress });
+    renderApp();
+    expect(await screen.findByText("Run in progress")).toBeInTheDocument();
+    expect(screen.getByText(/heartbeat 4 minutes ago/)).toBeInTheDocument();
+  });
+
+  it("shows 0 minutes for a heartbeat in the future", async () => {
+    fakeApi({ dash: { run: { ...inProgress.run, heartbeatAgeSeconds: 0 } } });
+    renderApp();
+    expect(await screen.findByText(/heartbeat 0 minutes ago/)).toBeInTheDocument();
+  });
+
+  it("shows no run and a stale lock", async () => {
+    fakeApi({ dash: { run: { ...inProgress.run, state: "none", stale: true } } });
+    renderApp();
+    expect(await screen.findByText("No run in progress")).toBeInTheDocument();
+    expect(screen.getByText(/a stopped run left a stale lock/)).toBeInTheDocument();
+  });
+
+  it("shows no run when there is no lock and no night log", async () => {
+    fakeApi({ dash: { sources: { runs: "missing", controls: "missing" } } });
+    renderApp();
+    expect(await screen.findByText("No run in progress")).toBeInTheDocument();
+    expect(screen.queryByText(/stale lock/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cannot read/)).not.toBeInTheDocument();
+  });
+
+  it("shows an unreadable lock", async () => {
+    fakeApi({
+      dash: {
+        run: { state: "unreadable", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
+      },
+    });
+    renderApp();
+    expect(await screen.findByText("run lock unreadable")).toBeInTheDocument();
+  });
+
+  it("shows a factory folder that the API cannot read in Now and in Review health", async () => {
+    fakeApi({ dash: { sources: { runs: "unreadable", controls: "unreadable" } } });
+    renderApp();
+    await waitFor(() => {
+      expect(screen.getAllByText("cannot read the factory folder")).toHaveLength(2);
+    });
+  });
+
+  it("tells the Operator when the dash data cannot be read", async () => {
+    fakeApi();
+    const { server } = await import("../test-server.ts");
+    const { http, HttpResponse } = await import("msw");
+    server.use(http.get("*/api/dash", () => new HttpResponse(null, { status: 500 })));
+    renderApp();
+    expect(await screen.findByText(/The dash data cannot be read/)).toBeInTheDocument();
+  });
+});
+
+describe("the dash request", () => {
+  it("sends the Client scope", async () => {
+    window.history.replaceState(null, "", "/?client=acme");
+    fakeApi();
+    renderApp();
+    await screen.findByText("No run in progress");
+    expect(dashRequests).toContain("/api/dash?client=acme");
+  });
+});
+
+describe("live update", () => {
+  function setVisibility(state: "visible" | "hidden") {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    setVisibility("visible");
+    Reflect.deleteProperty(document, "visibilityState");
+    vi.useRealTimers();
+  });
+
+  const dashCalls = () => dashRequests.length;
+
+  it("asks again after 60 seconds in a visible tab", async () => {
+    fakeApi();
+    renderApp();
+    await screen.findByText("No run in progress");
+    expect(dashCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await waitFor(() => {
+      expect(dashCalls()).toBe(2);
+    });
+  });
+
+  it("does not ask while the tab is hidden", async () => {
+    fakeApi();
+    renderApp();
+    await screen.findByText("No run in progress");
+    setVisibility("hidden");
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(dashCalls()).toBe(1);
+  });
+});

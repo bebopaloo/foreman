@@ -20,6 +20,17 @@ const DEFAULT_PRICE_TABLE = path.resolve(
   "price-table.json",
 );
 
+const FACTORY_LOGIN = /^[A-Za-z0-9-]+(\[bot\])?$/;
+
+function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function folderSchema(name: string, home: string) {
   return z
     .string()
@@ -29,7 +40,7 @@ function folderSchema(name: string, home: string) {
 }
 
 function createConfigSchema(home: string) {
-  return z.object({
+  const schema = z.object({
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     HOST: z.string().min(1).default("127.0.0.1"),
     PORT: z.coerce.number().int().min(1).max(65_535).default(47_130),
@@ -46,13 +57,48 @@ function createConfigSchema(home: string) {
     FOREMAN_CLAUDE_DIR: folderSchema("~/.claude-bebopaloo", home).refine(
       (folder) => folder !== path.join(home, ".claude"),
     ),
+    FOREMAN_MARKETPLACE_DIR: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value))
+      .refine((value) => value === undefined || path.isAbsolute(value)),
     FOREMAN_DATA_DIR: folderSchema("~/.foreman", home),
+    FOREMAN_ALLOWED_HOSTS: z
+      .string()
+      .default("github.com")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((host) => host.trim().toLowerCase())
+          .filter((host) => host.length > 0),
+      ),
+    FOREMAN_FACTORY_LOGINS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((login) => login.trim())
+          .filter((login) => login.length > 0),
+      )
+      .refine((logins) => logins.every((login) => FACTORY_LOGIN.test(login))),
+    FOREMAN_TOKENS_FILE: z.string().min(1).default("/run/secrets/foreman_tokens"),
+    FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
+    FOREMAN_USAGE_REFRESH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+    FOREMAN_FETCH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
     FOREMAN_PRICE_TABLE: z
       .string()
       .min(1)
       .default(DEFAULT_PRICE_TABLE)
       .transform((value) => expandHome(value, home)),
+    FOREMAN_LEDGER_TIME_ZONE: z.string().min(1).default("Europe/London").refine(isTimeZone),
+    FOREMAN_LEDGER_IDLE_MINUTES: z.coerce.number().int().min(1).max(120).default(15),
+    FOREMAN_LEDGER_LEAD_IN_MINUTES: z.coerce.number().int().min(0).default(2),
   });
+  return schema.refine(
+    (config) => config.FOREMAN_LEDGER_LEAD_IN_MINUTES <= config.FOREMAN_LEDGER_IDLE_MINUTES,
+    { path: ["FOREMAN_LEDGER_LEAD_IN_MINUTES"] },
+  );
 }
 
 export type Config = z.infer<ReturnType<typeof createConfigSchema>>;

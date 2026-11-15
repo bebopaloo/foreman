@@ -68,6 +68,8 @@ The stack-ts `preview` skill does the same with one project and a stable port pe
 
 The stack mounts two folders read-only: the config folder (`FOREMAN_CLAUDE_DIR`, default `~/.claude-bebopaloo`) and the Foreman data folder (`FOREMAN_DATA_DIR`, default `~/.foreman`). When the data folder does not exist, `pnpm local:up` creates it with mode `0700` first. It stops when `FOREMAN_CLAUDE_DIR` is `~/.claude`.
 
+One more folder is optional: `FOREMAN_MARKETPLACE_DIR`, an absolute path to the folder of one Marketplace with the source kind `directory`, for example the checkout of the factory repo. `pnpm local:up` mounts it read-only at the same path in the API container. Without it, Factory health shows such a Marketplace as not readable by Foreman.
+
 ```bash
 pnpm local:up
 pnpm local:reindex   # rebuilds the Usage index inside the running stack
@@ -75,6 +77,23 @@ docker compose -f compose.local.yaml -p foreman-local down   # stop the stack an
 ```
 
 Set `LOCAL_PORT` to use another web port and `LOCAL_PROJECT` to use another Compose project name.
+
+### Forge and tracker tokens
+
+Foreman reads work items and pull requests through the factory's adapter plugins. It needs one read-only token for each host and owner in the factory's repo list. The token stays in the macOS Keychain, in the Compose secret `foreman_tokens` (the file `/run/secrets/foreman_tokens` in the API container) and in the memory of the runner. It is never in a file of the repo, in an environment value of a container or in a log.
+
+For each owner:
+
+1. Create a fine-grained token on GitHub. Give it the owner of the repos, only those repos, an expiry date, and these read permissions: Metadata, Contents, Issues, Pull requests, Commit statuses, Checks and Actions.
+2. Store it in the Keychain. The command asks for the token, so it does not reach your shell history:
+
+   ```bash
+   security add-generic-password -s foreman -a github.com/<owner> -w
+   ```
+
+3. Run `pnpm local:up` again. It reads one Keychain item for each distinct `<host>/<owner>` in the repo list, with the service `foreman` and `<host>/<owner>` as the account. A missing item is an owner that shows "not connected: no token". The stack starts anyway.
+
+At the end of `pnpm local:up`, a smoke test runs inside the API container. For each owner it runs one allow-listed read command (`pr list --state open`) through the installed forge adapter and prints one line, for example `github.com/acme: connected`. It exits with an error when the adapter output is not valid, the token is not a fine-grained token, or the adapter plugin is not readable. The API image has Python, `uv`, `gh` and `git` for the adapters.
 
 ## Database changes
 

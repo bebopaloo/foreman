@@ -23,12 +23,123 @@ describe("loadConfig", () => {
     expect(config.CORS_ORIGINS).toEqual(["https://a.example", "https://b.example"]);
   });
 
+  it("allows only github.com and a 60 second adapter timeout by default", () => {
+    const config = loadConfig({ DATABASE_URL });
+    expect(config.FOREMAN_ALLOWED_HOSTS).toEqual(["github.com"]);
+    expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(60);
+  });
+
+  it("reads the Factory identity logins, trimmed, and treats an empty value as no setting", () => {
+    const logins = (value: string | undefined) =>
+      loadConfig({ DATABASE_URL, FOREMAN_FACTORY_LOGINS: value }).FOREMAN_FACTORY_LOGINS;
+    expect(logins(" bebopaloo-factory[bot] , reviewer-1 ")).toEqual([
+      "bebopaloo-factory[bot]",
+      "reviewer-1",
+    ]);
+    expect(logins("")).toEqual([]);
+    expect(logins("   ")).toEqual([]);
+    expect(logins(undefined)).toEqual([]);
+  });
+
+  it("stops at start-up on an invalid Factory identity login", () => {
+    for (const value of ["bad login", "a/b", "ok,bad!", "x[bot", "x[bots]"]) {
+      expect(() => loadConfig({ DATABASE_URL, FOREMAN_FACTORY_LOGINS: value })).toThrow(
+        "FOREMAN_FACTORY_LOGINS",
+      );
+    }
+  });
+
+  it("splits the host allow-list and reads the adapter timeout", () => {
+    const config = loadConfig({
+      DATABASE_URL,
+      FOREMAN_ALLOWED_HOSTS: "GitHub.com, git.example.com",
+      FOREMAN_ADAPTER_TIMEOUT_SECONDS: "30",
+    });
+    expect(config.FOREMAN_ALLOWED_HOSTS).toEqual(["github.com", "git.example.com"]);
+    expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(30);
+  });
+
+  it("refreshes the usage each 15 minutes by default and reads 1 to 1,440 minutes", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_USAGE_REFRESH_MINUTES).toBe(15);
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: "1" })
+        .FOREMAN_USAGE_REFRESH_MINUTES,
+    ).toBe(1);
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: "1440" })
+        .FOREMAN_USAGE_REFRESH_MINUTES,
+    ).toBe(1440);
+  });
+
+  it.each(["0", "1441", "1.5", "abc"])("rejects %s as the usage refresh minutes", (value) => {
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_USAGE_REFRESH_MINUTES: value })).toThrow(
+      "FOREMAN_USAGE_REFRESH_MINUTES",
+    );
+  });
+
+  it("reads the tokens file from the Compose secret by default and from a variable", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_FILE).toBe("/run/secrets/foreman_tokens");
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_TOKENS_FILE: "/synthetic/tokens.json" })
+        .FOREMAN_TOKENS_FILE,
+    ).toBe("/synthetic/tokens.json");
+  });
+
+  it("has no Marketplace folder by default and reads an absolute one", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_MARKETPLACE_DIR).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "" }).FOREMAN_MARKETPLACE_DIR).toBe(
+      undefined,
+    );
+    expect(
+      loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "/synthetic/factory" })
+        .FOREMAN_MARKETPLACE_DIR,
+    ).toBe("/synthetic/factory");
+  });
+
+  it("stops for a Marketplace folder that is not an absolute path", () => {
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "factory" })).toThrow(
+      "FOREMAN_MARKETPLACE_DIR",
+    );
+    expect(() => loadConfig({ DATABASE_URL, FOREMAN_MARKETPLACE_DIR: "~/factory" })).toThrow(
+      "FOREMAN_MARKETPLACE_DIR",
+    );
+  });
+
   it("reads the price table of the repo by default and from a variable", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_PRICE_TABLE).toMatch(/data\/price-table\.json$/);
     expect(
       loadConfig({ DATABASE_URL, FOREMAN_PRICE_TABLE: "/synthetic/prices.json" })
         .FOREMAN_PRICE_TABLE,
     ).toBe("/synthetic/prices.json");
+  });
+
+  it("uses the ledger defaults and reads the ledger variables", () => {
+    const defaults = loadConfig({ DATABASE_URL });
+    expect(defaults.FOREMAN_LEDGER_TIME_ZONE).toBe("Europe/London");
+    expect(defaults.FOREMAN_LEDGER_IDLE_MINUTES).toBe(15);
+    expect(defaults.FOREMAN_LEDGER_LEAD_IN_MINUTES).toBe(2);
+    const set = loadConfig({
+      DATABASE_URL,
+      FOREMAN_LEDGER_TIME_ZONE: "Asia/Tokyo",
+      FOREMAN_LEDGER_IDLE_MINUTES: "45",
+      FOREMAN_LEDGER_LEAD_IN_MINUTES: "0",
+    });
+    expect(set.FOREMAN_LEDGER_TIME_ZONE).toBe("Asia/Tokyo");
+    expect(set.FOREMAN_LEDGER_IDLE_MINUTES).toBe(45);
+    expect(set.FOREMAN_LEDGER_LEAD_IN_MINUTES).toBe(0);
+  });
+
+  it("names the ledger variable that is not valid", () => {
+    const bad = (env: Record<string, string>) => () => loadConfig({ DATABASE_URL, ...env });
+    expect(bad({ FOREMAN_LEDGER_TIME_ZONE: "Mars/Base" })).toThrow(/FOREMAN_LEDGER_TIME_ZONE/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "0" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "121" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_IDLE_MINUTES: "1.5" })).toThrow(/FOREMAN_LEDGER_IDLE_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_LEAD_IN_MINUTES: "-1" })).toThrow(/FOREMAN_LEDGER_LEAD_IN_MINUTES/);
+    expect(bad({ FOREMAN_LEDGER_LEAD_IN_MINUTES: "20" })).toThrow(/FOREMAN_LEDGER_LEAD_IN_MINUTES/);
+    expect(
+      bad({ FOREMAN_LEDGER_IDLE_MINUTES: "30", FOREMAN_LEDGER_LEAD_IN_MINUTES: "20" }),
+    ).not.toThrow();
   });
 
   it("fails fast without a database URL", () => {

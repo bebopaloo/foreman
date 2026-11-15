@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./prices": "./src/usage/prices.ts"
+    "./prices": "./src/usage/prices.ts",
+    "./repo-list": "./src/work/repo-list.ts"
   },
   "scripts": {
     "dev": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node --watch src/server.ts",
@@ -20,10 +21,12 @@
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.8",
     "fastify-type-provider-zod": "7.0.0",
+    "smol-toml": "1.9.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.1.0",
     "vitest": "5.1.0"
   }
 }

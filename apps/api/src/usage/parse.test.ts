@@ -18,11 +18,63 @@ function assistant(overrides: Record<string, unknown> = {}, usage: Record<string
   });
 }
 
+function user(overrides: Record<string, unknown> = {}, content: unknown = "SECRET PROMPT") {
+  return JSON.stringify({
+    type: "user",
+    uuid: "u1",
+    sessionId: "s1",
+    timestamp: "2026-11-01T10:00:00.000Z",
+    cwd: "/synthetic/a/app",
+    gitBranch: "main",
+    message: { role: "user", content },
+    ...overrides,
+  });
+}
+
+describe("parseLine user messages", () => {
+  it("maps a real user message to a time with no text", () => {
+    const result = parseLine(user());
+    expect(result).toEqual({
+      kind: "userMessage",
+      userMessage: {
+        recordId: "u1",
+        sessionId: "s1",
+        time: new Date("2026-11-01T10:00:00.000Z"),
+        projectKey: "/synthetic/a/app",
+        branch: "main",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("counts a message with text blocks, and a message with text next to a tool result", () => {
+    const blocks = [
+      { type: "tool_result", tool_use_id: "t1", content: "x" },
+      { type: "text", text: "SECRET" },
+    ];
+    expect(parseLine(user({}, blocks)).kind).toBe("userMessage");
+    expect(parseLine(user({}, [{ type: "text", text: "SECRET" }])).kind).toBe("userMessage");
+  });
+
+  it("ignores a user message that has only tool results, or that is meta", () => {
+    expect(parseLine(user({}, [{ type: "tool_result", tool_use_id: "t1", content: "x" }]))).toEqual(
+      { kind: "ignore" },
+    );
+    expect(parseLine(user({ isMeta: true }))).toEqual({ kind: "ignore" });
+  });
+
+  it("reports a real user message that has no record ID as malformed", () => {
+    expect(parseLine(user({ uuid: undefined }))).toEqual({ kind: "malformed" });
+  });
+});
+
 describe("parseLine", () => {
   it("maps an assistant record to a turn with no text", () => {
     const result = parseLine(assistant());
     expect(result).toEqual({
       kind: "turn",
+      skillCalls: [],
+      agentStarts: [],
       turn: {
         turnKey: "msg_1",
         sessionId: "s1",
@@ -75,10 +127,10 @@ describe("parseLine", () => {
     });
   });
 
-  it("ignores user records and synthetic models", () => {
-    expect(parseLine(JSON.stringify({ type: "user", message: { content: "hi" } }))).toEqual({
-      kind: "ignore",
-    });
+  it("ignores user records that are not real messages, and synthetic models", () => {
+    expect(
+      parseLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result" }] } })),
+    ).toEqual({ kind: "ignore" });
     const synthetic = JSON.parse(assistant()) as { message: Record<string, unknown> };
     synthetic.message.model = "<synthetic>";
     expect(parseLine(JSON.stringify(synthetic))).toEqual({ kind: "ignore" });
@@ -116,5 +168,67 @@ describe("parseAgentMeta", () => {
 
   it("returns no Agent type when it is empty", () => {
     expect(parseAgentMeta(JSON.stringify({ agentType: "" }))).toEqual({});
+  });
+});
+
+describe("parseLine skill calls and agent starts", () => {
+  const toolUse = (id: string, name: string, input: Record<string, unknown>) => ({
+    type: "tool_use",
+    id,
+    name,
+    input,
+  });
+
+  function turnOf(content: unknown[]) {
+    const result = parseLine(
+      assistant({}, {}).replace(/"content":\[[^\]]*\]/, `"content":${JSON.stringify(content)}`),
+    );
+    if (result.kind !== "turn") throw new Error("not a turn");
+    return result;
+  }
+
+  it("keeps the call ID and the skill name of a Skill call, and nothing else of its input", () => {
+    const result = turnOf([
+      toolUse("t1", "Skill", { skill: "/factory-core:to-code", args: "SECRET" }),
+    ]);
+    expect(result.skillCalls).toEqual([
+      {
+        callId: "t1",
+        sessionId: "s1",
+        messageId: "msg_1",
+        time: new Date("2026-11-01T10:00:00.000Z"),
+        skillName: "factory-core:to-code",
+        projectKey: "/synthetic/a/app",
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("keeps the call ID of an Agent call and of a Task call", () => {
+    const result = turnOf([
+      toolUse("t1", "Agent", { prompt: "SECRET" }),
+      toolUse("t2", "Task", { prompt: "SECRET" }),
+      toolUse("t3", "Bash", { command: "SECRET" }),
+      toolUse("t4", "Skill", {}),
+    ]);
+    expect(result.agentStarts.map((start) => start.callId)).toEqual(["t1", "t2"]);
+    expect(result.skillCalls).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("reads the name of a slash command and keeps no text", () => {
+    const command =
+      "<command-message>x</command-message>\n<command-name>/review-spec</command-name>\n<command-args>SECRET</command-args>";
+    const result = parseLine(user({}, command));
+    expect(result).toMatchObject({ userMessage: { command: "review-spec" } });
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+    const blocks = parseLine(user({}, [{ type: "text", text: command }, { type: "image" }]));
+    expect(blocks).toMatchObject({ userMessage: { command: "review-spec" } });
+  });
+
+  it("reads no command from a prompt that only mentions the tag", () => {
+    const result = parseLine(user({}, "please explain <command-name>/x</command-name>"));
+    expect(result).toMatchObject({ kind: "userMessage" });
+    expect(JSON.stringify(result)).not.toContain("command");
   });
 });

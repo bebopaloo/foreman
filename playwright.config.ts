@@ -1,5 +1,8 @@
 import { createServer, type Server } from "node:net";
+import path from "node:path";
+import { createDatabase, ensureDatabase, migrateDatabase } from "@foreman/db";
 import { defineConfig, devices } from "@playwright/test";
+import { SYNTHETIC_HOST } from "./e2e/fixtures/adapter/host.ts";
 
 // E2E_BASE_URL points the tests at a running preview. Without it, Playwright
 // starts the dev servers itself, on free ports, so two worktrees can run their
@@ -40,6 +43,28 @@ if (
   process.env.E2E_API_PORT ??= apiPort;
 }
 
+// The e2e API uses its own database on the server of DATABASE_URL (or the local one), named after the
+// checkout folder, so that the tests never touch another database and two worktrees never share one.
+if (previewURL === undefined && process.env.E2E_DATABASE_URL === undefined) {
+  const server = new URL(process.env.DATABASE_URL ?? "postgres://app@127.0.0.1:55432/app");
+  const slug = path
+    .basename(import.meta.dirname)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  server.pathname = `/app_e2e_${slug}`;
+  const url = server.toString();
+  await ensureDatabase(url);
+  const database = createDatabase(url);
+  try {
+    await migrateDatabase(database.db);
+  } finally {
+    await database.close();
+  }
+  process.env.E2E_DATABASE_URL = url;
+}
+
 const devURL = `http://127.0.0.1:${process.env.E2E_WEB_PORT ?? ""}`;
 const baseURL = previewURL ?? devURL;
 
@@ -49,13 +74,16 @@ export default defineConfig({
   retries: ci ? 1 : 0,
   reporter: ci ? [["github"], ["html", { open: "never" }]] : "list",
   use: { baseURL, trace: "on-first-retry" },
+  // One API and one fixture folder serve all tests, so the tests run one at a time.
+  workers: 1,
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   ...(previewURL
     ? {}
     : {
         webServer: {
           command: "pnpm dev",
-          url: devURL,
+          // The API answers through the Vite proxy, so the API is up before the tests start.
+          url: `${devURL}/api/health`,
           reuseExistingServer: !ci,
           timeout: 60_000,
           // WEB_PORT is the Vite port. PORT is the API port, which the Vite
@@ -64,6 +92,20 @@ export default defineConfig({
             WEB_PORT: process.env.E2E_WEB_PORT ?? "",
             PORT: process.env.E2E_API_PORT ?? "",
             CORS_ORIGINS: devURL,
+            DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
+            FOREMAN_CLAUDE_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "claude"),
+            // The synthetic host only: the adapter that the API resolves is the synthetic one, and no
+            // real host is allowed.
+            FOREMAN_ALLOWED_HOSTS: SYNTHETIC_HOST,
+            FOREMAN_FACTORY_LOGINS: "synthetic-factory[bot]",
+            FOREMAN_DATA_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "data"),
+            FOREMAN_PRICE_TABLE: path.join(
+              import.meta.dirname,
+              "e2e",
+              "fixtures",
+              "price-table.json",
+            ),
+            FOREMAN_TOKENS_FILE: path.join(import.meta.dirname, "e2e", "fixtures", "tokens"),
           },
         },
       }),
