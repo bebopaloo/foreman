@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NextCursor, pageQueryShape } from "./paging.ts";
 
 export const HealthResponse = z
   .object({
@@ -263,3 +264,47 @@ export type LimitsResponse = z.infer<typeof LimitsResponse>;
 
 export * from "./paging.ts";
 export * from "./factory-health.ts";
+
+export const SESSION_KINDS = ["unattended-loop", "attended-loop", "session"] as const;
+export type SessionKind = (typeof SESSION_KINDS)[number];
+
+export const SessionsQuery = z
+  .object({
+    day: UsageDate,
+    tz: rangeShape.tz,
+    client: ClientName.optional(),
+    ...pageQueryShape({ defaultLimit: 50, maxLimit: 200 }),
+  })
+  .strict();
+export type SessionsQuery = z.infer<typeof SessionsQuery>;
+
+export const SessionSummary = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().nullable(),
+    kind: z.enum(SESSION_KINDS),
+    start: z.iso.datetime(),
+    end: z.iso.datetime(),
+    continuesBefore: z.boolean(),
+    continuesAfter: z.boolean(),
+    projects: z
+      .array(
+        z.object({ id: z.string().regex(/^[0-9a-f]{12}$/), label: z.string().min(1) }).strict(),
+      )
+      .max(3),
+    projectCount: z.number().int(),
+    tokens: z.number().int(),
+    turns: z.number().int(),
+    userMessages: z.number().int(),
+  })
+  .strict();
+export type SessionSummary = z.infer<typeof SessionSummary>;
+
+export const SessionsResponse = z
+  .object({
+    sessions: z.array(SessionSummary),
+    total: z.number().int(),
+    nextCursor: NextCursor,
+  })
+  .strict();
+export type SessionsResponse = z.infer<typeof SessionsResponse>;
