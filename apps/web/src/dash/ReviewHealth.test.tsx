@@ -90,4 +90,31 @@ describe("Review health", () => {
     expect(await within(list).findByText(/Factory identity login not set/)).toBeInTheDocument();
     expect(list).not.toHaveTextContent("reviewed by");
   });
+
+  it("shows the not connected text for the Factory identity counts when no repo is connected", async () => {
+    fakeApi({ dash: { complete: { connectedRepos: 0, missingRepos: 3 } } });
+    renderApp();
+    const view = await section();
+    expect(
+      await view.findByText(/Not connected. Add the Foreman token to the Keychain/),
+    ).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Control health" })).toBeInTheDocument();
+  });
+
+  it("shows that the Factory identity counts are not complete when a repo is not connected", async () => {
+    fakeApi({ dash: { complete: { connectedRepos: 2, missingRepos: 1 } } });
+    renderApp();
+    const view = await section();
+    expect(
+      await view.findByText("Data is not complete: 1 repo not connected. See Repos."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no note when every repo is connected", async () => {
+    fakeApi({ dash: { complete: { connectedRepos: 2, missingRepos: 0 } } });
+    renderApp();
+    const view = await section();
+    await view.findByText("Control health");
+    expect(view.queryByText(/not complete|Not connected/)).toBeNull();
+  });
 });

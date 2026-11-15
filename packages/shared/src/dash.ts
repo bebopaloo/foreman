@@ -117,6 +117,57 @@ export const PipelineCounts = z
   .strict();
 export type PipelineCounts = z.infer<typeof PipelineCounts>;
 
+/** The most items that Waits for you lists. */
+export const WAITS_LIMIT = 20;
+
+export const WAIT_KINDS = ["blocked", "release", "merge_ready", "todo"] as const;
+
+/** An open issue or pull request that waits for the Operator. */
+export const WaitItem = z
+  .object({
+    kind: z.enum(WAIT_KINDS),
+    repoId: z.string(),
+    /** `owner/name`. */
+    repo: z.string(),
+    /** The issue number, or the pull request number for a release. */
+    number: z.number().int().positive(),
+    title: z.string(),
+    reason: z.string(),
+    source: z.enum(["night log", "tracker", "forge"]),
+    link: z.string().nullable(),
+  })
+  .strict();
+export type WaitItem = z.infer<typeof WaitItem>;
+
+export const Waits = z
+  .object({
+    /** The count of all items that wait. It is the number of the tile. */
+    total: z.number().int().min(0),
+    /** The first items, at most `WAITS_LIMIT`, in the order of `factory-next`. */
+    items: z.array(WaitItem).max(WAITS_LIMIT),
+  })
+  .strict();
+export type Waits = z.infer<typeof Waits>;
+
+/** One repo in scope: its connection state and the times of its local and cached data. */
+export const DashRepo = z
+  .object({
+    repoId: z.string(),
+    /** `owner/name`. */
+    repo: z.string(),
+    client: z.string().nullable(),
+    /** The connection state: the first role state that is not connected, `partial`, `connected` or `not fetched`. */
+    state: z.string(),
+    /** The time of the last good fetch, or null with none. */
+    dataAsOf: z.iso.datetime().nullable(),
+    /** The time of the newest night log line of the repo, or null with none in 30 days. */
+    lastLogAt: z.iso.datetime().nullable(),
+    /** The time of the newest Control event of the repo, or null with none in 30 days. */
+    lastControlAt: z.iso.datetime().nullable(),
+  })
+  .strict();
+export type DashRepo = z.infer<typeof DashRepo>;
+
 export const DashResponse = z
   .object({
     run: z
@@ -156,6 +207,8 @@ export const DashResponse = z
       .nullable(),
     /** The pipeline strip, or null when no repo in scope is connected. */
     pipeline: PipelineCounts.nullable(),
+    /** Waits for you, or null when no repo in scope is connected. */
+    waits: Waits.nullable(),
     /** The repos in scope with Work cache rows, and those with none or with a fetch error. */
     complete: z
       .object({
@@ -163,6 +216,8 @@ export const DashResponse = z
         missingRepos: z.number().int().min(0),
       })
       .strict(),
+    /** The repos in scope with their states and times. */
+    repos: z.array(DashRepo),
     /** The state of the two factory folders. */
     sources: z.object({ runs: FolderState, controls: FolderState }).strict(),
     skipped: z

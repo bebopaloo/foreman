@@ -408,6 +408,68 @@ main {
   font-size: 24px;
 }
 
+.wait-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.wait-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wait-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.wait-head,
+.wait-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.wait-head {
+  justify-content: flex-start;
+}
+
+.wait-title {
+  font-weight: 500;
+}
+
+.wait-pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: #e6e8ec;
+  color: #2f3540;
+}
+
+.wait-pill-blocked {
+  background: #b45309;
+  color: #fff;
+}
+
+.wait-pill-release,
+.wait-pill-merge_ready {
+  background: #1d4f9e;
+  color: #fff;
+}
+
 .work-view {
   display: flex;
   flex-direction: column;
@@ -544,4 +606,8 @@ main a:focus-visible {
 
 .pill-plain {
   color: var(--muted);
+}
+
+.repos-table {
+  min-width: 720px;
 }

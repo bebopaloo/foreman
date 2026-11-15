@@ -50,7 +50,9 @@ export const quietDash: DashResponse = {
     done: 0,
     release: 0,
   },
+  waits: { total: 0, items: [] },
   complete: { connectedRepos: 1, missingRepos: 0 },
+  repos: [],
   sources: { runs: "ok", controls: "ok" },
   skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
 };
