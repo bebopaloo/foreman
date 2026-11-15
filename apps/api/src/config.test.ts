@@ -23,6 +23,22 @@ describe("loadConfig", () => {
     expect(config.CORS_ORIGINS).toEqual(["https://a.example", "https://b.example"]);
   });
 
+  it("allows only github.com and a 60 second adapter timeout by default", () => {
+    const config = loadConfig({ DATABASE_URL });
+    expect(config.FOREMAN_ALLOWED_HOSTS).toEqual(["github.com"]);
+    expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(60);
+  });
+
+  it("splits the host allow-list and reads the adapter timeout", () => {
+    const config = loadConfig({
+      DATABASE_URL,
+      FOREMAN_ALLOWED_HOSTS: "GitHub.com, git.example.com",
+      FOREMAN_ADAPTER_TIMEOUT_SECONDS: "30",
+    });
+    expect(config.FOREMAN_ALLOWED_HOSTS).toEqual(["github.com", "git.example.com"]);
+    expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(30);
+  });
+
   it("reads the price table of the repo by default and from a variable", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_PRICE_TABLE).toMatch(/data\/price-table\.json$/);
     expect(
