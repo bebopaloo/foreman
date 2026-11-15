@@ -49,6 +49,11 @@ export interface AdapterRepo {
    * with the text. A path that is not here is "file not found".
    */
   files?: Record<string, string>;
+  /**
+   * The raw output of a command that the adapter answers, by command (`file get x --ref main`). Use it
+   * for an output that breaks the contract, or for a ref other than `main`.
+   */
+  answers?: Record<string, unknown>;
   /** An error message for each command (`issue relations 12`): the adapter fails that command. */
   fail?: Record<string, string>;
 }
@@ -122,6 +127,9 @@ function repoScenario(repo: string, data: AdapterRepo): Record<string, Answer> {
         content,
       },
     };
+  }
+  for (const [command, output] of Object.entries(data.answers ?? {})) {
+    scenario[command] = { ok: output };
   }
   for (const [command, error] of Object.entries(data.fail ?? {})) {
     scenario[command] = { error };

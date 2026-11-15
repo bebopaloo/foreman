@@ -163,7 +163,58 @@ test("at 375 pixels wide the page has no horizontal page scroll", async ({ page 
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
+test("a set of drift states shows each state as text, and the Stack pack that is not installed", async ({
+  page,
+}) => {
+  await useFixture("health-drift-states");
+  await page.goto("/health");
+  await loaded(page);
+  const rule = (name: string) => ruleRow(page, "acme/app", name);
+  await expect(rule("coding")).toContainText("differs from the template");
+  await expect(rule("coding")).toContainText(
+    "Foreman cannot tell a team edit from a template change.",
+  );
+  await expect(rule("security")).toContainText("missing at main");
+  await expect(rule("testing")).toContainText("file too large");
+  await expect(rule("typescript")).toContainText("invalid adapter output");
+  await expect(rule("react")).toContainText("adapter error");
+  await expect(rule("python")).toContainText("no template in the installed plugins");
+  await expect(page.getByText("Stack pack stack-py is not installed")).toBeVisible();
+  await expect(
+    page.getByText("the main branch in the factory config is release, the default branch is main"),
+  ).toBeVisible();
+  await expect(ruleRow(page, "acme/site", "coding")).toContainText("current");
+});
+
+test("rules that are current with an older stamp or no stamp, and a template name in two plugins", async ({
+  page,
+}) => {
+  await useFixture("health-drift-variants");
+  await page.goto("/health");
+  await loaded(page);
+  const rule = (name: string) => ruleRow(page, "acme/app", name);
+  await expect(rule("coding")).toContainText("current, stamp 0.8.1");
+  await expect(rule("typescript")).toContainText("current, no stamp");
+  await expect(rule("gdpr")).toContainText("current");
+  await expect(rule("testing")).toContainText("template name not unique");
+});
+
+test("a repo with no factory config, an unreadable one, a missing branch and a failed read", async ({
+  page,
+}) => {
+  await useFixture("health-drift-config");
+  await page.goto("/health");
+  await loaded(page);
+  await expect(page.getByText("not set up: no .claude/factory.json at main")).toBeVisible();
+  await expect(page.getByText("factory config not readable")).toBeVisible();
+  await expect(page.getByText("branch not found", { exact: true })).toBeVisible();
+  await expect(page.getByText("factory config not read: adapter error")).toBeVisible();
+});
+
 const AXE_SETS: FixtureName[] = [
+  "health-drift-states",
+  "health-drift-variants",
+  "health-drift-config",
   "health",
   "health-not-connected",
   "health-bare",

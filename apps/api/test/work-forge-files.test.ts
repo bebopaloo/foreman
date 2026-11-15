@@ -868,7 +868,7 @@ describe("the rule files", () => {
     const rows = await ruleRows();
     expect(rows.map((row) => [row.path, row.state, row.errorClass])).toEqual([
       [rulePath("bad"), "failed", "invalid_output"],
-      [rulePath("big"), "failed", "invalid_output"],
+      [rulePath("big"), "failed", "too_large"],
       [rulePath("boom"), "failed", "other"],
     ]);
     for (const row of rows) expect(row.fields).toEqual(earlier[row.path]);

@@ -395,6 +395,18 @@ describe("GET /api/factory-health/rule-drift", () => {
     expect(ruleOf(body, PAY, "security").errorState).toBe("adapter error");
   });
 
+  it("shows a rule file that is too large as such, with no drift state", async () => {
+    const { app } = await appFor({ plugins: { "factory-core": CORE } });
+    await seedRepo(PAY, "acme", "pay");
+    await seedConfig(PAY, { rules: ["coding"] });
+    await seedRule(PAY, "coding", CODING, "rule", { state: "failed", errorClass: "too_large" });
+
+    expect(ruleOf(await view(app), PAY, "coding")).toMatchObject({
+      state: "failed",
+      errorState: "file too large",
+    });
+  });
+
   it("shows no rules for a repo that is not set up, or whose config is not readable", async () => {
     const { app } = await appFor({ plugins: { "factory-core": CORE } });
     await seedRepo(PAY, "acme", "pay");
