@@ -61,7 +61,67 @@ test("the dash asks for new data each 60 seconds while the tab is visible", asyn
   await expect.poll(() => requests).toBe(2);
 });
 
-const AXE_SETS: FixtureName[] = ["run-in-progress", "stale-lock", "no-run", "not-connected"];
+const lastRun = (page: Page) => page.getByRole("region", { name: "Last run" });
+const buildRows = (page: Page) =>
+  lastRun(page)
+    .getByRole("table", { name: "Builds of the last run" })
+    .getByRole("row")
+    .filter({ has: page.getByRole("cell") });
+
+test("a run in progress shows open bars in Last run", async ({ page }) => {
+  await useFixture("run-in-progress");
+  await page.goto("/");
+  await expect(buildRows(page)).toHaveCount(3);
+  await expect(lastRun(page)).toContainText("Run in progress");
+  await expect(lastRun(page).getByTitle(/: running$/)).toHaveCount(3);
+});
+
+test("no run in the last 30 days shows that in Last run", async ({ page }) => {
+  await useFixture("no-run");
+  await page.goto("/");
+  await expect(lastRun(page)).toContainText("No run in the last 30 days");
+});
+
+test("the slot timeline shows lanes, results, skips and blocked at selection", async ({ page }) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  await expect(lastRun(page)).toContainText("9 skips");
+  await expect(lastRun(page)).toContainText("1 blocked at selection");
+  const rows: string[] = [];
+  for (const row of await buildRows(page).all()) {
+    const cells = await row.getByRole("cell").allTextContents();
+    rows.push([cells[0], cells[2], cells[5]].join(" "));
+  }
+  expect(rows).toEqual([
+    "1 21 merged",
+    "2 22 merge-ready",
+    "3 24 stopped at run end",
+    "1 23 blocked",
+  ]);
+  await expect(lastRun(page).getByTitle(/#30:/)).toHaveCount(0);
+  await expect(lastRun(page).getByTitle("acme/app #23: blocked")).toBeVisible();
+});
+
+test("a client scope shows the older run of that client, with its own lanes", async ({ page }) => {
+  await useFixture("last-run-clients");
+  await page.goto("/?client=acme");
+  await expect(lastRun(page)).toContainText("run-synthetic-old");
+  const lanes: (string | undefined)[] = [];
+  for (const row of await buildRows(page).all()) {
+    lanes.push((await row.getByRole("cell").allTextContents())[0]);
+  }
+  expect(lanes).toEqual(["1", "2"]);
+  await page.goto("/");
+  await expect(lastRun(page)).toContainText("run-synthetic-new");
+});
+
+const AXE_SETS: FixtureName[] = [
+  "last-run",
+  "run-in-progress",
+  "stale-lock",
+  "no-run",
+  "not-connected",
+];
 
 for (const name of AXE_SETS) {
   test(`the dash has no WCAG 2.2 AA violations: ${name}`, async ({ page }) => {

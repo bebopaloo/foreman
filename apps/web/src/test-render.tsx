@@ -29,6 +29,7 @@ export const dashRequests: string[] = [];
 
 export const quietDash: DashResponse = {
   run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
+  lastRun: null,
   sources: { runs: "ok", controls: "ok" },
   skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
 };

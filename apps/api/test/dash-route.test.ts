@@ -76,6 +76,7 @@ describe("GET /api/dash", () => {
     expect(response.statusCode).toBe(200);
     expect(body).toEqual({
       run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
+      lastRun: null,
       sources: { runs: "missing", controls: "missing" },
       skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
     });

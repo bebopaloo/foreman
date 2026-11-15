@@ -140,6 +140,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
   });
   await app.register(dashRoutes, {
     prefix: "/api",
+    db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     ...(now === undefined ? {} : { now }),
   });

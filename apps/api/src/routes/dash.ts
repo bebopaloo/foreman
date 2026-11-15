@@ -1,8 +1,10 @@
+import type { Database } from "@foreman/db";
 import { DashQuery, DashResponse } from "@foreman/shared";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { buildDash, readDashSources } from "../dash/dash.ts";
 
 export interface DashOptions {
+  db: Database;
   claudeDir: string;
   /** Tests pass a fixed clock. */
   now?: () => Date;
@@ -10,7 +12,7 @@ export interface DashOptions {
 
 export const dashRoutes: FastifyPluginCallbackZod<DashOptions> = (
   app,
-  { claudeDir, now = () => new Date() },
+  { db, claudeDir, now = () => new Date() },
   done,
 ) => {
   // Public for the same reason as the Usage routes: Foreman binds to 127.0.0.1 and has no sign-in.
@@ -21,7 +23,13 @@ export const dashRoutes: FastifyPluginCallbackZod<DashOptions> = (
       schema: { querystring: DashQuery, response: { 200: DashResponse } },
     },
     async (request) => {
-      const { response, reports } = buildDash(await readDashSources(claudeDir, now()));
+      const at = now();
+      const { client } = request.query;
+      const { response, reports } = buildDash(
+        await readDashSources(claudeDir, at, db),
+        client === undefined ? { kind: "all" } : { kind: "client", client },
+        at,
+      );
       for (const { folder, files } of reports) {
         for (const { file, lines } of files) {
           request.log.warn(
