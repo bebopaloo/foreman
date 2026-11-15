@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api.ts";
 import { DashPage } from "./dash/index.ts";
 import { Header } from "./Header.tsx";
+import { UsagePage } from "./usage/index.ts";
 import { useScope } from "./scope/index.ts";
 import { WorkPage } from "./work/index.ts";
 
@@ -22,6 +23,8 @@ export function App() {
           <DashPage />
         ) : window.location.pathname === "/work" ? (
           <WorkPage />
+        ) : window.location.pathname === "/usage" ? (
+          <UsagePage />
         ) : (
           <>
             <h1>Page not found</h1>

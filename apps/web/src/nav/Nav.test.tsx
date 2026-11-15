@@ -23,6 +23,7 @@ describe("Nav", () => {
     expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Foreman dash",
       "Work",
+      "Usage",
     ]);
   });
 

@@ -1,7 +1,9 @@
 import {
+  BreakdownResponse,
   DashResponse,
   HealthResponse,
   RefreshStatusResponse,
+  SeriesResponse,
   WorkClientsResponse,
   WorkItemsResponse,
   WorkReposResponse,
@@ -76,3 +78,36 @@ export const fetchWorkItems = (
   const text = params.toString();
   return getJson(`/api/work/items${text === "" ? "" : `?${text}`}`, WorkItemsResponse, signal);
 };
+
+export interface UsageQuery {
+  from: string;
+  to: string;
+  tz: string;
+  /** The Client scope. Null is "All". */
+  client: string | null;
+}
+
+function usageParams(query: UsageQuery, extra: Record<string, string>): string {
+  const params = new URLSearchParams({ from: query.from, to: query.to, tz: query.tz, ...extra });
+  if (query.client !== null) params.set("client", query.client);
+  return params.toString();
+}
+
+export const fetchUsageBreakdown = (
+  query: UsageQuery,
+  dimension: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<BreakdownResponse> =>
+  getJson(
+    `/api/usage/breakdown?${usageParams(query, { dimension, limit: String(limit) })}`,
+    BreakdownResponse,
+    signal,
+  );
+
+export const fetchUsageSeries = (
+  query: UsageQuery,
+  grain: string,
+  signal?: AbortSignal,
+): Promise<SeriesResponse> =>
+  getJson(`/api/usage/series?${usageParams(query, { grain })}`, SeriesResponse, signal);

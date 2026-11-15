@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "@playwright/test";
 import { FIXTURE_SETS, type FixtureName } from "./sets.ts";
+import { clearUsageIndex } from "./usage-seed.ts";
 import { seedWorkCache } from "./work-seed.ts";
 
 /**
@@ -26,6 +27,40 @@ async function waitForFetchIdle(apiPort: string): Promise<void> {
   throw new Error("The start-up fetch did not end.");
 }
 
+interface UsageStatus {
+  state?: unknown;
+  dataAsOf?: unknown;
+}
+
+async function usageStatus(apiPort: string): Promise<UsageStatus> {
+  const response = await fetch(`http://127.0.0.1:${apiPort}/api/usage/status`);
+  return (await response.json()) as UsageStatus;
+}
+
+async function waitForUsageIdle(apiPort: string): Promise<UsageStatus> {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const status = await usageStatus(apiPort);
+    if (status.state !== "running") return status;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("The usage refresh did not end.");
+}
+
+/** Reads the transcripts of the live Claude folder into the Usage index, and waits until it ends. */
+async function refreshUsage(apiPort: string): Promise<void> {
+  await waitForUsageIdle(apiPort);
+  const before = (await usageStatus(apiPort)).dataAsOf;
+  await fetch(`http://127.0.0.1:${apiPort}/api/usage/refresh`, {
+    method: "POST",
+  });
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const status = await usageStatus(apiPort);
+    if (status.state === "idle" && status.dataAsOf !== null && status.dataAsOf !== before) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("The usage refresh did not end.");
+}
+
 /**
  * Loads a named fixture set: writes its files into the live Claude folder and replaces the Work cache
  * of the e2e database. Call it first in each test, before `page.goto`. The API reads the folder on each
@@ -39,10 +74,15 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
 
   const set: {
     files(now: Date): Record<string, string>;
+    usage?: boolean;
     work?: Parameters<typeof seedWorkCache>[1];
     tokenOwners?: readonly string[];
   } = FIXTURE_SETS[name];
   await waitForFetchIdle(apiPort);
+  if (set.usage === true) {
+    await waitForUsageIdle(apiPort);
+    await clearUsageIndex(databaseUrl);
+  }
   await rm(LIVE_CLAUDE_DIR, { recursive: true, force: true });
   await mkdir(LIVE_CLAUDE_DIR, { recursive: true });
   for (const [relative, content] of Object.entries(set.files(now))) {
@@ -57,4 +97,5 @@ export async function useFixture(name: FixtureName, now: Date = new Date()): Pro
     ),
   );
   await seedWorkCache(databaseUrl, set.work, now);
+  if (set.usage === true) await refreshUsage(apiPort);
 }
