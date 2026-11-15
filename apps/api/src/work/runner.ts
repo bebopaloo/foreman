@@ -83,7 +83,7 @@ function isForgeFilePath(file: string): boolean {
   return FORGE_FILE_PATHS.has(file) || RULE_FILE_PATTERN.test(file);
 }
 
-function isRef(ref: string): boolean {
+export function isRef(ref: string): boolean {
   return REF_PATTERN.test(ref) && !ref.includes("..");
 }
 

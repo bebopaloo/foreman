@@ -163,7 +163,7 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
       schema: { response: { 202: WorkStatusResponse } },
     },
     async (_request, reply) => {
-      void schedule.trigger();
+      void schedule.trigger({ refresh: true });
       return reply.status(202).send(await readWorkStatus(db, claudeDir, schedule));
     },
   );

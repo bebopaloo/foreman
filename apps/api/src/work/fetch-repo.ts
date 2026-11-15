@@ -5,6 +5,7 @@ import type { z } from "zod";
 import { resolveAdapter, type AdapterRole, type ResolvedAdapter } from "./adapters.ts";
 import { planRecordRead, parseReleaseRecord } from "../controls/release-records.ts";
 import { contractSchemas, prReviewSchema, RELEASE_TAG_PATTERN } from "./contract.ts";
+import { forgeFilesDue, runForgeFileStep } from "./forge-files.ts";
 import type { RepoEntry } from "./repo-list.ts";
 import {
   runAdapterCommand,
@@ -46,6 +47,8 @@ export interface FetchContext {
   runner: RunnerOptions;
   startedAt: Date;
   full: boolean;
+  /** True for a fetch that a refresh request started. */
+  refresh: boolean;
 }
 
 interface Role {
@@ -495,6 +498,11 @@ async function fetchForge(
         });
     }
   });
+
+  if (await forgeFilesDue(ctx, repo.id)) {
+    const fileError = await runForgeFileStep(ctx, caller, repo.id);
+    firstError ??= fileError;
+  }
 
   const outcome: RoleOutcome =
     firstError === null

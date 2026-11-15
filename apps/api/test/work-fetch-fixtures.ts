@@ -171,6 +171,10 @@ export function forgeScenario(
   const scenario: Scenario = {
     "pr list --state all": { ok: all },
     "pr list --state open": { ok: open },
+    repo: { ok: repoInfo() },
+    "file get .claude/factory.json --ref main": {
+      error: "file not found: .claude/factory.json at main",
+    },
   };
   for (const item of all) {
     const number = (item as { number: number }).number;
@@ -180,6 +184,22 @@ export function forgeScenario(
     scenario[`release view ${tag}`] = { ok: answer };
   }
   return scenario;
+}
+
+/** The answer of `repo`. */
+export function repoInfo(defaultBranch = "main") {
+  return {
+    host: "github.com",
+    owner: "acme",
+    name: "app",
+    url: "https://github.com/acme/app",
+    default_branch: defaultBranch,
+  };
+}
+
+/** The answer of `file get`. The `sha` has 40 hex characters; pass one to model a file that did not change. */
+export function fileAnswer(path: string, ref: string, content: string, sha = "a".repeat(40)) {
+  return { path, ref, sha, size: Buffer.byteLength(content, "utf8"), content };
 }
 
 export const STATUS_DESCRIPTION = "synthetic status text that the cache must not keep";
