@@ -83,6 +83,8 @@ export const UsageProject = z
     id: z.string().regex(/^[0-9a-f]{12}$/),
     label: z.string().min(1),
     noRepo: z.boolean(),
+    /** The client of the repo list entry whose `path` is the Project key, or null. */
+    client: z.string().nullable(),
     firstTurnAt: z.iso.datetime(),
     lastTurnAt: z.iso.datetime(),
   })
@@ -206,6 +208,8 @@ export const BreakdownResponse = z
           ...estimateFields,
           firstTurnAt: z.iso.datetime().optional(),
           lastTurnAt: z.iso.datetime().optional(),
+          // Project rows only.
+          client: z.string().nullable().optional(),
           // Skill rows only.
           calls: z.number().int().optional(),
           exactTurns: z.number().int().optional(),

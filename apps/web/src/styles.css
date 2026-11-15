@@ -1,0 +1,174 @@
+:root {
+  --ink: #161a22;
+  --muted: #4a515e;
+  --line: #c9c9c1;
+  --surface: #ffffff;
+  --page: #f6f6f2;
+  --accent: #1d4f9e;
+  --all-bg: #e6e8ec;
+  --all-ink: #2f3540;
+  --warn-bg: #fdf1e3;
+  --warn-line: #e7b37a;
+  --warn-ink: #5e2d00;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+}
+
+main,
+footer,
+.app-header {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 20px;
+}
+
+.app-header-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.scope,
+.scope-options,
+.connection,
+.connection-state,
+.connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.scope-label {
+  font-weight: 600;
+}
+
+.scope-options {
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+button {
+  font: inherit;
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #f0f0ea;
+}
+
+.scope-options button {
+  border-color: transparent;
+}
+
+.scope-options button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scope-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.scope-pill-all {
+  background: var(--all-bg);
+  color: var(--all-ink);
+}
+
+.scope-pill-unknown {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  border: 1px solid var(--warn-line);
+}
+
+.connection {
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot-ok {
+  background: #1e7a46;
+}
+
+.dot-warn {
+  background: #b25e00;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+}
+
+.note {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.note-warn {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: var(--warn-ink);
+}
+
+main {
+  padding-top: 18px;
+  padding-bottom: 48px;
+}
