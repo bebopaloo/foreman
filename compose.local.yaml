@@ -41,6 +41,8 @@ services:
     volumes:
       - ${FOREMAN_CLAUDE_DIR:?run pnpm local:up}:/mnt/claude:ro
       - ${FOREMAN_DATA_DIR:?run pnpm local:up}:/mnt/foreman:ro
+    secrets:
+      - foreman_tokens
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
@@ -56,6 +58,14 @@ services:
       - "127.0.0.1:${LOCAL_PORT:-47100}:80"
     depends_on:
       api: { condition: service_healthy }
+
+# `pnpm local:up` reads the tokens from the Keychain and gives them to Compose
+# in FOREMAN_TOKENS_JSON. Compose mounts them at /run/secrets/foreman_tokens in
+# the API container only. No token is in a file of the repo or in an
+# environment value of a container.
+secrets:
+  foreman_tokens:
+    environment: FOREMAN_TOKENS_JSON
 
 volumes:
   db-data:

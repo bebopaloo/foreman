@@ -23,6 +23,10 @@ RUN pnpm --filter "./apps/web" build
 
 FROM base AS api
 ENV NODE_ENV=production
+# The runner calls the installed adapters with `uv run` (Python 3.12 or later), and the
+# GitHub adapters call `gh` and `git`. Pin these to the versions of the Alpine release
+# of the base image; a new Alpine release needs new pins.
+RUN apk add --no-cache python3=3.14.10-r1 git=2.54.1-r0 github-cli=2.97.0-r2 uv=0.11.19-r2
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/

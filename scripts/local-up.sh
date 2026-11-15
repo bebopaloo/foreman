@@ -6,6 +6,11 @@
 # FOREMAN_DATA_DIR is the Foreman data folder (default ~/.foreman). Compose
 # mounts both read-only. LOCAL_PORT sets the web port (default 47100) and
 # LOCAL_PROJECT sets the Compose project name (default foreman-local).
+#
+# "up" reads one Keychain item for each host and owner in the repo list
+# (keychain-tokens.ts) and gives the JSON object to Compose in the variable
+# FOREMAN_TOKENS_JSON, for the Compose process only. Compose mounts it as the
+# secret foreman_tokens. No other command reads the Keychain.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -26,11 +31,14 @@ case "$command" in
       mkdir -p "$(dirname "$FOREMAN_DATA_DIR")"
       mkdir -m 700 "$FOREMAN_DATA_DIR"
     fi
-    "${compose[@]}" up --detach --build --wait --wait-timeout 300
+    tokens="$(node scripts/keychain-tokens.ts || echo '{}')"
+    FOREMAN_TOKENS_JSON="$tokens" "${compose[@]}" up --detach --build --wait --wait-timeout 300
+    unset tokens
     echo "Foreman runs at http://127.0.0.1:${LOCAL_PORT:-47100}"
+    FOREMAN_TOKENS_JSON='{}' "${compose[@]}" exec -T api node apps/api/src/adapter-smoke.ts
     ;;
   reindex)
-    "${compose[@]}" exec api node apps/api/src/reindex.ts
+    FOREMAN_TOKENS_JSON='{}' "${compose[@]}" exec api node apps/api/src/reindex.ts
     ;;
   *)
     echo "usage: $0 [up|reindex]" >&2
