@@ -68,6 +68,8 @@ The stack-ts `preview` skill does the same with one project and a stable port pe
 
 The stack mounts two folders read-only: the config folder (`FOREMAN_CLAUDE_DIR`, default `~/.claude-bebopaloo`) and the Foreman data folder (`FOREMAN_DATA_DIR`, default `~/.foreman`). When the data folder does not exist, `pnpm local:up` creates it with mode `0700` first. It stops when `FOREMAN_CLAUDE_DIR` is `~/.claude`.
 
+One more folder is optional: `FOREMAN_MARKETPLACE_DIR`, an absolute path to the folder of one Marketplace with the source kind `directory`, for example the checkout of the factory repo. `pnpm local:up` mounts it read-only at the same path in the API container. Without it, Factory health shows such a Marketplace as not readable by Foreman.
+
 ```bash
 pnpm local:up
 pnpm local:reindex   # rebuilds the Usage index inside the running stack

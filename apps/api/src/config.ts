@@ -55,6 +55,11 @@ function createConfigSchema(home: string) {
     FOREMAN_CLAUDE_DIR: folderSchema("~/.claude-bebopaloo", home).refine(
       (folder) => folder !== path.join(home, ".claude"),
     ),
+    FOREMAN_MARKETPLACE_DIR: z
+      .string()
+      .optional()
+      .transform((value) => (value === "" ? undefined : value))
+      .refine((value) => value === undefined || path.isAbsolute(value)),
     FOREMAN_DATA_DIR: folderSchema("~/.foreman", home),
     FOREMAN_ALLOWED_HOSTS: z
       .string()

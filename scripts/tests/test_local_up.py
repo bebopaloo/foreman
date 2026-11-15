@@ -26,7 +26,8 @@ def run_script(home, extra_env=None, args=(), tokens_json=None):
     docker = fake_bin / "docker"
     docker.write_text(
         '#!/usr/bin/env bash\n'
-        'echo "FOREMAN_DATA_DIR=$FOREMAN_DATA_DIR FOREMAN_CLAUDE_DIR=$FOREMAN_CLAUDE_DIR $*" >> "$DOCKER_LOG"\n'
+        'echo "FOREMAN_DATA_DIR=$FOREMAN_DATA_DIR FOREMAN_CLAUDE_DIR=$FOREMAN_CLAUDE_DIR '
+        'FOREMAN_MARKETPLACE_DIR=$FOREMAN_MARKETPLACE_DIR $*" >> "$DOCKER_LOG"\n'
         'echo "TOKENS=${FOREMAN_TOKENS_JSON-unset}" >> "$DOCKER_LOG"\n'
     )
     docker.chmod(0o755)
@@ -85,6 +86,32 @@ class LocalUpScript(unittest.TestCase):
             _, log = run_script(home)
             self.assertIn(f"FOREMAN_DATA_DIR={home}/.foreman", log)
             self.assertIn(f"FOREMAN_CLAUDE_DIR={home}/.claude-bebopaloo", log)
+
+    def test_passes_an_empty_marketplace_folder_when_none_is_set(self):
+        with tempfile.TemporaryDirectory() as home:
+            _, log = run_script(home)
+            self.assertIn("FOREMAN_MARKETPLACE_DIR= ", log)
+
+    def test_passes_the_marketplace_folder_to_compose(self):
+        with tempfile.TemporaryDirectory() as home:
+            market = pathlib.Path(home) / "factory"
+            market.mkdir()
+            _, log = run_script(home, {"FOREMAN_MARKETPLACE_DIR": str(market)})
+            self.assertIn(f"FOREMAN_MARKETPLACE_DIR={market} ", log)
+
+    def test_refuses_a_marketplace_folder_that_is_not_an_absolute_path(self):
+        with tempfile.TemporaryDirectory() as home:
+            result, log = run_script(home, {"FOREMAN_MARKETPLACE_DIR": "factory"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("FOREMAN_MARKETPLACE_DIR", result.stderr)
+            self.assertEqual(log, "")
+
+    def test_refuses_a_marketplace_folder_that_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as home:
+            result, log = run_script(home, {"FOREMAN_MARKETPLACE_DIR": f"{home}/missing"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("FOREMAN_MARKETPLACE_DIR", result.stderr)
+            self.assertEqual(log, "")
 
     def test_refuses_the_default_claude_folder(self):
         with tempfile.TemporaryDirectory() as home:
@@ -174,10 +201,14 @@ class ComposeFile(unittest.TestCase):
         self.assertIn("db-data:/var/lib/postgresql", COMPOSE)
         self.assertEqual(COMPOSE.count("ports:"), 1)
 
-    def test_mounts_both_folders_read_only(self):
+    def test_mounts_the_three_folders_read_only(self):
         self.assertIn("${FOREMAN_CLAUDE_DIR:?", COMPOSE)
         self.assertIn("${FOREMAN_DATA_DIR:?", COMPOSE)
-        self.assertEqual(COMPOSE.count(":ro"), 2)
+        self.assertIn(
+            "${FOREMAN_MARKETPLACE_DIR:-marketplace-none}:${FOREMAN_MARKETPLACE_DIR:-/mnt/marketplace-none}:ro",
+            COMPOSE,
+        )
+        self.assertEqual(COMPOSE.count(":ro"), 3)
 
     def test_api_allows_both_loopback_origins(self):
         self.assertIn("http://127.0.0.1:${LOCAL_PORT:-47100}", COMPOSE)
