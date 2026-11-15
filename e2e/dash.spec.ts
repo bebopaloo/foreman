@@ -284,26 +284,64 @@ test("Waits for you says that nothing waits", async ({ page }) => {
 });
 
 const AXE_SETS: FixtureName[] = [
+  "run-in-progress",
+  "stale-lock",
+  "no-run",
   "waits",
+  "waits-none",
   "pipeline",
   "pipeline-incomplete",
   "review-health",
   "last-run",
-  "run-in-progress",
-  "stale-lock",
-  "no-run",
   "not-connected",
 ];
 
-for (const name of AXE_SETS) {
-  test(`the dash has no WCAG 2.2 AA violations: ${name}`, async ({ page }) => {
-    await useFixture(name);
-    await page.goto("/");
-    await expect(now(page)).toContainText(/in progress/);
-    const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
-    expect(results.violations).toEqual([]);
-  });
+const SCREENS = [
+  { name: "desktop", width: 1280, height: 800 },
+  { name: "375 px", width: 375, height: 800 },
+] as const;
+
+for (const theme of ["light", "dark"] as const) {
+  for (const screen of SCREENS) {
+    for (const name of AXE_SETS) {
+      test(`the dash has no WCAG 2.2 AA violations in the ${theme} theme at ${screen.name}: ${name}`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ colorScheme: theme });
+        await page.setViewportSize({ width: screen.width, height: screen.height });
+        await useFixture(name);
+        await page.goto("/");
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        await expect(now(page)).toContainText(/in progress/);
+        await expect(page.getByText(/^Reading /)).toHaveCount(0);
+        const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+        expect(results.violations).toEqual([]);
+      });
+    }
+  }
 }
+
+test("each result in the timeline and each stage in the strip has a text label", async ({
+  page,
+}) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  const segments = lastRun(page).locator(".seg");
+  await expect(segments.first()).toBeVisible();
+  for (const segment of await segments.all()) {
+    await expect(segment).toHaveText(/ · (merged|merge-ready|blocked|stopped at run end|running)/);
+  }
+  const legend = lastRun(page).getByRole("list", { name: "Results" }).getByRole("listitem");
+  for (const item of await legend.all()) {
+    await expect(item).toHaveText(/\S/);
+  }
+  await useFixture("pipeline");
+  await page.goto("/");
+  await expect(strip(page).getByRole("listitem").first()).toBeVisible();
+  for (const stage of await strip(page).getByRole("listitem").all()) {
+    await expect(stage.locator(".stage-label")).toHaveText(/\S/);
+  }
+});
 
 const reposSection = (page: Page) => page.getByRole("region", { name: "Repos", exact: true });
 const NOT_COMPLETE = "Data is not complete: 1 repo not connected. See Repos.";

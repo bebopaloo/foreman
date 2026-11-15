@@ -7,6 +7,7 @@ import { useScope } from "./scope/index.ts";
 import { WorkPage } from "./work/index.ts";
 import { SessionsPage } from "./sessions/index.ts";
 import { ReviewsPage } from "./reviews/index.ts";
+import { ControlsPage } from "./controls/index.ts";
 import { LedgerPage } from "./ledger/index.ts";
 
 export function App() {
@@ -34,6 +35,8 @@ export function App() {
           <SessionsPage />
         ) : window.location.pathname === "/reviews" ? (
           <ReviewsPage />
+        ) : window.location.pathname === "/controls" ? (
+          <ControlsPage />
         ) : window.location.pathname === "/ledger" ? (
           <LedgerPage />
         ) : (
