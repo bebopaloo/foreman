@@ -20,10 +20,6 @@ jobs:
   price-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      REPORT_FILE: ${{ runner.temp }}/price-check-report.md
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,9 +30,17 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The runner context is not available in job-level env, so each step sets
+      # REPORT_FILE. Only the last step gets the token that can write issues.
       - name: Compare the price table with the pricing page
+        env:
+          REPORT_FILE: ${{ runner.temp }}/price-check-report.md
         run: pnpm price-check "$REPORT_FILE"
       - name: Open an issue or comment on the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPORT_FILE: ${{ runner.temp }}/price-check-report.md
         run: |
           if [ ! -s "$REPORT_FILE" ]; then
             echo "No differences."
