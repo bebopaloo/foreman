@@ -18,3 +18,4 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 await app.listen({ host: config.HOST, port: config.PORT });
 app.refresher.start();
+app.fetcher.start();

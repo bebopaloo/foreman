@@ -14,6 +14,7 @@ import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
 import { usageRoutes } from "./routes/usage.ts";
 import { loadPriceTable } from "./usage/prices.ts";
+import { createFetchSchedule, type FetchSchedule } from "./work/schedule.ts";
 import { createRefresher, type Refresher } from "./usage/refresh.ts";
 
 declare module "fastify" {
@@ -24,6 +25,8 @@ declare module "fastify" {
   interface FastifyInstance {
     /** The refresh schedule and state. `server.ts` starts it. */
     refresher: Refresher;
+    /** The fetch schedule and state. `server.ts` starts it. */
+    fetcher: FetchSchedule;
   }
 }
 
@@ -33,9 +36,11 @@ export interface AppOptions {
   logger?: FastifyServerOptions["logger"];
   /** Tests pass a fake. The default reads the folders of the config. */
   refresher?: Refresher;
+  /** Tests pass a fake. The default runs the real fetch. */
+  fetcher?: FetchSchedule;
 }
 
-export async function buildApp({ config, db, logger, refresher }: AppOptions) {
+export async function buildApp({ config, db, logger, refresher, fetcher }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
@@ -60,6 +65,29 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
   app.decorate("refresher", activeRefresher);
   app.addHook("onClose", async () => {
     await activeRefresher.stop();
+  });
+
+  const activeFetcher =
+    fetcher ??
+    createFetchSchedule({
+      db,
+      claudeDir: config.FOREMAN_CLAUDE_DIR,
+      tokensFile: config.FOREMAN_TOKENS_FILE,
+      allowedHosts: config.FOREMAN_ALLOWED_HOSTS,
+      timeoutMs: config.FOREMAN_ADAPTER_TIMEOUT_SECONDS * 1000,
+      intervalMs: config.FOREMAN_FETCH_MINUTES * 60_000,
+      log: {
+        info: (message) => {
+          app.log.info(message);
+        },
+        warn: (message) => {
+          app.log.warn(message);
+        },
+      },
+    });
+  app.decorate("fetcher", activeFetcher);
+  app.addHook("onClose", async () => {
+    await activeFetcher.stop();
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -90,7 +118,13 @@ export async function buildApp({ config, db, logger, refresher }: AppOptions) {
   });
 
   await app.register(healthRoutes, { prefix: "/api", db });
-  await app.register(workRoutes, { prefix: "/api", db, claudeDir: config.FOREMAN_CLAUDE_DIR });
+  await app.register(workRoutes, {
+    prefix: "/api",
+    db,
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    schedule: activeFetcher,
+    allowedOrigins: config.CORS_ORIGINS,
+  });
   await app.register(usageRoutes, {
     prefix: "/api/usage",
     db,
