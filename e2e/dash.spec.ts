@@ -5,7 +5,7 @@ import type { FixtureName } from "./fixtures/sets.ts";
 
 const WCAG_22_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
-const now = (page: Page) => page.getByRole("region", { name: "Now" });
+const now = (page: Page) => page.getByRole("region", { name: "Now", exact: true });
 
 test("a run in progress shows the heartbeat age", async ({ page }) => {
   await useFixture("run-in-progress");
@@ -153,7 +153,88 @@ test("Review health shows no gate decision when there is no Control event", asyn
   await expect(review(page)).toContainText("First-round pass: no gate decision in 30 days");
 });
 
+const tile = (page: Page, label: string) =>
+  page.getByRole("list", { name: "Tiles" }).getByRole("listitem").filter({ hasText: label });
+const strip = (page: Page) => page.getByRole("region", { name: "The pipeline now" });
+
+test("the tiles show the builds, the merged builds, the waits and the first-round pass", async ({
+  page,
+}) => {
+  await useFixture("pipeline");
+  await page.goto("/?client=acme");
+  await expect(tile(page, "Builds in the last run")).toContainText("3");
+  await expect(tile(page, "Builds in the last run")).toContainText("peak 3 at one time");
+  await expect(tile(page, "Merged in the last run")).toContainText("0");
+  await expect(tile(page, "First-round pass")).toContainText("no gate decision in 30 days");
+});
+
+test("the tile Waits for you counts the items from the Work cache", async ({ page }) => {
+  await useFixture("pipeline");
+  await page.goto("/?client=acme");
+  // 1 BLOCKED, 1 release pull request, 1 merge-ready, 3 TODO with a next step.
+  await expect(tile(page, "Waits for you")).toContainText("6");
+});
+
+test("the pipeline strip shows each stage with a label and a count", async ({ page }) => {
+  await useFixture("pipeline");
+  await page.goto("/?client=acme");
+  const stages = strip(page).getByRole("list", { name: "Pipeline stages" }).getByRole("listitem");
+  await expect(stages).toHaveText([
+    "G1Spec2",
+    "G2Issues1",
+    "queueREADY3",
+    "buildIN PROGRESS2",
+    "reviewIN REVIEW1",
+    "waitsBLOCKED1",
+    "mergedDONE5",
+    "G3Release2",
+  ]);
+  await expect(strip(page)).not.toContainText("Data is not complete");
+});
+
+test("Now shows the slots in use in the scope All and no slot count in a client scope", async ({
+  page,
+}) => {
+  await useFixture("pipeline");
+  await page.goto("/");
+  await expect(now(page)).toContainText("4 of 5 build slots in use");
+  await page.goto("/?client=acme");
+  await expect(now(page)).toContainText("3 builds running");
+  await expect(now(page)).not.toContainText("build slots");
+});
+
+test("Now shows the builds that wait for the next run between runs", async ({ page }) => {
+  await useFixture("pipeline-idle");
+  await page.goto("/");
+  await expect(now(page)).toContainText("4 builds wait for the next run");
+  await expect(now(page)).not.toContainText("build slots");
+});
+
+test("the strip says that the data is not complete when a repo is not connected", async ({
+  page,
+}) => {
+  await useFixture("pipeline-incomplete");
+  await page.goto("/");
+  await expect(strip(page)).toContainText("Data is not complete: 1 repo not connected. See Repos.");
+  await expect(strip(page).getByRole("list", { name: "Pipeline stages" })).toBeVisible();
+});
+
+test("the strip says that nothing is connected, and the local sections still show", async ({
+  page,
+}) => {
+  await useFixture("not-connected");
+  await page.goto("/");
+  await expect(strip(page)).toContainText(
+    "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.",
+  );
+  await expect(strip(page).getByRole("list", { name: "Pipeline stages" })).toHaveCount(0);
+  await expect(now(page)).toContainText("No run in progress");
+  await expect(tile(page, "Waits for you")).toContainText("not connected");
+});
+
 const AXE_SETS: FixtureName[] = [
+  "pipeline",
+  "pipeline-incomplete",
   "review-health",
   "last-run",
   "run-in-progress",

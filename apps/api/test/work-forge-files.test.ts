@@ -164,7 +164,7 @@ describe("the Control modules from the repo config", () => {
     const env = await setup(["acme/app"], {
       ...fileScenario({
         configText: config({ ...controls("waivers"), secret_note: "SYNTHETIC-CONTENT-MARKER" }),
-        files: { [WAIVERS]: { ref: "main", content: "SYNTHETIC-CONTENT-MARKER" } },
+        files: { [WAIVERS]: { ref: "main", content: "# SYNTHETIC-CONTENT-MARKER\n" } },
       }),
     });
     await env.fetchAt(T0);
@@ -179,7 +179,7 @@ describe("a controls key that is not valid", () => {
     const env = await setup(["acme/app"], {
       ...fileScenario({
         configText: config(controls("waivers")),
-        files: { [WAIVERS]: { ref: "main", content: "x" } },
+        files: { [WAIVERS]: { ref: "main", content: "# x\n" } },
       }),
     });
     await env.fetchAt(T0);
@@ -242,7 +242,7 @@ describe("the branch of the forge files", () => {
       ...fileScenario({
         defaultBranch: "trunk",
         configText: config({ main_branch: "develop", ...controls("waivers") }),
-        files: { [WAIVERS]: { ref: "develop", content: "x" } },
+        files: { [WAIVERS]: { ref: "develop", content: "# x\n" } },
       }),
     });
     await env.fetchAt(T0);
@@ -266,7 +266,7 @@ describe("the branch of the forge files", () => {
             ...(main === null ? {} : { main_branch: main }),
             ...controls("waivers"),
           }),
-          files: { [WAIVERS]: { ref: "trunk", content: "x" } },
+          files: { [WAIVERS]: { ref: "trunk", content: "# x\n" } },
         }),
       });
       await env.fetchAt(T0);
@@ -295,7 +295,7 @@ describe("the branch of the forge files", () => {
     const env = await setup(["acme/app"], {
       ...fileScenario({
         configText: config(controls("waivers")),
-        files: { [WAIVERS]: { ref: "main", content: "x" } },
+        files: { [WAIVERS]: { ref: "main", content: "# x\n" } },
       }),
     });
     await env.fetchAt(T0);
@@ -318,8 +318,8 @@ describe("files only for modules that are on", () => {
       ...fileScenario({
         configText: config(controls("risk_tiers", "waivers")),
         files: {
-          [RISK_MAP]: { ref: "main", content: "x" },
-          [WAIVERS]: { ref: "main", content: "y" },
+          [RISK_MAP]: { ref: "main", content: "# x\n" },
+          [WAIVERS]: { ref: "main", content: "# y\n" },
         },
       }),
     });
@@ -493,5 +493,199 @@ describe("the reindex", () => {
       log: { info: () => undefined, warn: () => undefined },
     });
     expect(await database.db.select().from(schema.workForgeFiles)).toEqual([]);
+  });
+});
+
+const WAIVER_ONE = [
+  "[[waiver]]",
+  'id = "WAIVER-1"',
+  'reason = "SYNTHETIC-REASON"',
+  'risk = "SYNTHETIC-RISK"',
+  'owner = "Operator"',
+  'approved_by = "synthetic-approver"',
+  "created = 2026-11-14",
+  "expires = 2027-01-31",
+  "",
+  "[waiver.covers]",
+  'kind = "check"',
+  'name = "trivy"',
+  "",
+].join("\n");
+
+const WAIVER_NO_EXPIRES = [
+  "[[waiver]]",
+  'id = "WAIVER-2"',
+  'reason = "SYNTHETIC-REASON"',
+  'risk = "SYNTHETIC-RISK"',
+  'owner = "Operator"',
+  'approved_by = "synthetic-approver"',
+  "created = 2026-11-14",
+  "",
+  "[waiver.covers]",
+  'kind = "control"',
+  'id = "CTRL-PAY-03"',
+  "",
+].join("\n");
+
+const ALL_MODULES = controls("risk_tiers", "control_register", "waivers", "threat_model");
+
+describe("the module files are parsed", () => {
+  it("caches the parsed fields of each module file and never the content", async () => {
+    const env = await setup(["acme/app"], {
+      ...fileScenario({
+        configText: config(ALL_MODULES),
+        files: {
+          [RISK_MAP]: {
+            ref: "main",
+            content: '[[tier]]\nname = "authority"\npaths = ["SYNTHETIC-GLOB/**"]\n',
+          },
+          [CONTROL_REGISTER]: {
+            ref: "main",
+            content:
+              '[[control]]\nid = "CTRL-PAY-03"\ntitle = "Approval"\nowner = "Operator"\nmodules = ["a/**"]\n',
+          },
+          [WAIVERS]: { ref: "main", content: `${WAIVER_ONE}\n${WAIVER_NO_EXPIRES}` },
+          [THREAT_MODEL]: {
+            ref: "main",
+            content:
+              "## TB-1 SYNTHETIC-NAME\n\n### TM-1 SYNTHETIC-THREAT\n- STRIDE: Spoofing\n- Controls: CTRL-PAY-03\n",
+          },
+        },
+      }),
+    });
+    await env.fetchAt(T0);
+    const rows = await fileRows();
+    const byPath = Object.fromEntries(rows.map((row) => [row.path, row]));
+
+    expect(byPath[RISK_MAP]).toMatchObject({
+      state: "ok",
+      fields: { tiers: { authority: 1, sensitive: 0, general: 0, inert: 0 }, boundaries: [] },
+    });
+    expect(byPath[CONTROL_REGISTER]?.fields).toMatchObject({
+      controls: [{ id: "CTRL-PAY-03", owner: "Operator", modules: 1 }],
+    });
+    expect(byPath[WAIVERS]).toMatchObject({
+      state: "ok",
+      skipped: [{ position: 2, field: "expires" }],
+      fields: {
+        waivers: [
+          {
+            id: "WAIVER-1",
+            owner: "Operator",
+            approvedBy: "synthetic-approver",
+            created: "2026-11-14",
+            expires: "2027-01-31",
+            covers: { kind: "check", name: "trivy" },
+          },
+        ],
+      },
+    });
+    expect(byPath[THREAT_MODEL]?.fields).toEqual({
+      boundaries: ["TB-1"],
+      threats: [{ id: "TM-1", boundary: "TB-1", stride: ["Spoofing"], controls: ["CTRL-PAY-03"] }],
+    });
+    const stored = JSON.stringify(rows);
+    for (const marker of [
+      "SYNTHETIC-REASON",
+      "SYNTHETIC-RISK",
+      "SYNTHETIC-GLOB",
+      "SYNTHETIC-NAME",
+    ]) {
+      expect(stored).not.toContain(marker);
+    }
+    expect(stored).not.toContain("SYNTHETIC-THREAT");
+  });
+
+  it("marks a Waiver register that is not valid TOML as not readable and keeps the other repo's Waivers", async () => {
+    const env = await setup(["acme/pay", "acme/web"], {
+      ...Object.fromEntries(
+        Object.entries(
+          fileScenario({
+            configText: config(controls("waivers")),
+            files: { [WAIVERS]: { ref: "main", content: "[[waiver]\nid = " } },
+          }),
+        ).map(([key, value]) => [`acme/pay ${key}`, value]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(
+          fileScenario({
+            configText: config(controls("waivers")),
+            files: { [WAIVERS]: { ref: "main", content: `${WAIVER_ONE}\n${WAIVER_NO_EXPIRES}` } },
+          }),
+        ).map(([key, value]) => [`acme/web ${key}`, value]),
+      ),
+    });
+    await env.fetchAt(T0);
+
+    const pay = (await fileRows(repoId("github.com", "acme", "pay"))).find(
+      (row) => row.path === WAIVERS,
+    );
+    expect(pay).toMatchObject({ state: "not_readable", fields: null, skipped: null });
+    const web = (await fileRows(repoId("github.com", "acme", "web"))).find(
+      (row) => row.path === WAIVERS,
+    );
+    expect(web).toMatchObject({
+      state: "ok",
+      skipped: [{ position: 2, field: "expires" }],
+    });
+    expect(web?.fields).toMatchObject({ waivers: [{ id: "WAIVER-1" }] });
+  });
+
+  it("parses a file again when its cached row has no parsed fields, although the sha is the same", async () => {
+    const env = await setup(["acme/app"], {
+      ...fileScenario({
+        configText: config(controls("waivers")),
+        files: { [WAIVERS]: { ref: "main", content: WAIVER_ONE } },
+      }),
+    });
+    await env.fetchAt(T0);
+    await database.db
+      .update(schema.workForgeFiles)
+      .set({ fields: null, skipped: null })
+      .where(eq(schema.workForgeFiles.path, WAIVERS));
+    await env.fetchAt(minutes(5), true);
+    const row = (await fileRows()).find((file) => file.path === WAIVERS);
+    expect(row?.fields).toMatchObject({ waivers: [{ id: "WAIVER-1" }] });
+  });
+
+  it("does not parse a module file again when its sha is the same", async () => {
+    const env = await setup(["acme/app"], {
+      ...fileScenario({
+        configText: config(controls("waivers")),
+        files: { [WAIVERS]: { ref: "main", content: WAIVER_ONE } },
+      }),
+    });
+    await env.fetchAt(T0);
+    await env.setForge(
+      fileScenario({
+        configText: config(controls("waivers")),
+        files: { [WAIVERS]: { ref: "main", content: "# the same sha, other content\n" } },
+      }),
+    );
+    await env.fetchAt(minutes(5), true);
+    const row = (await fileRows()).find((file) => file.path === WAIVERS);
+    expect(row).toMatchObject({ state: "ok", fetchedAt: minutes(5) });
+    expect(row?.fields).toMatchObject({ waivers: [{ id: "WAIVER-1" }] });
+  });
+
+  it("keeps the earlier parsed fields and skipped entries of a module file that then fails", async () => {
+    const env = await setup(["acme/app"], {
+      ...fileScenario({
+        configText: config(controls("waivers")),
+        files: { [WAIVERS]: { ref: "main", content: `${WAIVER_ONE}\n${WAIVER_NO_EXPIRES}` } },
+      }),
+    });
+    await env.fetchAt(T0);
+    await env.setForge({
+      ...fileScenario({ configText: config(controls("waivers")) }),
+      [`file get ${WAIVERS} --ref main`]: { error: "HTTP 502: Bad gateway" },
+    });
+    await env.fetchAt(minutes(5), true);
+    const row = (await fileRows()).find((file) => file.path === WAIVERS);
+    expect(row).toMatchObject({
+      state: "failed",
+      skipped: [{ position: 2, field: "expires" }],
+    });
+    expect(row?.fields).toMatchObject({ waivers: [{ id: "WAIVER-1" }] });
   });
 });
