@@ -8,10 +8,12 @@ export interface LedgerUrlState {
   invalid: boolean;
 }
 
+const nonEmpty = (value: string | null): string | null => (value === "" ? null : value);
+
 export function parseLedgerUrl(search: string): LedgerUrlState {
   const params = new URLSearchParams(search);
-  const from = params.get("from") || null;
-  const to = params.get("to") || null;
+  const from = nonEmpty(params.get("from"));
+  const to = nonEmpty(params.get("to"));
   if (from === null && to === null) return { range: null, invalid: false };
   const parsed = LedgerQuery.safeParse({
     ...(from === null ? {} : { from }),

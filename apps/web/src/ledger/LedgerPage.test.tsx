@@ -147,7 +147,7 @@ describe("the page", () => {
 
     const repos = await screen.findByRole("table", { name: "By client repo" });
     const repoRows = within(repos).getAllByRole("row");
-    expect(within(repoRows[1] as HTMLElement).getAllByRole("cell")[0]).toHaveTextContent("acme");
+    expect(within(repos).getByRole("cell", { name: "acme" })).toBeVisible();
     expect(repoRows[1]).toHaveTextContent("acme/payments-api");
     expect(repoRows[1]).toHaveTextContent("1 h 31 min");
     expect(repoRows[1]).toHaveTextContent("4.5M");
@@ -193,13 +193,13 @@ describe("show more rows", () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const first = Array.from({ length: 100 }, (_, index) =>
       row(`2026-11-${String(15 - Math.floor(index / 10)).padStart(2, "0")}`, {
-        projectId: `${index.toString(16).padStart(12, "0")}`,
+        projectId: index.toString(16).padStart(12, "0"),
         label: `repo-${index.toString()}`,
       }),
     );
     const second = Array.from({ length: 30 }, (_, index) =>
       row("2026-11-05", {
-        projectId: `${(index + 100).toString(16).padStart(12, "0")}`,
+        projectId: (index + 100).toString(16).padStart(12, "0"),
         label: `repo-${(index + 100).toString()}`,
       }),
     );

@@ -1,6 +1,6 @@
 import type { LedgerResponse, LedgerRow } from "@foreman/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { fetchLedger } from "../api.ts";
 import { usePagedList } from "../list/index.ts";
 import { useScope } from "../scope/index.ts";
@@ -93,9 +93,8 @@ export function LedgerPage() {
   const ledger = list.firstPage;
   const ledgerZone = ledger?.rules.timeZone;
 
-  useEffect(() => {
-    if (ledgerZone !== undefined) setTimeZone(ledgerZone);
-  }, [ledgerZone]);
+  // The zone stays known while the page loads another range.
+  if (ledgerZone !== undefined && ledgerZone !== timeZone) setTimeZone(ledgerZone);
 
   if (unknownClient) return null;
 
