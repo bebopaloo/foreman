@@ -1,4 +1,5 @@
 import { ConnectionBar } from "./connection/index.ts";
+import { ThemeButton } from "./theme/index.ts";
 import { ScopedLink, ScopeSelector, useScope } from "./scope/index.ts";
 
 export function Header() {
@@ -10,6 +11,7 @@ export function Header() {
           Foreman
         </ScopedLink>
         <ScopeSelector />
+        <ThemeButton />
       </div>
       <ConnectionBar />
       {unknownClient ? (

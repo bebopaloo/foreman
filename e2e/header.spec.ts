@@ -35,15 +35,46 @@ test("an unknown client shows Unknown client and no data", async ({ page }) => {
   await expect(page.getByText(/API status/)).toHaveCount(0);
 });
 
-test("the header has no WCAG 2.2 AA violations", async ({ page }) => {
-  await fakeWork(page);
-  await page.goto("/?client=acme");
-  await expect(page.getByText("Connected")).toBeVisible();
-  const scoped = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
-  expect(scoped.violations).toEqual([]);
+for (const theme of ["light", "dark"] as const) {
+  test(`the header has no WCAG 2.2 AA violations in the ${theme} theme`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await fakeWork(page);
+    await page.goto("/?client=acme");
+    await expect(page.getByText("Connected")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const scoped = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+    expect(scoped.violations).toEqual([]);
 
-  await page.goto("/?client=globex");
-  await expect(page.getByRole("alert")).toBeVisible();
-  const unknown = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
-  expect(unknown.violations).toEqual([]);
+    await page.goto("/?client=globex");
+    await expect(page.getByRole("alert")).toBeVisible();
+    const unknown = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+    expect(unknown.violations).toEqual([]);
+  });
+}
+
+test("the theme button cycles the theme, keeps it after a reload and passes axe in each state", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await fakeWork(page);
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(page.getByRole("button", { name: "Theme: auto (dark)" })).toBeVisible();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+
+  await page.getByRole("button", { name: "Theme: auto (dark)" }).click();
+  await expect(page.getByRole("button", { name: "Theme: light" })).toBeVisible();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  const light = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+  expect(light.violations).toEqual([]);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Theme: light" })).toBeVisible();
+  await expect(html).toHaveAttribute("data-theme", "light");
+
+  await page.getByRole("button", { name: "Theme: light" }).click();
+  await expect(page.getByRole("button", { name: "Theme: dark" })).toBeVisible();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Theme: dark" }).click();
+  await expect(page.getByRole("button", { name: "Theme: auto (dark)" })).toBeVisible();
 });
