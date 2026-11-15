@@ -71,6 +71,13 @@
       "when": 1794748164442,
       "tag": "0009_shallow_wallow",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794753618410,
+      "tag": "0010_large_silver_surfer",
+      "breakpoints": true
     }
   ]
 }
