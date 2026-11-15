@@ -53,6 +53,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
       db,
       claudeDir: config.FOREMAN_CLAUDE_DIR,
       dataDir: config.FOREMAN_DATA_DIR,
+      intervalMs: config.FOREMAN_USAGE_REFRESH_MINUTES * 60 * 1000,
       log: {
         info: (message) => {
           app.log.info(message);
