@@ -20,6 +20,8 @@ const DEFAULT_PRICE_TABLE = path.resolve(
   "price-table.json",
 );
 
+const FACTORY_LOGIN = /^[A-Za-z0-9-]+(\[bot\])?$/;
+
 function isTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-GB", { timeZone: value });
@@ -70,6 +72,16 @@ function createConfigSchema(home: string) {
           .map((host) => host.trim().toLowerCase())
           .filter((host) => host.length > 0),
       ),
+    FOREMAN_FACTORY_LOGINS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((login) => login.trim())
+          .filter((login) => login.length > 0),
+      )
+      .refine((logins) => logins.every((login) => FACTORY_LOGIN.test(login))),
     FOREMAN_TOKENS_FILE: z.string().min(1).default("/run/secrets/foreman_tokens"),
     FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
     FOREMAN_USAGE_REFRESH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),

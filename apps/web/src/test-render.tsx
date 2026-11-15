@@ -30,6 +30,14 @@ export const dashRequests: string[] = [];
 export const quietDash: DashResponse = {
   run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
   lastRun: null,
+  reviewHealth: {
+    firstRound: { rate: null, passed: 0, total: 0, tiers: [] },
+    rounds: { one: 0, two: 0, three: 0 },
+    escalations: 0,
+    waiversInUse: 0,
+    factoryLoginSet: true,
+    reposWithoutControls: [],
+  },
   sources: { runs: "ok", controls: "ok" },
   skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
 };

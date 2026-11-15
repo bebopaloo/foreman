@@ -32,11 +32,18 @@ export interface SeedPullRequest {
   state?: "open" | "closed" | "merged";
 }
 
+export interface SeedReview {
+  repo: string;
+  pullRequest: number;
+  author: string;
+}
+
 /** The synthetic Work cache of one fixture set. */
 export interface WorkSeed {
   repos: SeedRepo[];
   issues?: SeedIssue[];
   pullRequests?: SeedPullRequest[];
+  reviews?: SeedReview[];
 }
 
 export function idOf(fullName: string): string {
@@ -104,6 +111,17 @@ export async function seedWorkCache(
           checks: "success",
           link: `https://github.com/${pull.repo}/pull/${pull.number.toString()}`,
           lastListedAt: now,
+        });
+      }
+      for (const [position, review] of (seed.reviews ?? []).entries()) {
+        await tx.insert(schema.workReviews).values({
+          repoId: idOf(review.repo),
+          pullRequestNumber: review.pullRequest,
+          position,
+          author: review.author,
+          state: "COMMENTED",
+          commit: "0000000",
+          time: now,
         });
       }
     });

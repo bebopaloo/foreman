@@ -168,7 +168,105 @@ function clientRunLines(now: Date): NightLogLine[] {
   ];
 }
 
+const FACTORY = "synthetic-factory[bot]";
+
+const controlFile = (time: Date): string =>
+  `factory/controls/${time.toISOString().slice(0, 10)}.jsonl`;
+
+/** The Control events of 10 pull requests of 2 repos, 3 escalations and 3 uses of the Waiver `W-1`. */
+function controlLines(now: Date): string {
+  const time = stamp(new Date(now.getTime() - 20 * MINUTE_MS));
+  const gate = (repo: string, pr: number, tier: string | null, round: number, decision: string) =>
+    JSON.stringify({
+      kind: "gate",
+      repo,
+      time,
+      pr,
+      issue: null,
+      tier,
+      round,
+      decision,
+      counts: {},
+      categories: [],
+      refs: [],
+      waived: [],
+      ...(pr % 2 === 0 ? { matrix: {} } : {}),
+    });
+  const escalated = (repo: string, pr: number) =>
+    JSON.stringify({
+      kind: "escalated",
+      repo,
+      time,
+      pr,
+      issue: null,
+      path_tier: "general",
+      tier: "sensitive",
+      paths: [],
+      evidence: [],
+    });
+  const waiver = (repo: string, pr: number) =>
+    JSON.stringify({ kind: "waiver_used", repo, time, pr, waiver: "W-1", finding: "f" });
+  return `${[
+    gate(APP, 1, "general", 1, "pass"),
+    gate(APP, 2, "general", 1, "pass"),
+    gate(APP, 3, "general", 1, "fail"),
+    gate(APP, 3, "general", 2, "pass"),
+    gate(APP, 4, "sensitive", 1, "pass"),
+    gate(APP, 5, "sensitive", 1, "fail"),
+    gate(APP, 5, "sensitive", 2, "fail"),
+    gate(APP, 5, "sensitive", 3, "blocked"),
+    gate(SITE, 1, null, 1, "pass"),
+    gate(SITE, 1, null, 1, "wait"),
+    gate(SITE, 2, null, 1, "fail"),
+    gate(SITE, 3, "general", 1, "pass"),
+    gate(SITE, 4, "general", 1, "pass"),
+    gate(SITE, 5, "general", 1, "pass"),
+    escalated(APP, 1),
+    escalated(APP, 2),
+    escalated(SITE, 1),
+    waiver(APP, 1),
+    waiver(APP, 2),
+    waiver(SITE, 1),
+  ].join("\n")}\n`;
+}
+
+const SITE = "acme/site";
+
+/**
+ * Review health: Control events for `acme/app` and `acme/site`, and no event for `bebopaloo/tools`,
+ * which has 4 pull requests of the Factory identity (3 reviewed by it) and 1 of the Operator.
+ */
+const REVIEW_HEALTH_CACHE: WorkSeed = {
+  ...CONNECTED_CACHE,
+  pullRequests: [
+    ...(CONNECTED_CACHE.pullRequests ?? []),
+    ...[1, 2, 3, 4].map((number) => ({
+      repo: TOOLS,
+      number,
+      title: `Factory change ${number.toString()}`,
+      author: FACTORY,
+    })),
+    { repo: TOOLS, number: 5, title: "Operator change", author: "synthetic-operator" },
+  ],
+  reviews: [
+    { repo: TOOLS, pullRequest: 1, author: FACTORY },
+    { repo: TOOLS, pullRequest: 2, author: "synthetic-operator" },
+    { repo: TOOLS, pullRequest: 2, author: FACTORY },
+    { repo: TOOLS, pullRequest: 3, author: FACTORY },
+    { repo: TOOLS, pullRequest: 5, author: FACTORY },
+  ],
+};
+
 export const FIXTURE_SETS = {
+  /** Review health: Control events of 2 repos, and one connected repo with none. */
+  "review-health": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      [controlFile(new Date(now.getTime() - 20 * MINUTE_MS))]: controlLines(now),
+    }),
+    work: REVIEW_HEALTH_CACHE,
+  },
+
   /** No repo list and no factory folder: Foreman has no client and no data. */
   empty: { files: () => ({}) },
 
