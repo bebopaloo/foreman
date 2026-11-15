@@ -4,7 +4,7 @@ import type { MarketplaceRow, PluginRow, PluginState } from "@foreman/shared";
 import { z } from "zod";
 import { compareSemVer, parseSemVer } from "./semver.ts";
 
-const MAX_FILE_BYTES = 1_048_576;
+export const MAX_FILE_BYTES = 1_048_576;
 const VERSION_PATTERN = /^[0-9A-Za-z.+-]{1,64}$/;
 
 const installedSchema = z
@@ -51,7 +51,7 @@ const marketplaceFileSchema = z
 
 const pluginManifestSchema = z.object({ version: z.unknown().optional() }).loose();
 
-type FileRead<T> = { kind: "ok"; data: T } | { kind: "missing" } | { kind: "skipped" };
+export type FileRead<T> = { kind: "ok"; data: T } | { kind: "missing" } | { kind: "skipped" };
 
 export interface PluginVersions {
   pluginData: "ok" | "missing";
@@ -67,12 +67,12 @@ export interface PluginVersionsOptions {
   marketplaceDir: string | undefined;
 }
 
-function isInsideOrEqual(folder: string, target: string): boolean {
+export function isInsideOrEqual(folder: string, target: string): boolean {
   const relative = path.relative(folder, target);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-async function realpathOrUndefined(target: string): Promise<string | undefined> {
+export async function realpathOrUndefined(target: string): Promise<string | undefined> {
   try {
     return await realpath(target);
   } catch {
@@ -80,7 +80,7 @@ async function realpathOrUndefined(target: string): Promise<string | undefined> 
   }
 }
 
-async function readJsonFile<T>(
+export async function readJsonFile<T>(
   file: string,
   schema: z.ZodType<T>,
   skipped: string[],

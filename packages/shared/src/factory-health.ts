@@ -122,3 +122,101 @@ export const FactoryRunsResponse = pageResponseSchema(FactoryRunRow)
   })
   .strict();
 export type FactoryRunsResponse = z.infer<typeof FactoryRunsResponse>;
+
+export const RULE_DRIFT_DEFAULT_LIMIT = 50;
+export const RULE_DRIFT_MAX_LIMIT = 200;
+
+/** `client` is the Client scope. `repo` is a repo ID, and it must belong to the `client`. */
+export const RuleDriftQuery = z
+  .object({
+    client: ClientName.optional(),
+    repo: z
+      .string()
+      .regex(/^[0-9a-f]{12}$/)
+      .optional(),
+    ...pageQueryShape({ defaultLimit: RULE_DRIFT_DEFAULT_LIMIT, maxLimit: RULE_DRIFT_MAX_LIMIT }),
+  })
+  .strict();
+export type RuleDriftQuery = z.infer<typeof RuleDriftQuery>;
+
+export const RULE_DRIFT_STATES = [
+  "current",
+  "behind",
+  "edited_by_team",
+  "differs",
+  "missing_file",
+  "missing_ref",
+  "no_template",
+  "not_unique",
+  "not_readable",
+  "failed",
+  "not_read",
+] as const;
+export const RuleDriftState = z.enum(RULE_DRIFT_STATES);
+export type RuleDriftState = z.infer<typeof RuleDriftState>;
+
+export const RuleDriftRule = z
+  .object({
+    name: z.string(),
+    kind: z.enum(["rule", "compliance"]),
+    state: RuleDriftState,
+    /** The text of the adapter error class, for the state `failed`. */
+    errorState: z.string().nullable(),
+    /** The ref of the rule file in the cache, or null when no step has read it. */
+    ref: z.string().nullable(),
+    stampPlugin: z.string().nullable(),
+    stampVersion: z.string().nullable(),
+    /** The plugin whose installed template the rule uses, or null with no one template. */
+    sourcePlugin: z.string().nullable(),
+    /** The installed version of that plugin. */
+    sourceVersion: z.string().nullable(),
+  })
+  .strict();
+export type RuleDriftRule = z.infer<typeof RuleDriftRule>;
+
+export const RULE_CONFIG_STATES = [
+  "ok",
+  "not_read",
+  "not_set_up",
+  "branch_not_found",
+  "not_readable",
+  "failed",
+  "no_default_branch",
+] as const;
+export const RuleConfigState = z.enum(RULE_CONFIG_STATES);
+export type RuleConfigState = z.infer<typeof RuleConfigState>;
+
+export const RuleDriftRepo = z
+  .object({
+    repoId: z.string(),
+    /** `owner/name`. */
+    repo: z.string(),
+    /** The connection state of Spec 23, or "not connected: no token". */
+    connection: z.string(),
+    dataAsOf: z.iso.datetime().nullable(),
+    defaultBranch: z.string().nullable(),
+    /** The ref of the rule files. It differs from the default branch when `main_branch` is set. */
+    fileBranch: z.string().nullable(),
+    mainBranch: z.string().nullable(),
+    configState: RuleConfigState,
+    factoryCoreVersion: z.string().nullable(),
+    stackPack: z.object({ name: z.string(), version: z.string() }).strict().nullable(),
+    /** Null when the factory config names no Stack pack. */
+    stackPackInstalled: z.boolean().nullable(),
+    /** The installed version of `factory-core`, or null when it is not installed. */
+    installedFactoryCoreVersion: z.string().nullable(),
+    summary: z.record(RuleDriftState, z.number().int().min(0)),
+    rules: z.array(RuleDriftRule),
+  })
+  .strict();
+export type RuleDriftRepo = z.infer<typeof RuleDriftRepo>;
+
+export const RuleDriftResponse = pageResponseSchema(RuleDriftRepo)
+  .extend({
+    /** `not_connected` when no repo in scope has cache rows. */
+    state: z.enum(["ok", "not_connected"]),
+    complete: z.object({ incompleteRepos: z.number().int().min(0) }).strict(),
+    skipped: z.object({ templates: z.number().int().min(0) }).strict(),
+  })
+  .strict();
+export type RuleDriftResponse = z.infer<typeof RuleDriftResponse>;
