@@ -165,6 +165,10 @@ export async function seedWorkCache(
           state: "ok",
           fields: {
             mainBranch: null,
+            rules: { state: "ok", value: [] },
+            compliance: { state: "ok", value: [] },
+            stackPack: { state: "ok", value: null },
+            factoryCoreVersion: { state: "ok", value: null },
             controls: { state: "ok", profile: "synthetic", modules: config.modules },
             releases: null,
           },
