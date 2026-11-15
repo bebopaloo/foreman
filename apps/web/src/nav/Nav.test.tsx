@@ -27,6 +27,7 @@ describe("Nav", () => {
       "Sessions",
       "Reviews",
       "Factory health",
+      "Controls",
     ]);
   });
 

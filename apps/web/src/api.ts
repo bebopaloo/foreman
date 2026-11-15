@@ -1,5 +1,9 @@
 import {
   BreakdownResponse,
+  ControlsRegisterResponse,
+  ControlsReleasesResponse,
+  ControlsResponse,
+  ControlsWaiversResponse,
   DashResponse,
   FactoryRunsResponse,
   HealthResponse,
@@ -206,20 +210,20 @@ export const fetchReviewsPullRequests = (
   );
 };
 
-function pageParams(client: string | null, cursor: string | null): string {
+const scopedPath = (path: string, client: string | null, cursor: string | null = null): string => {
   const params = new URLSearchParams();
   if (client !== null) params.set("client", client);
   if (cursor !== null) params.set("cursor", cursor);
   const text = params.toString();
-  return text === "" ? "" : `?${text}`;
-}
+  return text === "" ? path : `${path}?${text}`;
+};
 
 /** One page of the plugin rows. The plugins belong to the whole factory, so the request has no client. */
 export const fetchPluginVersions = (
   cursor: string | null,
   signal?: AbortSignal,
 ): Promise<PluginVersionsResponse> =>
-  getJson(`/api/factory-health/plugins${pageParams(null, cursor)}`, PluginVersionsResponse, signal);
+  getJson(scopedPath("/api/factory-health/plugins", null, cursor), PluginVersionsResponse, signal);
 
 /** One page of the repos of the Rule drift section. */
 export const fetchRuleDrift = (
@@ -227,7 +231,7 @@ export const fetchRuleDrift = (
   cursor: string | null,
   signal?: AbortSignal,
 ): Promise<RuleDriftResponse> =>
-  getJson(`/api/factory-health/rule-drift${pageParams(client, cursor)}`, RuleDriftResponse, signal);
+  getJson(scopedPath("/api/factory-health/rule-drift", client, cursor), RuleDriftResponse, signal);
 
 /** One page of the Unattended runs, newest first. */
 export const fetchFactoryRuns = (
@@ -235,4 +239,35 @@ export const fetchFactoryRuns = (
   cursor: string | null,
   signal?: AbortSignal,
 ): Promise<FactoryRunsResponse> =>
-  getJson(`/api/factory-health/runs${pageParams(client, cursor)}`, FactoryRunsResponse, signal);
+  getJson(scopedPath("/api/factory-health/runs", client, cursor), FactoryRunsResponse, signal);
+
+/** The Controls document. */
+export const fetchControls = (
+  client: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsResponse> =>
+  getJson(scopedPath("/api/controls", client), ControlsResponse, signal);
+
+/** One page of the Waiver rows of the Controls view. */
+export const fetchControlsWaivers = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsWaiversResponse> =>
+  getJson(scopedPath("/api/controls/waivers", client, cursor), ControlsWaiversResponse, signal);
+
+/** One page of the Release rows of the Controls view. */
+export const fetchControlsReleases = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsReleasesResponse> =>
+  getJson(scopedPath("/api/controls/releases", client, cursor), ControlsReleasesResponse, signal);
+
+/** One page of the Control register list of the Controls view. */
+export const fetchControlsRegister = (
+  client: string | null,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<ControlsRegisterResponse> =>
+  getJson(scopedPath("/api/controls/register", client, cursor), ControlsRegisterResponse, signal);
