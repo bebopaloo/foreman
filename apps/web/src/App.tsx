@@ -4,6 +4,7 @@ import { DashPage } from "./dash/index.ts";
 import { Header } from "./Header.tsx";
 import { UsagePage } from "./usage/index.ts";
 import { useScope } from "./scope/index.ts";
+import { WorkPage } from "./work/index.ts";
 import { SessionsPage } from "./sessions/index.ts";
 
 export function App() {
@@ -21,6 +22,8 @@ export function App() {
       <main>
         {window.location.pathname === "/" ? (
           <DashPage />
+        ) : window.location.pathname === "/work" ? (
+          <WorkPage />
         ) : window.location.pathname === "/usage" ? (
           <UsagePage />
         ) : window.location.pathname === "/sessions" ? (

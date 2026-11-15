@@ -7,6 +7,8 @@ export interface FixtureSet {
   files(now: Date): Record<string, string>;
   /** The Work cache. With none, the cache is empty. */
   work?: WorkSeed;
+  /** The owners (`host/owner`) that have a token in the tokens file. With none, no owner has a token. */
+  tokenOwners?: readonly string[];
   /** True when the set holds transcripts: the Usage index is cleared and read again for it. */
   usage?: boolean;
 }
@@ -371,7 +373,154 @@ const PIPELINE_CACHE: WorkSeed = {
   pullRequests: [{ repo: APP, number: 200, title: "Release", base: "production" }],
 };
 
+/** Owners with a synthetic token in the e2e tokens file. The API reads only repos of such owners. */
+const OWNERS = ["github.com/acme", "github.com/bebopaloo"] as const;
+
+const SHA_A = "a".repeat(40);
+
+/** A `gate` Control event of one pull request. */
+const gateEvent = (repo: string, pr: number, round: number, decision: string, time: string) =>
+  JSON.stringify({
+    kind: "gate",
+    repo,
+    time,
+    pr,
+    issue: null,
+    tier: "sensitive",
+    round,
+    decision,
+    counts: {},
+    categories: [],
+    refs: [],
+    waived: [],
+  });
+
+/**
+ * The Work view: `acme/app` has an issue with its pull request, an issue with none, a stale closed
+ * issue, an issue with a title of markup and no link, and a pull request with no issue. `acme/site` has
+ * a BLOCKED issue. `bebopaloo/tools` has one TODO issue. `misc/notes` has no token. Only `acme/app` has
+ * Control events.
+ */
+const WORK_CACHE: WorkSeed = {
+  repos: REPOS.map(({ repo, client }) =>
+    repo === "misc/notes"
+      ? { fullName: repo, client, state: "not connected: no token" }
+      : { fullName: repo, client },
+  ),
+  issues: [
+    {
+      repo: APP,
+      number: 12,
+      title: "Add the export",
+      issueState: "IN REVIEW",
+      priority: "high",
+      labels: ["type:feature"],
+    },
+    { repo: APP, number: 15, title: "Fix the sort order", issueState: "READY", priority: "low" },
+    {
+      repo: APP,
+      number: 16,
+      title: "Remove the old flag",
+      issueState: "TODO",
+      state: "closed",
+      stale: true,
+    },
+    {
+      repo: APP,
+      number: 17,
+      title: '<img src="https://evil.example/t.png"> **Fix** [this](https://evil.example)',
+      issueState: "READY",
+      link: null,
+    },
+    {
+      repo: SITE,
+      number: 1,
+      title: "Update the footer",
+      issueState: "BLOCKED",
+      labels: ["type:fix"],
+    },
+    { repo: TOOLS, number: 3, title: "Write the guide", issueState: "TODO" },
+  ],
+  pullRequests: [
+    {
+      repo: APP,
+      number: 40,
+      title: "Add the export",
+      head: "12-add-the-export",
+      labels: ["risk:sensitive"],
+      headSha: SHA_A,
+      linkedIssue: 12,
+    },
+    { repo: APP, number: 50, title: "Release 1.2", head: "release/1.2" },
+  ],
+  statuses: [
+    {
+      repo: APP,
+      pullRequest: 40,
+      context: "factory/machine-gate",
+      sha: SHA_A,
+      state: "pass",
+    },
+  ],
+};
+
+/** 230 open issues of `acme/app`: two full pages of 100 and a page of 30. */
+const MANY_ISSUES_CACHE: WorkSeed = {
+  repos: REPOS.map(({ repo, client }) => ({ fullName: repo, client })),
+  issues: Array.from({ length: 230 }, (_, index) => ({
+    repo: APP,
+    number: index + 1,
+    title: `Synthetic issue ${(index + 1).toString()}`,
+    issueState: "READY",
+  })),
+};
+
 export const FIXTURE_SETS = {
+  work: {
+    files: (now) => {
+      const time = stamp(new Date(now.getTime() - 20 * MINUTE_MS));
+      return {
+        "factory/repos.json": repoList(),
+        [controlFile(new Date(now.getTime() - 20 * MINUTE_MS))]: `${[
+          gateEvent(APP, 40, 1, "fail", time),
+          gateEvent(APP, 40, 2, "pass", time),
+        ].join("\n")}\n`,
+      };
+    },
+    work: WORK_CACHE,
+    tokenOwners: OWNERS,
+  },
+
+  /** 230 rows for Show more. */
+  "work-many": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: MANY_ISSUES_CACHE,
+    tokenOwners: OWNERS,
+  },
+
+  /** Review health: Control events of 2 repos, and one connected repo with none. */
+  "review-health": {
+    files: (now) => ({
+      "factory/repos.json": repoList(),
+      [controlFile(new Date(now.getTime() - 20 * MINUTE_MS))]: controlLines(now),
+    }),
+    work: REVIEW_HEALTH_CACHE,
+  },
+
+  /** The repo list and transcripts of three projects, with a price for one model. */
+  usage: {
+    files: (now) => ({ "factory/repos.json": repoList(), ...transcripts(now, usageTurns()) }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
+  /** The repo list and no transcript: the Usage index is empty. */
+  "usage-empty": {
+    files: () => ({ "factory/repos.json": repoList() }),
+    work: CONNECTED_CACHE,
+    usage: true,
+  },
+
   /** A run in progress with 3 builds, and the pipeline strip of the Spec scenario in the Work cache. */
   pipeline: {
     files: (now) => ({
@@ -399,29 +548,6 @@ export const FIXTURE_SETS = {
         ...(repo === "acme/site" ? { state: "not connected: no token" } : {}),
       })),
     },
-  },
-
-  /** Review health: Control events of 2 repos, and one connected repo with none. */
-  "review-health": {
-    files: (now) => ({
-      "factory/repos.json": repoList(),
-      [controlFile(new Date(now.getTime() - 20 * MINUTE_MS))]: controlLines(now),
-    }),
-    work: REVIEW_HEALTH_CACHE,
-  },
-
-  /** The repo list and transcripts of three projects, with a price for one model. */
-  usage: {
-    files: (now) => ({ "factory/repos.json": repoList(), ...transcripts(now, usageTurns()) }),
-    work: CONNECTED_CACHE,
-    usage: true,
-  },
-
-  /** The repo list and no transcript: the Usage index is empty. */
-  "usage-empty": {
-    files: () => ({ "factory/repos.json": repoList() }),
-    work: CONNECTED_CACHE,
-    usage: true,
   },
 
   /** The repo list and the transcripts of 3 sessions on the day before `now`. */

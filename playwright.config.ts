@@ -101,7 +101,7 @@ export default defineConfig({
               "fixtures",
               "price-table.json",
             ),
-            FOREMAN_TOKENS_FILE: path.join(import.meta.dirname, "e2e", "fixtures", "no-tokens"),
+            FOREMAN_TOKENS_FILE: path.join(import.meta.dirname, "e2e", "fixtures", "tokens"),
           },
         },
       }),
