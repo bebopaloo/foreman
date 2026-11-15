@@ -138,3 +138,44 @@ export function sessionTranscripts(now: Date): Record<string, string> {
     ),
   };
 }
+
+/**
+ * One more sub-agent of the night run `sess-night-1`, in a worktree of issue 7 of `partner/web`, a repo of
+ * the client `acme`. It adds a work item in a repo that has no token.
+ */
+export function partnerTranscripts(now: Date): Record<string, string> {
+  const day = sessionsDay(now);
+  const night = "sess-night-1";
+  const file = `projects/${folderOf(APP)}/${night}/subagents/agent-web1`;
+  return {
+    [`${file}.jsonl`]: lines(
+      assistant("web1-0", {
+        session: night,
+        time: `${day}T09:10:00.000Z`,
+        cwd: "/synthetic/partner/web.worktrees/7-fix-the-menu",
+      }),
+    ),
+    [`${file}.meta.json`]: JSON.stringify({
+      agentType: "software-developer",
+      toolUseId: "toolu_web1",
+    }),
+  };
+}
+
+/** `count` sessions with one Turn each, 1 minute apart, in a project with no repo list entry. */
+export function manySessionTranscripts(now: Date, count: number): Record<string, string> {
+  const day = sessionsDay(now);
+  return Object.fromEntries(
+    Array.from({ length: count }, (_, index) => {
+      const id = `sess-many-${index.toString().padStart(3, "0")}`;
+      const clock = `${day}T09:${index.toString().padStart(2, "0")}:00.000Z`;
+      return [
+        `projects/${folderOf(SPIKE)}/${id}.jsonl`,
+        lines(
+          operator(`${id}-u`, { session: id, cwd: SPIKE, branch: "main", time: clock }),
+          assistant(`${id}-a`, { session: id, cwd: SPIKE, branch: "main", time: clock }),
+        ),
+      ];
+    }),
+  );
+}
