@@ -208,10 +208,30 @@ export const workPullRequests = pgTable(
     lastListedAt: timestamp("last_listed_at", { withTimezone: true }).notNull(),
     detailsFetchedAt: timestamp("details_fetched_at", { withTimezone: true }),
     detailsErrorClass: text("details_error_class"),
+    headSha: text("head_sha"),
+    linkedIssue: integer("linked_issue"),
   },
   (table) => [
     primaryKey({ columns: [table.repoId, table.number] }),
     index("work_pull_requests_repo_id_idx").on(table.repoId),
+    index("work_pull_requests_repo_id_linked_issue_idx").on(table.repoId, table.linkedIssue),
+  ],
+);
+
+// One row for each pull request and status context. It has no description.
+export const workCommitStatuses = pgTable(
+  "work_commit_statuses",
+  {
+    repoId: text("repo_id").notNull(),
+    pullRequestNumber: integer("pull_request_number").notNull(),
+    context: text("context").notNull(),
+    sha: text("sha").notNull(),
+    state: text("state").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.repoId, table.pullRequestNumber, table.context] }),
+    index("work_commit_statuses_repo_id_idx").on(table.repoId),
   ],
 );
 

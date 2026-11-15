@@ -15,6 +15,12 @@ import { resolveToken, type TokenStore } from "./tokens.ts";
 
 const WRITE_CHUNK = 500;
 
+const MACHINE_GATE_CONTEXT = "factory/machine-gate";
+const RELEASE_REVIEW_CONTEXT = "factory/release-review";
+const RELEASE_BRANCH_PATTERN = /^release\/[0-9]+\.[0-9]+$/;
+const RELEASE_BASE_BRANCH = "production";
+const LINKED_ISSUE_PATTERN = /^([0-9]{1,9})-/;
+
 export const OK_STATE = "ok";
 export const PARTIAL_STATE = "partial";
 export const NOT_CONFIGURED_STATE = "not configured";
@@ -65,6 +71,12 @@ export function safeLink(url: string, host: string): string | null {
     parsed.password === "" &&
     parsed.port === "";
   return clean ? parsed.href : null;
+}
+
+/** The issue number that a branch name starts with, as in `84-commit-status-cache`. */
+function linkedIssueOf(headBranch: string): number | null {
+  const match = LINKED_ISSUE_PATTERN.exec(headBranch);
+  return match?.[1] === undefined ? null : Number(match[1]);
 }
 
 function sameLabels(a: readonly string[], b: readonly string[]): boolean {
@@ -298,8 +310,20 @@ async function fetchForge(
     .from(schema.workPullRequests)
     .where(eq(schema.workPullRequests.repoId, repo.id));
   const cached = new Map(cachedRows.map((row) => [row.number, row]));
+  const cachedStatusRows = await ctx.db
+    .select({
+      pullRequestNumber: schema.workCommitStatuses.pullRequestNumber,
+      context: schema.workCommitStatuses.context,
+      sha: schema.workCommitStatuses.sha,
+    })
+    .from(schema.workCommitStatuses)
+    .where(eq(schema.workCommitStatuses.repoId, repo.id));
+  const cachedStatusSha = new Map(
+    cachedStatusRows.map((row) => [`${String(row.pullRequestNumber)} ${row.context}`, row.sha]),
+  );
 
   const rows: (typeof schema.workPullRequests.$inferInsert)[] = [];
+  const statusRows: (typeof schema.workCommitStatuses.$inferInsert)[] = [];
   const reviewRows: (typeof schema.workReviews.$inferInsert)[] = [];
   const replacedReviews: number[] = [];
   let firstError: string | null = null;
@@ -312,6 +336,7 @@ async function fetchForge(
       before === undefined ||
       before.detailsFetchedAt === null ||
       before.state !== pull.state ||
+      before.detailsErrorClass !== null ||
       !sameLabels(before.labels, pull.labels);
 
     let detailsFetchedAt = before?.detailsFetchedAt ?? null;
@@ -348,6 +373,44 @@ async function fetchForge(
         firstError ??= reviews.errorClass;
       }
     }
+
+    if (pull.head_sha !== undefined) {
+      const headSha = pull.head_sha;
+      const contexts: string[] = [];
+      if (
+        ctx.full ||
+        pull.state === "open" ||
+        cachedStatusSha.get(`${String(pull.number)} ${MACHINE_GATE_CONTEXT}`) !== headSha
+      ) {
+        contexts.push(MACHINE_GATE_CONTEXT);
+      }
+      if (
+        pull.state === "open" &&
+        RELEASE_BRANCH_PATTERN.test(pull.head) &&
+        pull.base === RELEASE_BASE_BRANCH
+      ) {
+        contexts.push(RELEASE_REVIEW_CONTEXT);
+      }
+      for (const context of contexts) {
+        const status = await caller.run(
+          ["status", "get", headSha, context],
+          contractSchemas.commitStatus,
+        );
+        if (status.ok) {
+          statusRows.push({
+            repoId: repo.id,
+            pullRequestNumber: pull.number,
+            context,
+            sha: status.data.sha,
+            state: status.data.state,
+            fetchedAt: ctx.startedAt,
+          });
+        } else {
+          detailsErrorClass = status.errorClass;
+          firstError ??= status.errorClass;
+        }
+      }
+    }
     rows.push({
       repoId: repo.id,
       number: pull.number,
@@ -363,6 +426,8 @@ async function fetchForge(
       lastListedAt: ctx.startedAt,
       detailsFetchedAt,
       detailsErrorClass,
+      headSha: pull.head_sha ?? null,
+      linkedIssue: linkedIssueOf(pull.head),
     });
   }
 
@@ -395,6 +460,19 @@ async function fetchForge(
         );
     }
     for (const part of chunks(reviewRows)) await tx.insert(schema.workReviews).values(part);
+    for (const part of chunks(statusRows)) {
+      await tx
+        .insert(schema.workCommitStatuses)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [
+            schema.workCommitStatuses.repoId,
+            schema.workCommitStatuses.pullRequestNumber,
+            schema.workCommitStatuses.context,
+          ],
+          set: commitStatusSet,
+        });
+    }
     for (const part of chunks(forgeRows.rows)) {
       await tx
         .insert(schema.workForgeReleases)
@@ -494,6 +572,14 @@ const pullRequestSet = {
   lastListedAt: incoming(schema.workPullRequests.lastListedAt),
   detailsFetchedAt: incoming(schema.workPullRequests.detailsFetchedAt),
   detailsErrorClass: incoming(schema.workPullRequests.detailsErrorClass),
+  headSha: incoming(schema.workPullRequests.headSha),
+  linkedIssue: incoming(schema.workPullRequests.linkedIssue),
+};
+
+const commitStatusSet = {
+  sha: incoming(schema.workCommitStatuses.sha),
+  state: incoming(schema.workCommitStatuses.state),
+  fetchedAt: incoming(schema.workCommitStatuses.fetchedAt),
 };
 
 const releaseSet = {
