@@ -29,6 +29,26 @@ describe("loadConfig", () => {
     expect(config.FOREMAN_ADAPTER_TIMEOUT_SECONDS).toBe(60);
   });
 
+  it("reads the Factory identity logins, trimmed, and treats an empty value as no setting", () => {
+    const logins = (value: string | undefined) =>
+      loadConfig({ DATABASE_URL, FOREMAN_FACTORY_LOGINS: value }).FOREMAN_FACTORY_LOGINS;
+    expect(logins(" bebopaloo-factory[bot] , reviewer-1 ")).toEqual([
+      "bebopaloo-factory[bot]",
+      "reviewer-1",
+    ]);
+    expect(logins("")).toEqual([]);
+    expect(logins("   ")).toEqual([]);
+    expect(logins(undefined)).toEqual([]);
+  });
+
+  it("stops at start-up on an invalid Factory identity login", () => {
+    for (const value of ["bad login", "a/b", "ok,bad!", "x[bot", "x[bots]"]) {
+      expect(() => loadConfig({ DATABASE_URL, FOREMAN_FACTORY_LOGINS: value })).toThrow(
+        "FOREMAN_FACTORY_LOGINS",
+      );
+    }
+  });
+
   it("splits the host allow-list and reads the adapter timeout", () => {
     const config = loadConfig({
       DATABASE_URL,

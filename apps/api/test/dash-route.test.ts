@@ -77,6 +77,14 @@ describe("GET /api/dash", () => {
     expect(body).toEqual({
       run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
       lastRun: null,
+      reviewHealth: {
+        firstRound: { rate: null, passed: 0, total: 0, tiers: [] },
+        rounds: { one: 0, two: 0, three: 0 },
+        escalations: 0,
+        waiversInUse: 0,
+        factoryLoginSet: false,
+        reposWithoutControls: [],
+      },
       sources: { runs: "missing", controls: "missing" },
       skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
     });

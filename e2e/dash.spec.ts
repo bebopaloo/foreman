@@ -115,7 +115,46 @@ test("a client scope shows the older run of that client, with its own lanes", as
   await expect(lastRun(page)).toContainText("run-synthetic-new");
 });
 
+const review = (page: Page) => page.getByRole("region", { name: "Review health" });
+
+test("Review health shows the pass rates, the rounds, the escalations and the Waivers", async ({
+  page,
+}) => {
+  await useFixture("review-health");
+  await page.goto("/");
+  await expect(review(page)).toContainText("70% of 10 pull requests");
+  const tiers = review(page).getByRole("list", { name: "First-round pass by Risk tier" });
+  await expect(tiers.getByRole("listitem")).toHaveText([
+    "general83% of 6",
+    "sensitive50% of 2",
+    "no tier50% of 2",
+  ]);
+  const rounds = review(page).getByRole("list", { name: "Pull requests by highest round" });
+  await expect(rounds.getByRole("listitem")).toHaveText(["Round 18", "Round 21", "Round 31"]);
+  await expect(review(page)).toContainText("Escalations: 3");
+  await expect(review(page)).toContainText("Waivers in use: 2");
+});
+
+test("Review health shows the Factory identity counts of a repo with no Control events", async ({
+  page,
+}) => {
+  await useFixture("review-health");
+  await page.goto("/");
+  const repos = review(page).getByRole("list", { name: "Repos with no Control events" });
+  const tools = repos.getByRole("listitem").filter({ hasText: "bebopaloo/tools" });
+  await expect(tools).toContainText("no Control events in 30 days");
+  await expect(tools).toContainText("3 factory pull requests reviewed by the Factory identity");
+  await expect(tools).toContainText("1 factory pull request with no Factory identity review");
+});
+
+test("Review health shows no gate decision when there is no Control event", async ({ page }) => {
+  await useFixture("no-run");
+  await page.goto("/");
+  await expect(review(page)).toContainText("First-round pass: no gate decision in 30 days");
+});
+
 const AXE_SETS: FixtureName[] = [
+  "review-health",
   "last-run",
   "run-in-progress",
   "stale-lock",
