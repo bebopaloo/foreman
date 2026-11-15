@@ -13,7 +13,18 @@ export interface ProjectRef {
   noRepo: boolean;
 }
 
-const WORKTREE_PART = /^(.*?)\/(?:\.claude\/worktrees|\.worktrees)\/[^/]+(?:\/.*)?$/;
+// Group 1 is the path before a `.claude/worktrees/<name>` or `.worktrees/<name>` part.
+// Group 2 is the repo folder path of a sibling `<repo folder>.worktrees/<name>` part.
+// The repo folder name must not be empty, so `.worktrees` alone is not a sibling part.
+const WORKTREE_PART =
+  /^(?:(.*?)\/(?:\.claude\/worktrees|\.worktrees)|(.*?\/[^/]+)\.worktrees)\/[^/]+(?:\/.*)?$/;
+
+const WORKTREE_NAME = /(?:^|\/)(?:[^/]*\.worktrees|\.claude\/worktrees)\/([^/]+)/;
+
+/** The worktree folder name of a working folder, or null when the path has no worktree part. */
+export function worktreeName(cwd: string): string | null {
+  return WORKTREE_NAME.exec(cwd)?.[1] ?? null;
+}
 
 async function isFolder(folder: string): Promise<boolean> {
   try {
@@ -58,7 +69,8 @@ export async function resolveProjects(
       result.set(cwd, ref);
       finalKeys.add(ref.key);
     } else {
-      byPath.set(cwd, WORKTREE_PART.exec(cwd)?.[1] ?? cwd);
+      const part = WORKTREE_PART.exec(cwd);
+      byPath.set(cwd, part?.[1] ?? part?.[2] ?? cwd);
     }
   }
 

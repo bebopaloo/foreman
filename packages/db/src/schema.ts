@@ -30,6 +30,7 @@ export const turns = pgTable(
     webSearchCount: integer("web_search_count").notNull(),
     projectKey: text("project_key").notNull(),
     branch: text("branch"),
+    worktreeName: text("worktree_name"),
     agentType: text("agent_type").notNull(),
     agentId: text("agent_id"),
     // The skill that Skill attribution gives the turn, and whether it is exact or an estimate.

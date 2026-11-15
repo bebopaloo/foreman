@@ -10,7 +10,7 @@ import {
   parseLine,
 } from "./parse.ts";
 import { type ParsedLimitReading, parseLimitLine } from "./limits.ts";
-import { resolveProjects } from "./projects.ts";
+import { resolveProjects, worktreeName } from "./projects.ts";
 import { attributeSessions, isBuiltInCommand } from "./skills.ts";
 import {
   type FileCursor,
@@ -56,6 +56,7 @@ type SkillCallRow = typeof schema.skillCalls.$inferInsert;
 type AgentStartRow = typeof schema.agentStarts.$inferInsert;
 type LimitReadingRow = typeof schema.limitReadings.$inferInsert;
 type IndexedTurn = ParsedTurn & { agentType: string; agentId: string | null };
+type StoredTurn = IndexedTurn & { worktreeName: string | null };
 
 // 16 columns for each row, and Postgres allows 65,535 parameters in a query.
 const INSERT_BATCH_SIZE = 500;
@@ -87,7 +88,7 @@ export function plural(count: number, word: string): string {
   return `${String(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
-async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): Promise<void> {
+async function writeTurns(db: Pick<Database, "insert">, turns: StoredTurn[]): Promise<void> {
   for (let start = 0; start < turns.length; start += INSERT_BATCH_SIZE) {
     const batch = turns.slice(start, start + INSERT_BATCH_SIZE);
     await db
@@ -102,6 +103,7 @@ async function writeTurns(db: Pick<Database, "insert">, turns: IndexedTurn[]): P
           cacheWrite1hTokens: sql`greatest(${schema.turns.cacheWrite1hTokens}, excluded.cache_write_1h_tokens)`,
           cacheReadTokens: sql`greatest(${schema.turns.cacheReadTokens}, excluded.cache_read_tokens)`,
           webSearchCount: sql`greatest(${schema.turns.webSearchCount}, excluded.web_search_count)`,
+          worktreeName: sql`excluded.worktree_name`,
           agentType: sql`excluded.agent_type`,
           agentId: sql`excluded.agent_id`,
         },
@@ -245,7 +247,7 @@ async function writeAgents(
 
 async function readSources(options: IngestOptions): Promise<
   IngestResult & {
-    rows: IndexedTurn[];
+    rows: StoredTurn[];
     projects: ProjectRow[];
     cursors: CursorRow[];
     agents: AgentRow[];
@@ -362,6 +364,7 @@ async function readSources(options: IngestOptions): Promise<
   );
   const rows = [...byKey.values()].map((row) => ({
     ...row,
+    worktreeName: worktreeName(row.projectKey),
     projectKey: refs.get(row.projectKey)?.key ?? row.projectKey,
   }));
   const userMessages = [...messages.values()].map((message) => ({
