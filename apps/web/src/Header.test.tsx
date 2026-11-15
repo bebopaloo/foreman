@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "./test-server.ts";
-import { fakeApi, renderApp } from "./test-render.tsx";
+import { dashRequests, fakeApi, renderApp } from "./test-render.tsx";
 
 function openAt(url: string) {
   window.history.replaceState(null, "", url);
@@ -72,8 +72,9 @@ describe("the Client scope", () => {
     renderApp();
     expect(await screen.findByRole("alert")).toHaveTextContent("Unknown client");
     expect(screen.queryByText(/Showing all clients/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/API status/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Foreman dash" })).not.toBeInTheDocument();
     expect(healthCalls).toBe(0);
+    expect(dashRequests).toHaveLength(0);
   });
 });
 
