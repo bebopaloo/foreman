@@ -1,18 +1,36 @@
 import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
-import { WorkClientsResponse, WorkReposResponse, WorkStatusResponse } from "@foreman/shared";
+import {
+  WorkClientsResponse,
+  WorkIssuesQuery,
+  WorkIssuesResponse,
+  WorkPullRequestsQuery,
+  WorkPullRequestsResponse,
+  WorkReleasesQuery,
+  WorkReleasesResponse,
+  WorkReposResponse,
+  WorkStatusResponse,
+} from "@foreman/shared";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { z } from "zod";
 import { originGuard } from "../host-check.ts";
 import { listClients } from "../work/clients.ts";
+import { listIssues, listPullRequests, listReleases } from "../work/lists.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
+import { resolveWorkScope } from "../work/scope.ts";
 import type { FetchSchedule } from "../work/schedule.ts";
 import { readWorkStatus } from "../work/status.ts";
+import { readTokens } from "../work/tokens.ts";
+
+const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
 export interface WorkOptions {
   db: Database;
   claudeDir: string;
   schedule: FetchSchedule;
+  /** The tokens file. A repo of an owner with no token returns no data. */
+  tokensFile: string | undefined;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
 }
@@ -24,7 +42,7 @@ async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
 
 export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   app,
-  { db, claudeDir, schedule, allowedOrigins },
+  { db, claudeDir, schedule, tokensFile, allowedOrigins },
   done,
 ) => {
   app.get(
@@ -65,6 +83,68 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
           })
           .sort((a, b) => (a.fullName < b.fullName ? -1 : a.fullName > b.fullName ? 1 : 0)),
       };
+    },
+  );
+
+  async function scopeOf(client: string | undefined, repo: string | undefined) {
+    const list = await readRepoList(claudeDir);
+    const entries = list.status === "ok" ? list.repos : [];
+    return resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
+  }
+
+  app.get(
+    "/work/issues",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkIssuesQuery,
+        response: { 200: WorkIssuesResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, issue_state, state, limit, cursor } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      return listIssues(
+        db,
+        scope.repos,
+        { issue_state, state },
+        { limit, cursor, query: { client, repo, issue_state, state } },
+      );
+    },
+  );
+
+  app.get(
+    "/work/pull-requests",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkPullRequestsQuery,
+        response: { 200: WorkPullRequestsResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, limit, cursor } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      return listPullRequests(db, scope.repos, { limit, cursor, query: { client, repo } });
+    },
+  );
+
+  app.get(
+    "/work/releases",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkReleasesQuery,
+        response: { 200: WorkReleasesResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, limit, cursor } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      return listReleases(db, scope.repos, { limit, cursor, query: { client, repo } });
     },
   );
 
