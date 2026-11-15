@@ -23,6 +23,19 @@ describe("BarChart", () => {
     expect(within(zeroDay).getByRole("cell")).toHaveTextContent("0");
   });
 
+  it("names the label column of the table with labelName", () => {
+    render(
+      <BarChart
+        title="Pull requests by final tier"
+        valueName="Pull requests"
+        labelName="Tier"
+        data={[{ label: "authority", value: 2 }]}
+        width={700}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Tier" })).toBeInTheDocument();
+  });
+
   it("writes the table values with the format function", () => {
     render(
       <BarChart
