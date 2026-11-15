@@ -23,7 +23,7 @@ export interface FetchOptions {
   /** The hosts that an adapter may call, in lower case. */
   allowedHosts?: readonly string[];
   timeoutMs?: number;
-  log?: { warn(message: string): void };
+  log?: { warn(message: string): void; info?(message: string): void };
   now?: () => Date;
 }
 
@@ -44,6 +44,7 @@ export async function runFetch(options: FetchOptions): Promise<FetchResult> {
   const { db, claudeDir } = options;
   const now = options.now ?? (() => new Date());
   const startedAt = now();
+  const clockStart = performance.now();
   const list = await readRepoList(claudeDir);
 
   let result: FetchResult;
@@ -105,11 +106,17 @@ export async function runFetch(options: FetchOptions): Promise<FetchResult> {
         { ...repo, owner: repo.owner, name: repo.name },
       );
       adapterCalls += outcome.calls;
+      options.log?.info?.(
+        `fetched ${repo.id}: calls=${String(outcome.calls)} forge_error=${outcome.forge.errorClass ?? "none"} tracker_error=${outcome.tracker.errorClass ?? "none"}`,
+      );
       await writeRepoOutcome(db, repo.id, outcome.forge, outcome.tracker, now());
     }
     result = { state: "idle", reason: null, repos: list.repos.length, problems: list.problems };
   }
 
+  options.log?.info?.(
+    `fetch ended: kind=${kind} repos=${String(result.repos)} calls=${String(adapterCalls)} durationMs=${String(Math.round(performance.now() - clockStart))}`,
+  );
   await db.insert(schema.workFetchRuns).values({
     startedAt,
     endedAt: new Date(),
