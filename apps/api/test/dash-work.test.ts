@@ -4,6 +4,7 @@ import { schema } from "@foreman/db";
 import type { DashResponse } from "@foreman/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { OK_STATE } from "../src/work/fetch-repo.ts";
 import { repoId } from "../src/work/repo-list.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
 import {
@@ -46,7 +47,7 @@ interface Entry {
 const ACME: Entry = { path: APP, repo: "acme/app", client: "acme" };
 const GLOBEX: Entry = { path: "/synthetic/globex/portal", repo: "globex/portal", client: "globex" };
 
-async function cacheRepo(fullName: string, trackerState: string | null = "connected") {
+async function cacheRepo(fullName: string, trackerState: string | null = OK_STATE) {
   const [owner = "", name = ""] = fullName.split("/");
   const id = repoId("github.com", owner, name);
   await database.db.insert(schema.workRepos).values({

@@ -156,7 +156,9 @@ describe("The pipeline now", () => {
     fakeApi({ dash: { complete: { connectedRepos: 1, missingRepos: 2 } } });
     renderApp();
     expect(
-      await screen.findByText("Data is not complete: 2 repos not connected. See Repos."),
+      await within(await screen.findByRole("region", { name: "The pipeline now" })).findByText(
+        "Data is not complete: 2 repos not connected. See Repos.",
+      ),
     ).toBeInTheDocument();
   });
 

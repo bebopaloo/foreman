@@ -4,6 +4,7 @@ import { ReviewsPullRequestsResponse, ReviewsResponse } from "@foreman/shared";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
+import { OK_STATE } from "../src/work/fetch-repo.ts";
 import { repoId } from "../src/work/repo-list.ts";
 import { gateEvent, isoSeconds, minutesAgo, nightLine, NOW, writeJsonl } from "./dash-fixtures.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
@@ -100,7 +101,7 @@ function gate(pr: number, minutes: number, over: Record<string, unknown> = {}) {
   return gateEvent({ pr, issue: pr, time: at(minutes), ...over });
 }
 
-async function cacheRepo(id: string, owner: string, name: string, forgeState = "connected") {
+async function cacheRepo(id: string, owner: string, name: string, forgeState = OK_STATE) {
   await database.db.insert(schema.workRepos).values({
     id,
     host: "github.com",

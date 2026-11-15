@@ -8,12 +8,14 @@ import type { SkippedFile } from "./jsonl-window.ts";
 import { readNightLog, readRunLock, type NightLogRead, type RunLockRead } from "./night-log.ts";
 import {
   BUILD_SLOTS,
+  CONNECTED_STATES,
+  isConnectedState,
   pipelineCounts,
   runningBuilds,
-  waitsTotal,
   type CachedIssue,
   type CachedPullRequest,
 } from "./pipeline.ts";
+import { waitsOf } from "./waits.ts";
 import { reviewHealth, type ConnectedRepo } from "./review-health.ts";
 import { folderLabel, runsInWindow, type Run, type RunRepo, type RunScope } from "./runs.ts";
 
@@ -53,6 +55,10 @@ async function readWorkCache(db: Database): Promise<WorkCache> {
     db
       .select({
         repoId: schema.workIssues.repoId,
+        number: schema.workIssues.number,
+        title: schema.workIssues.title,
+        priority: schema.workIssues.priority,
+        link: schema.workIssues.link,
         state: schema.workIssues.state,
         issueState: schema.workIssues.issueState,
         labels: schema.workIssues.labels,
@@ -62,6 +68,9 @@ async function readWorkCache(db: Database): Promise<WorkCache> {
     db
       .select({
         repoId: schema.workPullRequests.repoId,
+        number: schema.workPullRequests.number,
+        title: schema.workPullRequests.title,
+        link: schema.workPullRequests.link,
         state: schema.workPullRequests.state,
         baseBranch: schema.workPullRequests.baseBranch,
       })
@@ -94,7 +103,7 @@ async function readConnected(
   const rows = await db
     .select({ id: schema.workRepos.id })
     .from(schema.workRepos)
-    .where(eq(schema.workRepos.forgeState, "connected"));
+    .where(inArray(schema.workRepos.forgeState, [...CONNECTED_STATES]));
   const connected: DashSources["connected"] = new Map(rows.map((row) => [row.id, null]));
   if (logins.size === 0 || rows.length === 0) return connected;
   const ids = rows.map((row) => row.id);
@@ -247,43 +256,63 @@ function reviewHealthOf(
   });
 }
 
+/** The reason of the newest night log line with `to` BLOCKED of each issue, by `<repo ID>#<issue>`. */
+function blockedReasonsOf({ nightLog, repoList }: DashSources): Map<string, string> {
+  const repoOf = repoResolver(repoList);
+  const newest = new Map<string, { time: number; reason: string }>();
+  for (const entry of nightLog.entries) {
+    const { id } = repoOf(entry.repo);
+    if (entry.to !== "BLOCKED" || id === null) continue;
+    const key = `${id}#${entry.issue.toString()}`;
+    const time = entry.time.getTime();
+    if (time >= (newest.get(key)?.time ?? -Infinity))
+      newest.set(key, { time, reason: entry.reason });
+  }
+  return new Map([...newest].map(([key, { reason }]) => [key, reason]));
+}
+
 /** The data of the forge sections, from the Work cache rows of the connected repos in scope. */
 function workOf(
-  { repoList, work }: DashSources,
+  sources: DashSources,
   scope: RunScope,
   runState: DashResponse["run"]["state"],
-): Pick<DashResponse, "tiles" | "running" | "pipeline" | "complete"> {
+): Pick<DashResponse, "tiles" | "running" | "pipeline" | "waits" | "complete"> {
+  const { repoList, work } = sources;
   const entries = reposInScope(repoList, scope);
-  const connected = entries.filter((entry) => hasCacheRows(work.trackerStates.get(entry.id)));
+  const connected = entries.filter((entry) => isConnectedState(work.trackerStates.get(entry.id)));
   const ids = new Set(connected.map((entry) => entry.id));
   const complete = {
     connectedRepos: connected.length,
     missingRepos: entries.length - connected.length,
   };
   if (connected.length === 0) {
-    return { tiles: noTiles, running: null, pipeline: null, complete };
+    return { tiles: noTiles, running: null, pipeline: null, waits: null, complete };
   }
   const issues = work.issues.filter((issue) => ids.has(issue.repoId));
   const pulls = work.pullRequests.filter((pull) => ids.has(pull.repoId));
+  const waits = waitsOf({
+    issues,
+    pulls,
+    repoLabels: new Map(
+      connected.map((entry) => [entry.id, `${entry.owner ?? ""}/${entry.name ?? ""}`]),
+    ),
+    blockedReasons: blockedReasonsOf(sources),
+  });
   const enabled = new Set(connected.filter((entry) => entry.enabled).map((entry) => entry.id));
   return {
-    tiles: { ...noTiles, waits: waitsTotal(issues, pulls) },
+    tiles: { ...noTiles, waits: waits.total },
     running: {
       count: runningBuilds(issues, enabled),
       // A client scope shows no slot count, so that the load of other clients does not show.
       slotLimit: scope.kind === "all" && runState === "in_progress" ? BUILD_SLOTS : null,
     },
     pipeline: pipelineCounts(issues, pulls),
+    waits,
     complete,
   };
 }
 
 const noTiles = { builds: null, peak: null, merged: null, waits: null };
-
-/** A repo has cache rows after a fetch that did not fail. */
-function hasCacheRows(state: string | null | undefined): boolean {
-  return state === "ok" || state === "partial" || state === "connected";
-}
 
 function runOf(lock: RunLockRead): DashResponse["run"] {
   if (lock.state === "unreadable") {
@@ -322,6 +351,7 @@ export function buildDash(
       },
       running: forge.running,
       pipeline: forge.pipeline,
+      waits: forge.waits,
       complete: forge.complete,
       sources: { runs: nightLog.folder, controls: controls.folder },
       skipped: {
