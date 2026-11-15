@@ -1,3 +1,4 @@
+import type { DashResponse } from "@foreman/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -19,7 +20,18 @@ export interface FakeApi {
   owners?: { host: string; owner: string; state: string }[];
   state?: "idle" | "running" | "failed";
   reason?: string | null;
+  /** Parts of the dash response. */
+  dash?: Partial<DashResponse>;
 }
+
+/** Each request for the dash since the last `fakeApi` call, as path and query. */
+export const dashRequests: string[] = [];
+
+export const quietDash: DashResponse = {
+  run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
+  sources: { runs: "ok", controls: "ok" },
+  skipped: { nightLogLines: 0, controlEvents: 0, files: 0, lock: 0 },
+};
 
 const statusBody = (api: FakeApi) => ({
   state: api.state ?? "idle",
@@ -33,11 +45,17 @@ const statusBody = (api: FakeApi) => ({
   repos: [],
 });
 
-/** Fakes the work and health routes over HTTP. The returned list holds each request as `METHOD path`. */
+/** Fakes the dash, work and health routes over HTTP. The returned list holds each request as `METHOD path`. */
 export function fakeApi(api: FakeApi = {}): string[] {
   const calls: string[] = [];
+  dashRequests.length = 0;
   server.use(
     http.get("*/api/health", () => HttpResponse.json({ status: "ok", version: "1.2.3" })),
+    http.get("*/api/dash", ({ request }) => {
+      const url = new URL(request.url);
+      dashRequests.push(`${url.pathname}${url.search}`);
+      return HttpResponse.json({ ...quietDash, ...api.dash });
+    }),
     http.get("*/api/work/clients", () =>
       HttpResponse.json({
         clients: api.clients ?? [

@@ -10,6 +10,7 @@ import {
 import type { Config } from "./config.ts";
 import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
+import { dashRoutes } from "./routes/dash.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { workRoutes } from "./routes/work.ts";
@@ -39,9 +40,11 @@ export interface AppOptions {
   refresher?: Refresher;
   /** Tests pass a fake. The default runs the real fetch. */
   fetcher?: FetchSchedule;
+  /** Tests pass a fixed clock for the dash. */
+  now?: () => Date;
 }
 
-export async function buildApp({ config, db, logger, refresher, fetcher }: AppOptions) {
+export async function buildApp({ config, db, logger, refresher, fetcher, now }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
   const app = Fastify({
@@ -131,6 +134,11 @@ export async function buildApp({ config, db, logger, refresher, fetcher }: AppOp
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     schedule: activeFetcher,
     allowedOrigins: config.CORS_ORIGINS,
+  });
+  await app.register(dashRoutes, {
+    prefix: "/api",
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
+    ...(now === undefined ? {} : { now }),
   });
   await app.register(usageRoutes, {
     prefix: "/api/usage",
