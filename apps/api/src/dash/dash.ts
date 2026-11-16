@@ -193,8 +193,17 @@ export function repoResolver(repoList: RepoListResult): (folder: string) => RunR
     byPath.get(folder) ?? { key: folder, id: null, label: folderLabel(folder), client: null };
 }
 
+function cachedIssue(
+  cached: ReadonlyMap<string, CachedIssue>,
+  build: { repo: RunRepo; issue: number },
+): CachedIssue | undefined {
+  return build.repo.id === null
+    ? undefined
+    : cached.get(`${build.repo.id}#${build.issue.toString()}`);
+}
+
 function lastRunOf(
-  { nightLog, lock, repoList, parents }: DashSources,
+  { nightLog, lock, repoList, parents, work }: DashSources,
   scope: RunScope,
   now: Date,
 ): { lastRun: DashResponse["lastRun"]; peak: number } {
@@ -207,6 +216,9 @@ function lastRunOf(
     now,
   });
   if (run === undefined) return { lastRun: null, peak: 0 };
+  const cached = new Map(
+    work.issues.map((issue) => [`${issue.repoId}#${issue.number.toString()}`, issue]),
+  );
   const lastRun = {
     runId: run.runId,
     start: run.start.toISOString(),
@@ -219,6 +231,8 @@ function lastRunOf(
       repoId: build.repo.id,
       repo: build.repo.label,
       issue: build.issue,
+      title: cachedIssue(cached, build)?.title ?? null,
+      link: cachedIssue(cached, build)?.link ?? null,
       start: build.start.toISOString(),
       end: build.end.toISOString(),
       result: build.result,

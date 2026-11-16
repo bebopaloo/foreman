@@ -1123,6 +1123,7 @@ export const FIXTURE_SETS = {
       issues: [
         ...(CONNECTED_CACHE.issues ?? []),
         { repo: APP, number: 30, title: "A parent", issueState: "IN PROGRESS", children: [31] },
+        { repo: APP, number: 21, title: HOSTILE_TITLE, issueState: "DONE" },
       ],
     },
   },

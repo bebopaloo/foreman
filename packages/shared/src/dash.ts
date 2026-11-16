@@ -26,6 +26,10 @@ const Build = z
     /** `owner/name`, or the last part of the repo folder when the repo has no entry. */
     repo: z.string(),
     issue: z.number().int().positive(),
+    /** The title of the cached issue, or null with no cached issue. */
+    title: z.string().nullable(),
+    /** The tracker link of the cached issue, or null with none. */
+    link: z.string().nullable(),
     start: z.iso.datetime(),
     end: z.iso.datetime(),
     result: BuildResult,

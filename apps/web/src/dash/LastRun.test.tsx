@@ -1,9 +1,20 @@
 import type { LastRun } from "@foreman/shared";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeApi, renderApp } from "../test-render.tsx";
 
-const build = (issue: number, lane: number, start: string, end: string, result: string) => ({
+const build = (
+  issue: number,
+  lane: number,
+  start: string,
+  end: string,
+  result: string,
+  extra: { title?: string | null; link?: string | null } = {},
+) => ({
+  title: null,
+  link: null,
+  ...extra,
   repoId: "r1",
   repo: "acme/app",
   issue,
@@ -51,8 +62,10 @@ describe("Last run", () => {
     expect(await screen.findByText("4 builds")).toBeInTheDocument();
     expect(screen.getAllByText("slot 1")).toHaveLength(1);
     expect(screen.getByText("slot 3")).toBeInTheDocument();
-    const bar = screen.getByTitle("acme/app #4: stopped at run end");
-    expect(bar).toHaveTextContent("acme/app #4 · stopped at run end");
+    const bar = screen.getByRole("img", {
+      name: "Issue 4 of acme/app: stopped at run end, 01:20 to 05:00",
+    });
+    expect(bar).toHaveTextContent("Issue 4 of acme/app: stopped at run end");
     expect(bar).toHaveStyle({ background: "#565d6a" });
     const legend = within(within(lastRun()).getByRole("list", { name: "Results" }));
     expect(legend.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
@@ -105,6 +118,129 @@ describe("Last run", () => {
     renderApp();
     const section = await screen.findByRole("region", { name: "Last run" });
     expect(await within(section).findByText("Run in progress")).toBeInTheDocument();
-    expect(within(section).getByTitle("acme/app #1: running")).toBeInTheDocument();
+    expect(
+      within(section).getByRole("img", { name: "Issue 1 of acme/app: running, 01:00 to 05:00" }),
+    ).toBeInTheDocument();
+  });
+
+  describe("bars", () => {
+    const linked = {
+      ...run,
+      builds: [
+        build(12, 1, "01:00", "03:00", "merged", {
+          title: "Add the export",
+          link: "https://tracker.test/acme/app/12",
+        }),
+        build(7, 2, "01:10", "04:00", "blocked"),
+      ] as LastRun["builds"],
+      lanes: 2,
+    };
+
+    it("makes a bar with a link a link to the tracker issue in a new tab", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const bar = await screen.findByRole("link", {
+        name: "Issue 12 of acme/app: merged, 01:00 to 03:00",
+      });
+      expect(bar).toHaveAttribute("href", "https://tracker.test/acme/app/12");
+      expect(bar).toHaveAttribute("target", "_blank");
+      expect(bar).toHaveAttribute("rel", "noopener noreferrer");
+    });
+
+    it("makes a bar with no link a focusable image, not a link", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const bar = await screen.findByRole("img", {
+        name: "Issue 7 of acme/app: blocked, 01:10 to 04:00",
+      });
+      expect(bar).toHaveAttribute("tabindex", "0");
+      expect(screen.getAllByRole("link", { name: /^Issue / })).toHaveLength(1);
+    });
+
+    it("shows no link for an address that is not a web address", async () => {
+      fakeApi({
+        dash: {
+          lastRun: {
+            ...linked,
+            builds: [
+              build(12, 1, "01:00", "03:00", "merged", { link: "javascript:alert(1)" }),
+            ] as LastRun["builds"],
+            lanes: 1,
+          },
+        },
+      });
+      renderApp();
+      expect(await screen.findByRole("img", { name: /^Issue 12 of/ })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /^Issue 12 of/ })).not.toBeInTheDocument();
+    });
+
+    it("shows a tooltip on keyboard focus, and Escape hides it", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const user = userEvent.setup();
+      const bar = await screen.findByRole("link", { name: /^Issue 12 of/ });
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      await user.click(document.body);
+      bar.focus();
+      const tooltip = await screen.findByRole("tooltip");
+      expect(tooltip).toHaveTextContent("acme/app#12Add the export01:0003:002 h 0 minmergedslot 1");
+      expect(bar).toHaveAccessibleDescription(/Add the export/);
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+
+    it("shows the tooltip on mouse hover and keeps it while the mouse is on it", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const user = userEvent.setup();
+      const bar = await screen.findByRole("link", { name: /^Issue 12 of/ });
+      await user.hover(bar);
+      const tooltip = await screen.findByRole("tooltip");
+      // A browser sets `relatedTarget` when the mouse moves from the bar to the tooltip.
+      fireEvent.mouseOut(bar, { relatedTarget: tooltip });
+      fireEvent.mouseOver(tooltip, { relatedTarget: bar });
+      expect(screen.getByRole("tooltip")).toBeInTheDocument();
+      fireEvent.mouseOut(tooltip, { relatedTarget: document.body });
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+
+    it("hides a hover tooltip with Escape", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const user = userEvent.setup();
+      await user.hover(await screen.findByRole("link", { name: /^Issue 12 of/ }));
+      expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+
+    it("shows 'not in the Work cache' in place of a missing title", async () => {
+      fakeApi({ dash: { lastRun: linked } });
+      renderApp();
+      const user = userEvent.setup();
+      await user.hover(await screen.findByRole("img", { name: /^Issue 7 of/ }));
+      expect(await screen.findByRole("tooltip")).toHaveTextContent("not in the Work cache");
+    });
+
+    it("shows a title with markup as plain text", async () => {
+      const hostile = '<img src="https://evil.test/x.png"> **bold**';
+      fakeApi({
+        dash: {
+          lastRun: {
+            ...linked,
+            builds: [
+              build(12, 1, "01:00", "03:00", "merged", { title: hostile }),
+            ] as LastRun["builds"],
+            lanes: 1,
+          },
+        },
+      });
+      renderApp();
+      const user = userEvent.setup();
+      await user.hover(await screen.findByRole("img", { name: /^Issue 12 of/ }));
+      const tooltip = await screen.findByRole("tooltip");
+      expect(tooltip).toHaveTextContent(hostile);
+      expect(tooltip.querySelector("img")).toBeNull();
+    });
   });
 });
