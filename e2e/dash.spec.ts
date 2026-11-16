@@ -73,7 +73,11 @@ test("a run in progress shows open bars in Last run", async ({ page }) => {
   await page.goto("/");
   await expect(buildRows(page)).toHaveCount(3);
   await expect(lastRun(page)).toContainText("Run in progress");
-  await expect(lastRun(page).getByTitle(/: running$/)).toHaveCount(3);
+  await expect(
+    lastRun(page)
+      .locator(".seg")
+      .getByText(/: running$/),
+  ).toHaveCount(3);
 });
 
 test("no run in the last 30 days shows that in Last run", async ({ page }) => {
@@ -98,8 +102,38 @@ test("the slot timeline shows lanes, results, skips and blocked at selection", a
     "3 24 stopped at run end",
     "1 23 blocked",
   ]);
-  await expect(lastRun(page).getByTitle(/#30:/)).toHaveCount(0);
-  await expect(lastRun(page).getByTitle("acme/app #23: blocked")).toBeVisible();
+  await expect(lastRun(page).getByLabel(/^Issue 30 of/)).toHaveCount(0);
+  await expect(
+    lastRun(page).getByRole("img", { name: /^Issue 23 of acme\/app: blocked, / }),
+  ).toBeVisible();
+});
+
+test("a Gantt bar is a link with a tooltip, and a bar with no link is focusable", async ({
+  page,
+}) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  const bar = lastRun(page).getByRole("link", { name: /^Issue 21 of acme\/app: merged, / });
+  await expect(bar).toHaveAttribute("href", "https://github.com/acme/app/issues/21");
+  await expect(bar).toHaveAttribute("target", "_blank");
+  await expect(bar).toHaveAttribute("rel", "noopener noreferrer");
+  await bar.focus();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toContainText("acme/app");
+  await expect(tooltip).toContainText("#21");
+  await expect(tooltip).toContainText(HOSTILE_TITLE);
+  await expect(tooltip).toContainText("2 h 0 min");
+  await expect(tooltip).toContainText("slot 1");
+  await expect(tooltip.locator("img")).toHaveCount(0);
+  const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+  expect(results.violations).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toHaveCount(0);
+  const plain = lastRun(page).getByRole("img", { name: /^Issue 23 of acme\/app: blocked, / });
+  await plain.focus();
+  await expect(page.getByRole("tooltip")).toContainText("not in the Work cache");
+  const plainResults = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+  expect(plainResults.violations).toEqual([]);
 });
 
 test("a client scope shows the older run of that client, with its own lanes", async ({ page }) => {
@@ -329,7 +363,7 @@ test("each result in the timeline and each stage in the strip has a text label",
   const segments = lastRun(page).locator(".seg");
   await expect(segments.first()).toBeVisible();
   for (const segment of await segments.all()) {
-    await expect(segment).toHaveText(/ · (merged|merge-ready|blocked|stopped at run end|running)/);
+    await expect(segment).toHaveText(/: (merged|merge-ready|blocked|stopped at run end|running)/);
   }
   const legend = lastRun(page).getByRole("list", { name: "Results" }).getByRole("listitem");
   for (const item of await legend.all()) {

@@ -51,12 +51,25 @@ interface LastRun {
   lanes: number;
   skips: number;
   blockedAtSelection: number;
-  builds: { repo: string; repoId: string | null; issue: number; result: string; lane: number }[];
+  builds: {
+    repo: string;
+    repoId: string | null;
+    issue: number;
+    result: string;
+    lane: number;
+    title: string | null;
+    link: string | null;
+  }[];
 }
 
 async function lastRun(
   lines: Record<string, unknown>[],
-  options: { client?: string; lock?: unknown; parents?: number[] } = {},
+  options: {
+    client?: string;
+    lock?: unknown;
+    parents?: number[];
+    cached?: { number: number; title: string; link: string | null }[];
+  } = {},
 ): Promise<LastRun | null> {
   const { claudeDir, factory } = await makeFactoryDir();
   await writeFile(path.join(factory, "repos.json"), JSON.stringify(REPO_LIST));
@@ -72,6 +85,19 @@ async function lastRun(
       priority: "medium",
       author: "synthetic-author",
       children: [parent + 100],
+      lastListedAt: NOW,
+    });
+  }
+  for (const issue of options.cached ?? []) {
+    await database.db.insert(schema.workIssues).values({
+      repoId: repoId("github.com", "acme", "app"),
+      number: issue.number,
+      title: issue.title,
+      link: issue.link,
+      state: "open",
+      issueState: "IN PROGRESS",
+      priority: "medium",
+      author: "synthetic-author",
       lastListedAt: NOW,
     });
   }
@@ -195,5 +221,27 @@ describe("GET /api/dash lastRun", () => {
     expect(await lastRun([outside], { client: "acme" })).toBeNull();
     const run = await lastRun([outside]);
     expect(run?.builds).toMatchObject([{ repo: "spike-cli", repoId: null }]);
+  });
+
+  it("gives each build the title and the link of its cached issue, and null with none", async () => {
+    const run = await lastRun(
+      [
+        line({ issue: 12, time: at("01:00") }),
+        line({ issue: 13, time: at("01:10") }),
+        { ...line({ issue: 7, time: at("01:20") }), repo: "/synthetic/scratch" },
+        done(12, "03:00"),
+      ],
+      {
+        cached: [
+          { number: 12, title: "Add the export", link: "https://tracker.test/acme/app/12" },
+          { number: 13, title: "A title with no link", link: null },
+        ],
+      },
+    );
+    expect(run?.builds.map((build) => [build.repo, build.issue, build.title, build.link])).toEqual([
+      ["acme/app", 12, "Add the export", "https://tracker.test/acme/app/12"],
+      ["acme/app", 13, "A title with no link", null],
+      ["scratch", 7, null, null],
+    ]);
   });
 });

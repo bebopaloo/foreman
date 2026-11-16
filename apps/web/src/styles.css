@@ -250,10 +250,41 @@ main {
   border-radius: 6px;
 }
 
-.seg {
+.bar {
   position: absolute;
   top: 3px;
   bottom: 3px;
+}
+
+.bar-tooltip {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  z-index: 5;
+  min-width: 200px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+.bar-tooltip-end {
+  right: 0;
+  left: auto;
+}
+
+.bar-tooltip-row {
+  display: flex;
+  gap: 8px;
+}
+
+.seg {
+  height: 100%;
+  box-sizing: border-box;
+  text-decoration: none;
   display: flex;
   align-items: center;
   padding: 0 7px;
@@ -520,7 +551,8 @@ select {
 select:focus-visible,
 .table-scroll:focus-visible,
 .work-table a:focus-visible,
-main a:focus-visible {
+main a:focus-visible,
+.seg:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }

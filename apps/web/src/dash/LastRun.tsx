@@ -1,4 +1,5 @@
 import type { DashResponse } from "@foreman/shared";
+import { GanttBar } from "./GanttBar.tsx";
 import {
   axisTicks,
   clock,
@@ -36,8 +37,8 @@ export function LastRun({ dash }: { dash: DashResponse | undefined }) {
         <p className="muted">No builds in this run.</p>
       ) : (
         <>
-          <div className="timeline" aria-hidden="true">
-            <div className="timeline-row">
+          <div className="timeline">
+            <div className="timeline-row" aria-hidden="true">
               <span />
               <div className="timeline-axis">
                 {ticks.map((tick) => (
@@ -49,21 +50,17 @@ export function LastRun({ dash }: { dash: DashResponse | undefined }) {
             </div>
             {lanes.map((placed, index) => (
               <div className="timeline-row" key={index}>
-                <span className="mono">slot {(index + 1).toString()}</span>
+                <span className="mono" aria-hidden="true">
+                  slot {(index + 1).toString()}
+                </span>
                 <div className="lane">
                   {placed.map(({ build, left, width }) => (
-                    <div
+                    <GanttBar
                       key={`${build.repo}#${build.issue.toString()}`}
-                      className="seg"
-                      title={`${build.repo} #${build.issue.toString()}: ${build.result}`}
-                      style={{
-                        left: `${left.toString()}%`,
-                        width: `${width.toString()}%`,
-                        background: RESULT_COLOURS[build.result],
-                      }}
-                    >
-                      {build.repo} #{build.issue} · {build.result}
-                    </div>
+                      build={build}
+                      left={left}
+                      width={width}
+                    />
                   ))}
                 </div>
               </div>
