@@ -461,3 +461,130 @@ describe("live update", () => {
     expect(requests).toHaveLength(4);
   });
 });
+
+describe("a dash list in the URL", () => {
+  const buildContext = {
+    kind: "build",
+    issue: 12,
+    start: "2026-11-15T01:00:00.000Z",
+    end: "2026-11-15T03:00:00.000Z",
+    result: "merged",
+  } as const;
+
+  it("sends the set and the run, with the scope and no sort", async () => {
+    open("/work?client=acme&set=builds&run=r1");
+    const requests = fakeItems();
+    renderApp();
+    await screen.findByRole("table", { name: "Issues and pull requests" });
+    const last = new URL(requests.at(-1) ?? "", "http://x").searchParams;
+    expect(Object.fromEntries(last)).toEqual({ client: "acme", set: "builds", run: "r1" });
+  });
+
+  it("shows the heading of the set and a link to all work in the same scope", async () => {
+    open("/work?client=acme&set=builds&run=r1");
+    fakeItems();
+    renderApp();
+    expect(await screen.findByText("Dash list: Builds in the last run")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Show all work" })).toHaveAttribute(
+      "href",
+      "/work?client=acme",
+    );
+  });
+
+  it("shows no dash list note with no set", async () => {
+    open("/work");
+    fakeItems();
+    renderApp();
+    await screen.findByRole("table", { name: "Issues and pull requests" });
+    expect(screen.queryByText(/Dash list:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Show all work" })).not.toBeInTheDocument();
+  });
+
+  it("disables the filters and the sort", async () => {
+    open("/work?set=waits");
+    fakeItems();
+    renderApp();
+    await screen.findByRole("table", { name: "Issues and pull requests" });
+    const group = screen.getByRole("group", { name: "Filter by Issue state" });
+    for (const button of within(group).getAllByRole("button")) expect(button).toBeDisabled();
+    for (const name of ["Type", "Priority", "Repo", "Sort"]) {
+      expect(screen.getByLabelText(name)).toBeDisabled();
+    }
+  });
+
+  it("shows the note for a combination that is not valid, and asks for nothing", async () => {
+    open("/work?set=waits&issue_state=BLOCKED");
+    const requests = fakeItems();
+    renderApp();
+    expect(
+      await screen.findByText(/This link has a filter value that is not valid\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Dash list:/)).not.toBeInTheDocument();
+    expect(requests).toEqual([]);
+  });
+
+  it("shows the note for a run with no set, and for a build set with no run", async () => {
+    for (const path of ["/work?run=r1", "/work?set=builds"]) {
+      open(path);
+      const requests = fakeItems();
+      const { unmount } = renderApp();
+      expect(
+        await screen.findByText(/This link has a filter value that is not valid\./),
+      ).toBeInTheDocument();
+      expect(requests).toEqual([]);
+      unmount();
+    }
+  });
+
+  it("shows a row with no Work cache row as not in the Work cache, with no links", async () => {
+    open("/work?set=builds&run=r1");
+    fakeItems(() =>
+      response({
+        items: [
+          item({
+            repoId: null,
+            fullName: "synthetic-folder",
+            client: null,
+            issue: null,
+            pr: null,
+            machineGate: null,
+            round: null,
+            riskTier: null,
+            context: buildContext,
+          }),
+        ],
+      }),
+    );
+    renderApp();
+    const row = (await screen.findAllByRole("row"))[1];
+    expect(row).toHaveTextContent("synthetic-folder");
+    expect(row).toHaveTextContent("not in the Work cache");
+    expect(row).toHaveTextContent("#12");
+    expect(row?.querySelector("a")).toBeNull();
+  });
+
+  it("shows no links for a row with a null repo ID, even with an issue", async () => {
+    open("/work?set=builds&run=r1");
+    fakeItems(() => response({ items: [item({ repoId: null, context: buildContext })] }));
+    renderApp();
+    const row = (await screen.findAllByRole("row"))[1];
+    expect(row).toHaveTextContent("not in the Work cache");
+    expect(row?.querySelector("a")).toBeNull();
+  });
+
+  it("does not mark a row of the Work cache", async () => {
+    open("/work?set=builds&run=r1");
+    fakeItems(() => response({ items: [item({ context: buildContext })] }));
+    renderApp();
+    await screen.findByRole("table", { name: "Issues and pull requests" });
+    expect(screen.queryByText("not in the Work cache")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /in the tracker/ })).toHaveLength(1);
+  });
+
+  it("says that the set has no items", async () => {
+    open("/work?set=waits");
+    fakeItems(() => response({ items: [], counts: { ...counts, all: 0, "IN REVIEW": 0 } }));
+    renderApp();
+    expect(await screen.findByText("This dash list has no items.")).toBeInTheDocument();
+  });
+});
