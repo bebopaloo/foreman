@@ -72,6 +72,7 @@
 }
 
 .bars li > .stat-button {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr) 92px;
   flex-direction: row;

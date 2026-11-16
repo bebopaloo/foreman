@@ -75,7 +75,7 @@ test("a run in progress shows open bars in Last run", async ({ page }) => {
   await expect(lastRun(page)).toContainText("Run in progress");
   await expect(
     lastRun(page)
-      .locator(".seg")
+      .locator(".gantt-seg")
       .getByText(/: running$/),
   ).toHaveCount(3);
 });
@@ -134,6 +134,74 @@ test("a Gantt bar is a link with a tooltip, and a bar with no link is focusable"
   await expect(page.getByRole("tooltip")).toContainText("not in the Work cache");
   const plainResults = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
   expect(plainResults.violations).toEqual([]);
+});
+
+test("a Gantt tooltip is not clipped by an ancestor", async ({ page }) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  const bar = lastRun(page).getByRole("link", { name: /^Issue 21 of acme\/app: merged, / });
+  await bar.focus();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  await tooltip.scrollIntoViewIfNeeded();
+  // The hit test skips the part of a box that an ancestor clips, so each corner and the centre must hit the tooltip.
+  const hits = await page.evaluate<boolean[]>(`(() => {
+    const element = document.querySelector("[role=tooltip]");
+    if (element === null) return [];
+    const box = element.getBoundingClientRect();
+    const points = [
+      [box.left + 4, box.top + 4],
+      [box.right - 4, box.top + 4],
+      [box.left + 4, box.bottom - 4],
+      [box.right - 4, box.bottom - 4],
+      [box.left + box.width / 2, box.top + box.height / 2],
+    ];
+    return points.map(([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit !== null && element.contains(hit);
+    });
+  })()`);
+  expect(hits).toEqual([true, true, true, true, true]);
+});
+
+test("a Gantt bar is tall enough to read", async ({ page }) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  const bar = lastRun(page).getByRole("link", { name: /^Issue 21 of acme\/app: merged, / });
+  const box = await bar.boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(24);
+});
+
+test("a Gantt bar label that does not fit ends with an ellipsis", async ({ page }) => {
+  await useFixture("last-run");
+  await page.goto("/");
+  const bar = lastRun(page).getByRole("link", { name: /^Issue 21 of acme\/app: merged, / });
+  await expect(bar).toHaveCSS("text-overflow", "ellipsis");
+});
+
+const SINGLE_LINE_MAX_PX = 24;
+
+test("a Review health bar track has a width and stays in its row", async ({ page }) => {
+  await useFixture("review-health");
+  await page.goto("/");
+  for (const name of ["First-round pass by Risk tier", "Pull requests by highest round"]) {
+    const items = review(page).getByRole("list", { name }).getByRole("listitem");
+    await expect(items.first()).toBeVisible();
+    for (const item of await items.all()) {
+      const rowBox = await item.boundingBox();
+      const track = await item.locator("[aria-hidden='true']").boundingBox();
+      const value = await item.locator("span").last().boundingBox();
+      expect(track?.width ?? 0).toBeGreaterThan(40);
+      expect(track?.height ?? 0).toBeLessThanOrEqual(12);
+      expect(track?.y ?? 0).toBeGreaterThanOrEqual(rowBox?.y ?? 0);
+      expect((track?.y ?? 0) + (track?.height ?? 0)).toBeLessThanOrEqual(
+        (rowBox?.y ?? 0) + (rowBox?.height ?? 0),
+      );
+      // "60% of 5" must stay on one line.
+      expect(value?.height ?? 0).toBeLessThanOrEqual(SINGLE_LINE_MAX_PX);
+      expect(rowBox?.height ?? 0).toBeLessThanOrEqual(SINGLE_LINE_MAX_PX * 2);
+    }
+  }
 });
 
 test("a client scope shows the older run of that client, with its own lanes", async ({ page }) => {
@@ -360,7 +428,7 @@ test("each result in the timeline and each stage in the strip has a text label",
 }) => {
   await useFixture("last-run");
   await page.goto("/");
-  const segments = lastRun(page).locator(".seg");
+  const segments = lastRun(page).locator(".gantt-seg");
   await expect(segments.first()).toBeVisible();
   for (const segment of await segments.all()) {
     await expect(segment).toHaveText(/: (merged|merge-ready|blocked|stopped at run end|running)/);
