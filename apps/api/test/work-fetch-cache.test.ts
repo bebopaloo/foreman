@@ -133,7 +133,7 @@ describe("the first fetch", () => {
     );
   });
 
-  it("keeps no issue body and no review body", async () => {
+  it("keeps no issue body, no pull request body and no review body", async () => {
     await firstFetch();
     const tables = [
       schema.workIssues,
