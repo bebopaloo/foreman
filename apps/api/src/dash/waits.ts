@@ -39,8 +39,21 @@ const compare = (a: Candidate, b: Candidate): number =>
   a.item.number - b.item.number ||
   (a.item.repo < b.item.repo ? -1 : a.item.repo > b.item.repo ? 1 : 0);
 
-/** The items that wait for the Operator, in the order of `factory-next`: the first `WAITS_LIMIT` and the total. */
-export function waitsOf({ issues, pulls, repoLabels, blockedReasons }: WaitsInput): Waits {
+/** The first `WAITS_LIMIT` items that wait for the Operator, in the order of `factory-next`, and the total. */
+export function waitsOf(input: WaitsInput): Waits {
+  return {
+    total: waitsTotal(input.issues, input.pulls),
+    items: allWaitItems(input).slice(0, WAITS_LIMIT),
+  };
+}
+
+/** Every item that waits for the Operator, in the order of `factory-next`. */
+export function allWaitItems({
+  issues,
+  pulls,
+  repoLabels,
+  blockedReasons,
+}: WaitsInput): WaitItem[] {
   const repoOf = (repoId: string): string => repoLabels.get(repoId) ?? repoId;
   const fromIssue = (
     issue: CachedIssue,
@@ -89,9 +102,7 @@ export function waitsOf({ issues, pulls, repoLabels, blockedReasons }: WaitsInpu
     const step = issue.issueState === "TODO" ? todoStep(issue) : null;
     return step === null ? [] : [fromIssue(issue, "todo", TODO_REASONS[step], "tracker")];
   });
-  const items = [blocked, release, merged, todo].flatMap((group) => group.sort(compare));
-  return {
-    total: waitsTotal(issues, pulls),
-    items: items.slice(0, WAITS_LIMIT).map((candidate) => candidate.item),
-  };
+  return [blocked, release, merged, todo]
+    .flatMap((group) => group.sort(compare))
+    .map((candidate) => candidate.item);
 }
