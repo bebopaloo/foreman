@@ -358,10 +358,19 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
   /** The Work view row of a set ref, or the row of an item that is not in the Work cache. */
   function refRow(ref: SetRef): Row {
     const repo = ref.repoId === null ? undefined : repoById.get(ref.repoId);
-    const withContext = (row: Row): Row => ({
-      ...row,
-      item: { ...row.item, context: ref.context },
-    });
+    // The dash sources hold open pull requests only, so a closed pull request takes its link from the row.
+    const withContext = (row: Row): Row => {
+      const { context } = ref;
+      const pull = row.item.pullRequest;
+      const filled =
+        context?.kind === "review" &&
+        context.link === null &&
+        pull?.number === context.pullRequest &&
+        pull.link !== null
+          ? { ...context, link: pull.link }
+          : context;
+      return { ...row, item: { ...row.item, context: filled } };
+    };
     if (repo !== undefined) {
       const wanted =
         ref.pull === null ? undefined : pullByKey.get(`${repo.id}#${ref.pull.toString()}`);

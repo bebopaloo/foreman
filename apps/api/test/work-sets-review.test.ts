@@ -318,6 +318,23 @@ describe("GET /api/work/items set: rows of a review set", () => {
     });
   });
 
+  it("links the pull request of the event when it is closed", async () => {
+    await connect(APP, "acme/app");
+    await cachedIssue(APP, 12);
+    await cachedPull(APP, 40, {
+      linkedIssue: 12,
+      state: "closed",
+      link: "https://github.com/acme/app/pull/40",
+    });
+    await cachedPull(APP, 44, { linkedIssue: 12, link: "https://github.com/acme/app/pull/44" });
+    const { app } = await appWith([gate({ pr: 40 })]);
+    const page = await rows(app, "set=round_1");
+    expect(page.items[0]?.context).toMatchObject({
+      pullRequest: 40,
+      link: "https://github.com/acme/app/pull/40",
+    });
+  });
+
   it("drops a link to another host", async () => {
     await connect(APP, "acme/app");
     await cachedPull(APP, 40, { link: "https://evil.example/acme/app/pull/40" });

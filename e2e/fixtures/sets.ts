@@ -11,6 +11,7 @@ import {
   type DriftRepo,
 } from "./health-files.ts";
 import { controlsFiles, controlsWork } from "./controls-files.ts";
+import { LIST_PANEL_CACHE, listPanelFiles } from "./list-panel-files.ts";
 import { reviewsFiles, reviewsTranscripts } from "./reviews-files.ts";
 import {
   manySessionTranscripts,
@@ -790,6 +791,12 @@ export const FIXTURE_SETS = {
       ...nightLog(threeBuilds(now)),
     }),
     work: PIPELINE_CACHE,
+  },
+
+  /** The List panel kinds: the builds of one run, Control events, and a Work cache for them. */
+  "list-panel": {
+    files: (now) => ({ "factory/repos.json": repoList(), ...listPanelFiles(now) }),
+    work: LIST_PANEL_CACHE,
   },
 
   /** Waits for you: the items of the Spec scenario, with a night log reason for one BLOCKED issue. */
