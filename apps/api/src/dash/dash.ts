@@ -290,7 +290,7 @@ function reviewHealthOf(
 }
 
 /** The reason of the newest night log line with `to` BLOCKED of each issue, by `<repo ID>#<issue>`. */
-function blockedReasonsOf({ nightLog, repoList }: DashSources): Map<string, string> {
+export function blockedReasonsOf({ nightLog, repoList }: DashSources): Map<string, string> {
   const repoOf = repoResolver(repoList);
   const newest = new Map<string, { time: number; reason: string }>();
   for (const entry of nightLog.entries) {
@@ -304,16 +304,31 @@ function blockedReasonsOf({ nightLog, repoList }: DashSources): Map<string, stri
   return new Map([...newest].map(([key, { reason }]) => [key, reason]));
 }
 
+/** The connected repos in scope, and the Work cache rows of those repos. The dash and the set rows both use it. */
+export function connectedWork(sources: DashSources, scope: RunScope) {
+  const entries = reposInScope(sources.repoList, scope);
+  const connected = entries.filter((entry) =>
+    isConnectedState(sources.work.trackerStates.get(entry.id)),
+  );
+  const ids = new Set(connected.map((entry) => entry.id));
+  return {
+    entries,
+    connected,
+    issues: sources.work.issues.filter((issue) => ids.has(issue.repoId)),
+    pulls: sources.work.pullRequests.filter((pull) => ids.has(pull.repoId)),
+    repoLabels: new Map(
+      connected.map((entry) => [entry.id, `${entry.owner ?? ""}/${entry.name ?? ""}`]),
+    ),
+  };
+}
+
 /** The data of the forge sections, from the Work cache rows of the connected repos in scope. */
 function workOf(
   sources: DashSources,
   scope: RunScope,
   runState: DashResponse["run"]["state"],
 ): Pick<DashResponse, "tiles" | "running" | "pipeline" | "waits" | "complete"> {
-  const { repoList, work } = sources;
-  const entries = reposInScope(repoList, scope);
-  const connected = entries.filter((entry) => isConnectedState(work.trackerStates.get(entry.id)));
-  const ids = new Set(connected.map((entry) => entry.id));
+  const { entries, connected, issues, pulls, repoLabels } = connectedWork(sources, scope);
   const complete = {
     connectedRepos: connected.length,
     missingRepos: entries.length - connected.length,
@@ -321,14 +336,10 @@ function workOf(
   if (connected.length === 0) {
     return { tiles: noTiles, running: null, pipeline: null, waits: null, complete };
   }
-  const issues = work.issues.filter((issue) => ids.has(issue.repoId));
-  const pulls = work.pullRequests.filter((pull) => ids.has(pull.repoId));
   const waits = waitsOf({
     issues,
     pulls,
-    repoLabels: new Map(
-      connected.map((entry) => [entry.id, `${entry.owner ?? ""}/${entry.name ?? ""}`]),
-    ),
+    repoLabels,
     blockedReasons: blockedReasonsOf(sources),
   });
   const enabled = new Set(connected.filter((entry) => entry.enabled).map((entry) => entry.id));

@@ -16,6 +16,7 @@ import { pullKey, type GateSignals } from "./gate-signals.ts";
 import { linkFor, newestListing } from "./lists.ts";
 import type { RepoEntry } from "./repo-list.ts";
 import type { ScopedRepo } from "./scope.ts";
+import type { SetRef } from "./sets/types.ts";
 
 const MACHINE_GATE_CONTEXT = "factory/machine-gate";
 
@@ -32,6 +33,15 @@ export interface ItemsFilters {
   sort: WorkItemsQuery["sort"];
 }
 
+/** The rows of a `set`, from `sets/`. Each ref becomes a Work view row. */
+export interface SetInput {
+  refs: readonly SetRef[];
+  /** False when no repo in scope is connected. */
+  connected: boolean;
+  events: number | null;
+  sources: NonNullable<WorkItemsResponse["sources"]>;
+}
+
 export interface ItemsInput {
   /** The repos that the route may read. */
   repos: readonly ItemsRepo[];
@@ -39,6 +49,8 @@ export interface ItemsInput {
   inScope: readonly RepoEntry[];
   signals: GateSignals;
   filters: ItemsFilters;
+  /** With a set, the rows and their order come from the set and the filters do not apply. */
+  set?: SetInput | undefined;
   limit: number;
   cursor: string | undefined;
   /** The query values that the cursor is bound to. */
@@ -186,7 +198,7 @@ function stateOf(row: Row): string {
 export async function listWorkItems(db: Database, input: ItemsInput): Promise<ItemsResult> {
   const { repos, inScope, signals, filters } = input;
   const ids = repos.map((repo) => repo.id);
-  if (ids.length === 0) {
+  if (ids.length === 0 && input.set === undefined) {
     return {
       state: "not_connected",
       items: [],
@@ -194,6 +206,8 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
       counts: emptyCounts(),
       complete: inScope.length,
       noControlEvents: [],
+      sources: null,
+      events: null,
     };
   }
   const [issueRows, pullRows, statusRows, repoRows] = await Promise.all([
@@ -293,14 +307,11 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
     };
   }
 
-  const none = { pullRequest: null, machineGate: null, round: null, riskTier: null };
-  const rows: Row[] = [];
-  for (const issue of issueRows) {
-    const repo = repoById.get(issue.repoId);
-    if (repo === undefined) continue;
+  const none = { pullRequest: null, machineGate: null, round: null, riskTier: null, context: null };
+
+  function issueRow(issue: (typeof issueRows)[number], repo: ItemsRepo, pull: PullRow | undefined) {
     const pulls = linked.get(`${issue.repoId}#${issue.number.toString()}`) ?? [];
-    const pull = shown(pulls);
-    rows.push({
+    const row: Row = {
       number: issue.number,
       kind: 0,
       item: {
@@ -320,12 +331,12 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
         ...none,
         ...(pull === undefined ? {} : pullItem(pull, repo, pulls.length - 1)),
       },
-    });
+    };
+    return row;
   }
-  for (const pull of loose) {
-    const repo = repoById.get(pull.repoId);
-    if (repo === undefined) continue;
-    rows.push({
+
+  function loosePullRow(pull: PullRow, repo: ItemsRepo): Row {
+    return {
       number: pull.number,
       kind: 1,
       item: {
@@ -336,41 +347,110 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
         ...none,
         ...pullItem(pull, repo, 0),
       },
+    };
+  }
+
+  const issueByKey = new Map(
+    issueRows.map((row) => [`${row.repoId}#${row.number.toString()}`, row]),
+  );
+  const pullByKey = new Map(pullRows.map((row) => [`${row.repoId}#${row.number.toString()}`, row]));
+
+  /** The Work view row of a set ref, or the row of an item that is not in the Work cache. */
+  function refRow(ref: SetRef): Row {
+    const repo = ref.repoId === null ? undefined : repoById.get(ref.repoId);
+    const withContext = (row: Row): Row => ({
+      ...row,
+      item: { ...row.item, context: ref.context },
+    });
+    if (repo !== undefined) {
+      const wanted =
+        ref.pull === null ? undefined : pullByKey.get(`${repo.id}#${ref.pull.toString()}`);
+      const issueNumber = ref.issue ?? wanted?.linkedIssue ?? null;
+      const issue =
+        issueNumber === null ? undefined : issueByKey.get(`${repo.id}#${issueNumber.toString()}`);
+      if (issue !== undefined) {
+        const pulls = linked.get(`${repo.id}#${issue.number.toString()}`) ?? [];
+        const own = wanted !== undefined && pulls.includes(wanted) ? wanted : undefined;
+        return withContext(
+          issueRow(issue, repo, own ?? (ref.pull === null ? shown(pulls) : undefined)),
+        );
+      }
+      if (wanted !== undefined) return withContext(loosePullRow(wanted, repo));
+    }
+    return withContext({
+      number: ref.issue ?? ref.pull ?? 0,
+      kind: 0,
+      item: {
+        repoId: ref.repoId,
+        fullName: ref.repo,
+        client: ref.client,
+        issue: null,
+        ...none,
+      },
     });
   }
 
-  const inFilter = rows.filter((row) => matches(row, filters));
-  const counts = emptyCounts();
-  for (const row of inFilter) {
-    counts.all += 1;
-    const state = stateOf(row);
-    if (state === "none") counts.none += 1;
-    else {
-      const known = oneOf(ISSUE_STATES, state);
-      if (known !== undefined) counts[known] += 1;
-    }
+  const rows: Row[] = [];
+  for (const issue of issueRows) {
+    const repo = repoById.get(issue.repoId);
+    if (repo === undefined) continue;
+    const pulls = linked.get(`${issue.repoId}#${issue.number.toString()}`) ?? [];
+    rows.push(issueRow(issue, repo, shown(pulls)));
   }
-  const wanted =
-    filters.issue_state === undefined
-      ? inFilter
-      : inFilter.filter((row) => stateOf(row) === filters.issue_state);
-  const keyOf = (row: Row): CursorKey => [
-    groupOf(row, filters.sort),
-    row.item.fullName,
-    row.number,
-    row.item.repoId,
-    row.kind,
-  ];
-  const sorted = wanted
-    .map((row) => ({ row, key: keyOf(row) }))
-    .sort((a, b) => compareKeys(a.key, b.key));
-  const page = paginate(sorted, {
+  for (const pull of loose) {
+    const repo = repoById.get(pull.repoId);
+    if (repo !== undefined) rows.push(loosePullRow(pull, repo));
+  }
+
+  const counted = (list: readonly Row[]): WorkItemsResponse["counts"] => {
+    const counts = emptyCounts();
+    for (const row of list) {
+      counts.all += 1;
+      const state = stateOf(row);
+      if (state === "none") counts.none += 1;
+      else {
+        const known = oneOf(ISSUE_STATES, state);
+        if (known !== undefined) counts[known] += 1;
+      }
+    }
+    return counts;
+  };
+  const query = {
     limit: input.limit,
     cursor: input.cursor,
     query: input.cursorQuery,
-    keyOf: ({ key }) => key,
     compare: compareKeys,
-  });
+  };
+
+  let page: { items: Row[]; nextCursor: string | null };
+  let counts: WorkItemsResponse["counts"];
+  if (input.set === undefined) {
+    const inFilter = rows.filter((row) => matches(row, filters));
+    counts = counted(inFilter);
+    const wanted =
+      filters.issue_state === undefined
+        ? inFilter
+        : inFilter.filter((row) => stateOf(row) === filters.issue_state);
+    const keyOf = (row: Row): CursorKey => [
+      groupOf(row, filters.sort),
+      row.item.fullName,
+      row.number,
+      row.item.repoId,
+      row.kind,
+    ];
+    const sorted = wanted
+      .map((row) => ({ row, key: keyOf(row) }))
+      .sort((a, b) => compareKeys(a.key, b.key));
+    const paged = paginate(sorted, { ...query, keyOf: ({ key }) => key });
+    page = { items: paged.items.map(({ row }) => row), nextCursor: paged.nextCursor };
+  } else {
+    const resolved = input.set.refs
+      .map((ref) => ({ row: refRow(ref), key: ref.key }))
+      .sort((a, b) => compareKeys(a.key, b.key));
+    counts = counted(resolved.map(({ row }) => row));
+    const paged = paginate(resolved, { ...query, keyOf: ({ key }) => key });
+    page = { items: paged.items.map(({ row }) => row), nextCursor: paged.nextCursor };
+  }
 
   const cachedRepos = new Set<string>([
     ...issueRows.map((row) => row.repoId),
@@ -383,9 +463,10 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
       .map((row) => row.id),
   );
   const complete = inScope.filter((entry) => !cachedRepos.has(entry.id) || errored.has(entry.id));
+  const state = input.set === undefined ? cachedRepos.size === 0 : !input.set.connected;
   return {
-    state: cachedRepos.size === 0 ? "not_connected" : "ok",
-    items: page.items.map(({ row }) => row.item),
+    state: state ? "not_connected" : "ok",
+    items: page.items.map((row) => row.item),
     nextCursor: page.nextCursor,
     counts,
     complete: complete.length,
@@ -396,5 +477,7 @@ export async function listWorkItems(db: Database, input: ItemsInput): Promise<It
       )
       .map((repo) => repo.id)
       .sort(),
+    sources: input.set?.sources ?? null,
+    events: input.set?.events ?? null,
   };
 }

@@ -56,5 +56,5 @@ export const safeLink = (link: string | null): string | null =>
 
 export const itemKey = (item: WorkItem): string =>
   item.issue
-    ? `${item.repoId}:i:${item.issue.number.toString()}`
-    : `${item.repoId}:p:${(item.pullRequest?.number ?? 0).toString()}`;
+    ? `${item.repoId ?? item.fullName}:i:${item.issue.number.toString()}`
+    : `${item.repoId ?? item.fullName}:p:${(item.pullRequest?.number ?? 0).toString()}`;

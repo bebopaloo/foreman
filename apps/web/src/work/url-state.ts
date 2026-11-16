@@ -1,17 +1,11 @@
-import { WorkItemsQuery } from "@foreman/shared";
+import { WorkItemsFilters } from "@foreman/shared";
 import { useCallback, useEffect, useState } from "react";
 
 /** The URL values of the filters and the sort, next to `client`. */
 export const FILTER_KEYS = ["issue_state", "type", "priority", "repo", "sort"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
-const FilterQuery = WorkItemsQuery.pick({
-  issue_state: true,
-  type: true,
-  priority: true,
-  repo: true,
-  sort: true,
-});
+const FilterQuery = WorkItemsFilters;
 
 export type WorkFilters = ReturnType<typeof FilterQuery.parse>;
 

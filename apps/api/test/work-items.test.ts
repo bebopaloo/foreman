@@ -181,6 +181,7 @@ describe("GET /api/work/items rows", () => {
         repoId: APP,
         fullName: "acme/app",
         client: "acme",
+        context: null,
         issue: {
           number: 12,
           title: "Add the export",

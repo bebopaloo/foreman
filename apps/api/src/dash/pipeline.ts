@@ -47,26 +47,82 @@ export function todoStep(issue: CachedIssue): "spec" | "issues" | "ready" | null
   return issue.labels.includes("spec-approved") ? "issues" : "spec";
 }
 
-/** The count of issues in each stage of the strip. Each stage other than DONE uses open issues only. */
+/** The stages of the strip, from the first gate to the release. */
+export const STAGES = [
+  "spec",
+  "issues",
+  "ready",
+  "inProgress",
+  "inReview",
+  "blocked",
+  "done",
+  "release",
+] as const;
+export type Stage = (typeof STAGES)[number];
+
+export interface StageMembers {
+  issues: CachedIssue[];
+  /** The open pull requests into `production`. Only the stage `release` has any. */
+  pulls: CachedPullRequest[];
+}
+
+/**
+ * The items of one stage of the strip. Each stage other than DONE uses open issues only. The
+ * counts of the strip and the rows of a stage set both come from here.
+ */
+export function stageMembers(
+  stage: Stage,
+  issues: readonly CachedIssue[],
+  pulls: readonly CachedPullRequest[],
+): StageMembers {
+  const open = issues.filter(isOpen);
+  const inState = (issueState: string): CachedIssue[] =>
+    open.filter((issue) => issue.issueState === issueState);
+  const todoAt = (step: "spec" | "issues"): CachedIssue[] =>
+    // A TODO issue with spec-waived is in no stage: its next step is "make it READY".
+    inState("TODO").filter((issue) => todoStep(issue) === step);
+  const none: CachedPullRequest[] = [];
+  switch (stage) {
+    case "spec":
+      return { issues: todoAt("spec"), pulls: none };
+    case "issues":
+      return { issues: todoAt("issues"), pulls: none };
+    case "ready":
+      return { issues: inState("READY"), pulls: none };
+    case "inProgress":
+      return { issues: inState("IN PROGRESS"), pulls: none };
+    case "inReview":
+      return { issues: inState("IN REVIEW").filter((issue) => !mergeReady(issue)), pulls: none };
+    case "blocked":
+      return { issues: inState("BLOCKED"), pulls: none };
+    case "done":
+      return { issues: issues.filter((issue) => issue.issueState === "DONE"), pulls: none };
+    case "release":
+      return {
+        issues: inState("IN REVIEW").filter(mergeReady),
+        pulls: releasePullRequests(pulls),
+      };
+  }
+}
+
+/** The count of issues in each stage of the strip. */
 export function pipelineCounts(
   issues: readonly CachedIssue[],
   pulls: readonly CachedPullRequest[],
 ): PipelineCounts {
-  const open = issues.filter(isOpen);
-  const inState = (issueState: string): number =>
-    open.filter((issue) => issue.issueState === issueState).length;
-  const todo = open.filter((issue) => issue.issueState === "TODO");
-  const inReview = open.filter((issue) => issue.issueState === "IN REVIEW");
+  const size = (stage: Stage): number => {
+    const members = stageMembers(stage, issues, pulls);
+    return members.issues.length + members.pulls.length;
+  };
   return {
-    // A TODO issue with spec-waived is in no stage: its next step is "make it READY".
-    spec: todo.filter((issue) => todoStep(issue) === "spec").length,
-    issues: todo.filter((issue) => todoStep(issue) === "issues").length,
-    ready: inState("READY"),
-    inProgress: inState("IN PROGRESS"),
-    inReview: inReview.filter((issue) => !mergeReady(issue)).length,
-    blocked: inState("BLOCKED"),
-    done: issues.filter((issue) => issue.issueState === "DONE").length,
-    release: inReview.filter(mergeReady).length + releasePullRequests(pulls).length,
+    spec: size("spec"),
+    issues: size("issues"),
+    ready: size("ready"),
+    inProgress: size("inProgress"),
+    inReview: size("inReview"),
+    blocked: size("blocked"),
+    done: size("done"),
+    release: size("release"),
   };
 }
 

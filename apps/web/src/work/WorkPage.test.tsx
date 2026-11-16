@@ -63,6 +63,7 @@ function item(over: ItemOptions = {}): WorkItem {
     machineGate: { source: "forge", value: "pass" },
     round: 2,
     riskTier: "sensitive",
+    context: null,
     ...rest,
   };
 }
@@ -88,6 +89,8 @@ function response(over: Partial<WorkItemsResponse> = {}): WorkItemsResponse {
     complete: 0,
     noControlEvents: [],
     skipped: { controlEvents: 0, files: 0 },
+    sources: null,
+    events: null,
     ...over,
   };
 }

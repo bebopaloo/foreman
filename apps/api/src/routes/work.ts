@@ -17,7 +17,9 @@ import {
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { readControlEvents } from "../dash/control-events.ts";
+import { readDashSources } from "../dash/dash.ts";
 import { originGuard } from "../host-check.ts";
+import { selectSet } from "../work/sets/index.ts";
 import { buildGateSignals } from "../work/gate-signals.ts";
 import { listWorkItems, type ItemsRepo } from "../work/items.ts";
 import { listClients } from "../work/clients.ts";
@@ -131,31 +133,53 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
       },
     },
     async (request, reply) => {
-      const { client, repo, issue_state, type, priority, sort, limit, cursor } = request.query;
+      const { client, repo, issue_state, type, priority, sort, set, run, limit, cursor } =
+        request.query;
       const scope = await scopeOf(client, repo);
       if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
       const entries = new Map(scope.inScope.map((entry) => [entry.id, entry]));
-      const repos: ItemsRepo[] = scope.repos.flatMap((scoped) => {
+      const named = (scoped: { id: string; host: string }): ItemsRepo[] => {
         const entry = entries.get(scoped.id);
         return entry?.owner == null || entry.name == null
           ? []
           : [{ ...scoped, fullName: `${entry.owner}/${entry.name}`, client: entry.client }];
-      });
-      const controls = await readControlEvents(claudeDir, now());
+      };
+      const at = now();
+      // A set reads the same files and the same cache as the dash, so that its rows match the dash numbers.
+      // It lists the named repos of the scope; the dash rule for a connected repo decides which rows show.
+      const sources = set === undefined ? undefined : await readDashSources(claudeDir, at, db);
+      const controls = sources?.controls ?? (await readControlEvents(claudeDir, at));
       for (const { file, lines } of controls.reports) {
         request.log.warn(
           { folder: "controls", file, skippedLines: lines },
           lines === 0 ? "work items skipped a file" : "work items skipped lines",
         );
       }
+      const repos =
+        set === undefined
+          ? scope.repos.flatMap(named)
+          : scope.inScope.flatMap((entry) => named({ id: entry.id, host: entry.host }));
+      const selected =
+        set === undefined || sources === undefined
+          ? undefined
+          : selectSet(
+              {
+                sources,
+                scope: client === undefined ? { kind: "all" } : { kind: "client", client },
+                now: at,
+              },
+              set,
+              run,
+            );
       const result = await listWorkItems(db, {
         repos,
         inScope: scope.inScope,
         signals: buildGateSignals(controls.events),
-        filters: { issue_state, type, priority, sort },
+        filters: { issue_state, type, priority, sort: sort ?? "repo" },
+        set: selected,
         limit,
         cursor,
-        cursorQuery: { client, repo, issue_state, type, priority, sort },
+        cursorQuery: { client, repo, issue_state, type, priority, sort, set, run },
       });
       return {
         ...result,
