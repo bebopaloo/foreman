@@ -1,4 +1,5 @@
-import type { DashResponse } from "@foreman/shared";
+import { WorkSet, type DashResponse } from "@foreman/shared";
+import { StatButton } from "./panel-context.tsx";
 import { plural } from "./last-run.ts";
 import { incompleteNote, NotConnected } from "./PipelineStrip.tsx";
 
@@ -11,6 +12,8 @@ function Bar({ percent, colour }: { percent: number; colour: string }) {
     </div>
   );
 }
+
+const ROUND_SETS = { one: "round_1", two: "round_2", three: "round_3" } as const;
 
 const ROUND_LABELS = [
   ["one", "Round 1"],
@@ -49,15 +52,29 @@ export function ReviewHealth({
             <p className="muted">No gate decision in 30 days.</p>
           ) : (
             <ul className="bars" aria-label="First-round pass by Risk tier">
-              {firstRound.tiers.map((tier) => (
-                <li key={tier.tier ?? "no tier"}>
-                  <span className="mono">{tier.tier ?? "no tier"}</span>
-                  <Bar percent={tier.rate} colour="#1d4f9e" />
-                  <span>
-                    {tier.rate.toString()}% of {tier.total.toString()}
-                  </span>
-                </li>
-              ))}
+              {firstRound.tiers.map((tier) => {
+                const set = WorkSet.safeParse(`tier_${tier.tier ?? "none"}`);
+                const row = (
+                  <>
+                    <span className="mono">{tier.tier ?? "no tier"}</span>
+                    <Bar percent={tier.rate} colour="#1d4f9e" />
+                    <span>
+                      {tier.rate.toString()}% of {tier.total.toString()}
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={tier.tier ?? "no tier"}>
+                    {set.success ? (
+                      <StatButton set={set.data} enabled={tier.total >= 1}>
+                        {row}
+                      </StatButton>
+                    ) : (
+                      row
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
           <p className="muted">first-round pass rate by Risk tier</p>
@@ -70,9 +87,11 @@ export function ReviewHealth({
             <ul className="bars" aria-label="Pull requests by highest round">
               {ROUND_LABELS.map(([key, label]) => (
                 <li key={key}>
-                  <span>{label}</span>
-                  <Bar percent={Math.round((rounds[key] / pulls) * 100)} colour="#4b2a9a" />
-                  <span>{rounds[key].toString()}</span>
+                  <StatButton set={ROUND_SETS[key]} enabled={rounds[key] >= 1}>
+                    <span>{label}</span>
+                    <Bar percent={Math.round((rounds[key] / pulls) * 100)} colour="#4b2a9a" />
+                    <span>{rounds[key].toString()}</span>
+                  </StatButton>
                 </li>
               ))}
             </ul>
@@ -82,8 +101,16 @@ export function ReviewHealth({
         <div>
           <h3>Control health</h3>
           <ul className="facts">
-            <li>Escalations: {health.escalations}</li>
-            <li>Waivers in use: {health.waiversInUse}</li>
+            <li>
+              <StatButton set="escalated" enabled={health.escalations >= 1}>
+                Escalations: {health.escalations}
+              </StatButton>
+            </li>
+            <li>
+              <StatButton set="waivers" enabled={health.waiversInUse >= 1}>
+                Waivers in use: {health.waiversInUse}
+              </StatButton>
+            </li>
           </ul>
         </div>
       </div>

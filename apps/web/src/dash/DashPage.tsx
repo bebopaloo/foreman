@@ -1,7 +1,11 @@
 import type { DashResponse } from "@foreman/shared";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDash } from "../api.ts";
-import { useScope } from "../scope/index.ts";
+import { ScopedLink, useScope } from "../scope/index.ts";
+import { useMemo } from "react";
+import { ListPanel } from "./ListPanel.tsx";
+import { PanelProvider, type PanelControl } from "./panel-context.tsx";
+import { useUrlPanel } from "./panel-url.ts";
 import { LastRun } from "./LastRun.tsx";
 import { plural } from "./last-run.ts";
 import { PipelineStrip } from "./PipelineStrip.tsx";
@@ -35,56 +39,97 @@ export function DashPage() {
     refetchIntervalInBackground: false,
   });
 
+  const { parsed, open, close, openCount } = useUrlPanel();
+  const current = parsed.kind === "panel" ? parsed.set : null;
+  const control = useMemo<PanelControl>(
+    () => ({
+      current,
+      toggle: (set) => {
+        if (set === current) close();
+        else open(set);
+      },
+    }),
+    [current, open, close],
+  );
+
   if (unknownClient) return null;
+
+  const closePanel = () => {
+    const set = current;
+    close();
+    if (set !== null) {
+      const stat = document.querySelector<HTMLElement>(`[data-stat="${set}"]`);
+      stat?.focus();
+    }
+  };
 
   const now = dash.data ? summariseNow(dash.data) : null;
   const reviewUnreadable = dash.data?.sources.controls === "unreadable";
 
   return (
-    <>
+    <PanelProvider value={control}>
       <h1>Foreman dash</h1>
-      {dash.isError ? (
+      {parsed.kind === "invalid" ? (
         <p role="alert" className="note note-warn">
-          The dash data cannot be read. The API may be stopped: start it with pnpm dev, then reload
-          this page.
+          This link has a panel value that is not valid.{" "}
+          <ScopedLink to="/">Show the dash</ScopedLink>
         </p>
       ) : null}
-      {dash.isPending ? <p role="status">Reading the dash.</p> : null}
-      {dash.data === undefined ? null : <Tiles dash={dash.data} />}
-      <section className="card" aria-labelledby="dash-now">
-        <h2 id="dash-now">Now</h2>
-        {now === null ? (
-          <p className="muted">No data yet.</p>
-        ) : (
-          <p>
-            <strong>{now.headline}</strong>
-            {now.detail === null ? null : <span className="muted">: {now.detail}</span>}
-          </p>
+      <div className={current === null ? "dash-layout" : "dash-layout dash-layout-open"}>
+        <div className="dash-main">
+          {dash.isError ? (
+            <p role="alert" className="note note-warn">
+              The dash data cannot be read. The API may be stopped: start it with pnpm dev, then
+              reload this page.
+            </p>
+          ) : null}
+          {dash.isPending ? <p role="status">Reading the dash.</p> : null}
+          {dash.data === undefined ? null : <Tiles dash={dash.data} />}
+          <section className="card" aria-labelledby="dash-now">
+            <h2 id="dash-now">Now</h2>
+            {now === null ? (
+              <p className="muted">No data yet.</p>
+            ) : (
+              <p>
+                <strong>{now.headline}</strong>
+                {now.detail === null ? null : <span className="muted">: {now.detail}</span>}
+              </p>
+            )}
+            {dash.data === undefined || dash.data.running === null ? null : (
+              <p>{buildsText(dash.data)}</p>
+            )}
+          </section>
+          {dash.data === undefined ? null : <PipelineStrip dash={dash.data} />}
+          <WaitsForYou dash={dash.data} />
+          <section className="card" aria-labelledby="dash-last-run">
+            <h2 id="dash-last-run">Last run</h2>
+            <LastRun dash={dash.data} />
+          </section>
+          <section className="card" aria-labelledby="dash-review">
+            <h2 id="dash-review">Review health</h2>
+            {dash.data === undefined ? (
+              <p className="muted">No data yet.</p>
+            ) : reviewUnreadable ? (
+              <p className="muted">cannot read the factory folder</p>
+            ) : (
+              <ReviewHealth health={dash.data.reviewHealth} complete={dash.data.complete} />
+            )}
+          </section>
+          <section className="card" aria-labelledby="dash-repos">
+            <h2 id="dash-repos">Repos</h2>
+            <Repos dash={dash.data} />
+          </section>
+        </div>
+        {current === null ? null : (
+          <ListPanel
+            set={current}
+            dash={dash.data}
+            dashFailed={dash.isError}
+            focusToken={openCount}
+            onClose={closePanel}
+          />
         )}
-        {dash.data === undefined || dash.data.running === null ? null : (
-          <p>{buildsText(dash.data)}</p>
-        )}
-      </section>
-      {dash.data === undefined ? null : <PipelineStrip dash={dash.data} />}
-      <WaitsForYou dash={dash.data} />
-      <section className="card" aria-labelledby="dash-last-run">
-        <h2 id="dash-last-run">Last run</h2>
-        <LastRun dash={dash.data} />
-      </section>
-      <section className="card" aria-labelledby="dash-review">
-        <h2 id="dash-review">Review health</h2>
-        {dash.data === undefined ? (
-          <p className="muted">No data yet.</p>
-        ) : reviewUnreadable ? (
-          <p className="muted">cannot read the factory folder</p>
-        ) : (
-          <ReviewHealth health={dash.data.reviewHealth} complete={dash.data.complete} />
-        )}
-      </section>
-      <section className="card" aria-labelledby="dash-repos">
-        <h2 id="dash-repos">Repos</h2>
-        <Repos dash={dash.data} />
-      </section>
-    </>
+      </div>
+    </PanelProvider>
   );
 }

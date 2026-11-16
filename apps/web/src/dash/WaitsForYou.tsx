@@ -1,5 +1,6 @@
 import type { DashResponse, WaitItem } from "@foreman/shared";
 import { safeHref } from "../sessions/labels.ts";
+import { LIST_PANEL_ID, usePanelControl } from "./panel-context.tsx";
 import { incompleteNote, NotConnected } from "./PipelineStrip.tsx";
 
 const KIND_LABELS: Record<WaitItem["kind"], { pill: string; link: string }> = {
@@ -40,6 +41,25 @@ function Item({ item }: { item: WaitItem }) {
   );
 }
 
+function MoreButton({ count }: { count: number }) {
+  const { current, toggle } = usePanelControl();
+  return (
+    <p>
+      <button
+        type="button"
+        className="stat-link"
+        aria-expanded={current === "waits"}
+        aria-controls={LIST_PANEL_ID}
+        onClick={() => {
+          if (current !== "waits") toggle("waits");
+        }}
+      >
+        and {count.toString()} more
+      </button>
+    </p>
+  );
+}
+
 /** The items that wait for the Operator. Titles and reasons are text nodes; links come from the `link` field only. */
 export function WaitsForYou({ dash }: { dash: DashResponse | undefined }) {
   const waits = dash?.waits;
@@ -67,7 +87,7 @@ export function WaitsForYou({ dash }: { dash: DashResponse | undefined }) {
             </ul>
           )}
           {waits.total > waits.items.length ? (
-            <p className="muted">and {(waits.total - waits.items.length).toString()} more</p>
+            <MoreButton count={waits.total - waits.items.length} />
           ) : null}
         </>
       )}

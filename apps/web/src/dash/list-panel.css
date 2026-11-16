@@ -1,0 +1,109 @@
+.dash-layout {
+  display: block;
+}
+
+.dash-layout-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 40%);
+  gap: 18px;
+  align-items: start;
+}
+
+.dash-main {
+  min-width: 0;
+}
+
+.list-panel {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  min-width: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.list-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.list-panel-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.list-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-panel li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.list-row-second {
+  font-size: 12.5px;
+}
+
+.stat-button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stage-button {
+  flex: 1 1 auto;
+}
+
+.bars li > .stat-button {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) 92px;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+}
+
+.bars li > .stat-button > :last-child {
+  text-align: right;
+}
+
+.stat-button:hover {
+  text-decoration: underline;
+}
+
+.stat-open {
+  outline: 2px solid currentcolor;
+  outline-offset: 2px;
+}
+
+.stat-link {
+  display: inline;
+  width: auto;
+}
+
+@media (max-width: 900px) {
+  .dash-layout-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .list-panel {
+    position: static;
+    max-height: none;
+  }
+}
