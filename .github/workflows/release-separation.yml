@@ -10,9 +10,16 @@
 name: release-separation
 
 on:
+  # The check reads only the workflows and its own scripts.
   pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "scripts/**"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "scripts/**"
 
 permissions:
   contents: read

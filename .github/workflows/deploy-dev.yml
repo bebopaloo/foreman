@@ -11,6 +11,11 @@ run-name: deploy dev ${{ github.sha }}
 on:
   push:
     branches: [main]
+    # A merge of docs only has nothing to deploy.
+    paths-ignore:
+      - "_context/**"
+      - ".claude/rules/**"
+      - "**/*.md"
 
 permissions:
   contents: read
