@@ -250,13 +250,13 @@ main {
   border-radius: 6px;
 }
 
-.bar {
+.gantt-bar {
   position: absolute;
   top: 3px;
   bottom: 3px;
 }
 
-.bar-tooltip {
+.gantt-tooltip {
   position: absolute;
   top: calc(100% - 2px);
   left: 0;
@@ -271,26 +271,27 @@ main {
   box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
 }
 
-.bar-tooltip-end {
+.gantt-tooltip-end {
   right: 0;
   left: auto;
 }
 
-.bar-tooltip-row {
+.gantt-tooltip-row {
   display: flex;
   gap: 8px;
 }
 
-.seg {
+.gantt-seg {
   height: 100%;
   box-sizing: border-box;
   text-decoration: none;
-  display: flex;
-  align-items: center;
-  padding: 0 7px;
+  display: block;
+  padding: 0 6px;
   overflow: hidden;
   color: #ffffff;
   font-size: 12px;
+  line-height: 24px;
+  text-overflow: ellipsis;
   white-space: nowrap;
   border-radius: 5px;
 }
@@ -352,7 +353,7 @@ main {
   align-items: center;
 }
 
-.bars li > :last-child {
+.bars li > :last-child:not(.stat-button) {
   text-align: right;
 }
 
@@ -552,7 +553,7 @@ select:focus-visible,
 .table-scroll:focus-visible,
 .work-table a:focus-visible,
 main a:focus-visible,
-.seg:focus-visible {
+.gantt-seg:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }

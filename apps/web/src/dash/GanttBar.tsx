@@ -34,7 +34,7 @@ export function GanttBar({ build, left, width }: GanttBarProps) {
   const name = `Issue ${build.issue.toString()} of ${build.repo}: ${build.result}, ${clock(build.start)} to ${clock(build.end)}`;
   const seconds = (Date.parse(build.end) - Date.parse(build.start)) / 1000;
   const common = {
-    className: "seg",
+    className: "gantt-seg",
     "aria-label": name,
     "aria-describedby": shown ? tooltipId : undefined,
     style: { background: RESULT_COLOURS[build.result] },
@@ -51,7 +51,7 @@ export function GanttBar({ build, left, width }: GanttBarProps) {
 
   return (
     <div
-      className="bar"
+      className="gantt-bar"
       style={{ left: `${left.toString()}%`, width: `${width.toString()}%` }}
       onMouseEnter={() => {
         setHovered(true);
@@ -74,19 +74,19 @@ export function GanttBar({ build, left, width }: GanttBarProps) {
         <div
           id={tooltipId}
           role="tooltip"
-          className={`bar-tooltip${left > 55 ? " bar-tooltip-end" : ""}`}
+          className={`gantt-tooltip${left > 55 ? " gantt-tooltip-end" : ""}`}
         >
-          <div className="bar-tooltip-row">
+          <div className="gantt-tooltip-row">
             <strong>{build.repo}</strong>
             <span>#{build.issue}</span>
           </div>
           <div>{build.title ?? "not in the Work cache"}</div>
-          <div className="bar-tooltip-row">
+          <div className="gantt-tooltip-row">
             <span>{clock(build.start)}</span>
             <span>{clock(build.end)}</span>
             <span>{formatDuration(seconds)}</span>
           </div>
-          <div className="bar-tooltip-row">
+          <div className="gantt-tooltip-row">
             <span>{build.result}</span>
             <span>slot {build.lane}</span>
           </div>
