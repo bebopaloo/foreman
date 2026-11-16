@@ -6,6 +6,7 @@ import {
   gateLabel,
   gateTone,
   itemKey,
+  notInWorkCache,
   priorityLabel,
   safeLink,
   stateLabel,
@@ -35,15 +36,19 @@ function ItemLink({ href, shown, name }: { href: string | null; shown: string; n
 
 function Row({ item }: { item: WorkItem }) {
   const { issue, pullRequest: pr } = item;
-  const title = issue?.title ?? pr?.title ?? MISSING;
+  const uncached = notInWorkCache(item);
+  const title = uncached ? null : (issue?.title ?? pr?.title ?? MISSING);
+  const issueNumber = issue?.number ?? (item.context?.kind === "build" ? item.context.issue : null);
+  const prNumber =
+    pr?.number ?? (item.context?.kind === "review" ? item.context.pullRequest : null);
   const gate = gateLabel(item);
   const stale = issue?.stale === true || pr?.stale === true;
   return (
     <>
       <td className="mono">{item.fullName}</td>
-      <td className="mono">{issue ? `#${issue.number.toString()}` : MISSING}</td>
+      <td className="mono">{issueNumber === null ? MISSING : `#${issueNumber.toString()}`}</td>
       <td className="work-title">
-        {title}
+        {title ?? <span className="marker">not in the Work cache</span>}
         {stale ? <span className="marker">not in the last fetch</span> : null}
       </td>
       <td>
@@ -52,7 +57,7 @@ function Row({ item }: { item: WorkItem }) {
       <td className="mono">{issue?.type ?? MISSING}</td>
       <td>{priorityLabel(item)}</td>
       <td className="mono">
-        {pr ? `#${pr.number.toString()}` : MISSING}
+        {prNumber === null ? MISSING : `#${prNumber.toString()}`}
         {pr?.draft ? <span className="marker">draft</span> : null}
         {pr && pr.otherCount > 0 ? (
           <span className="marker">{pr.otherCount.toString()} more</span>
@@ -75,14 +80,14 @@ function Row({ item }: { item: WorkItem }) {
         )}
       </td>
       <td className="work-links">
-        {issue ? (
+        {issue && !uncached ? (
           <ItemLink
             href={issue.link}
             shown="Issue ↗"
             name={`Issue ${issue.number.toString()} of ${item.fullName} in the tracker`}
           />
         ) : null}
-        {pr ? (
+        {pr && !uncached ? (
           <ItemLink
             href={pr.link}
             shown="PR ↗"

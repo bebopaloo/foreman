@@ -8,6 +8,8 @@ interface Props {
   repos: readonly { id: string; fullName: string }[];
   setFilter: (key: FilterKey, value: string | null) => void;
   states: readonly string[];
+  /** True while a dash list is in the URL: the filters and the sort do not apply to it. */
+  disabled: boolean;
 }
 
 function Select({
@@ -15,7 +17,9 @@ function Select({
   value,
   options,
   onChange,
+  disabled,
 }: {
+  disabled: boolean;
   label: string;
   value: string;
   options: readonly (readonly [string, string])[];
@@ -26,6 +30,7 @@ function Select({
       <span>{label}</span>
       <select
         value={value}
+        disabled={disabled}
         onChange={(event) => {
           onChange(event.target.value);
         }}
@@ -40,7 +45,7 @@ function Select({
   );
 }
 
-export function WorkFilters({ counts, filters, repos, setFilter, states }: Props) {
+export function WorkFilters({ counts, filters, repos, setFilter, states, disabled }: Props) {
   const chips: { label: string; value: string | null; count: number }[] = [
     { label: "All", value: null, count: counts.all },
     ...states.map((state) => ({
@@ -61,6 +66,7 @@ export function WorkFilters({ counts, filters, repos, setFilter, states }: Props
             key={chip.label}
             type="button"
             aria-pressed={(filters.issue_state ?? null) === chip.value}
+            disabled={disabled}
             onClick={() => {
               setFilter("issue_state", chip.value);
             }}
@@ -71,6 +77,7 @@ export function WorkFilters({ counts, filters, repos, setFilter, states }: Props
       </div>
       <div className="selects">
         <Select
+          disabled={disabled}
           label="Type"
           value={filters.type ?? ""}
           options={[
@@ -82,6 +89,7 @@ export function WorkFilters({ counts, filters, repos, setFilter, states }: Props
           onChange={optional("type")}
         />
         <Select
+          disabled={disabled}
           label="Priority"
           value={filters.priority ?? ""}
           options={[
@@ -92,12 +100,14 @@ export function WorkFilters({ counts, filters, repos, setFilter, states }: Props
           onChange={optional("priority")}
         />
         <Select
+          disabled={disabled}
           label="Repo"
           value={filters.repo ?? ""}
           options={[["", "All repos"], ...repos.map((repo) => [repo.id, repo.fullName] as const)]}
           onChange={optional("repo")}
         />
         <Select
+          disabled={disabled}
           label="Sort"
           value={filters.sort}
           options={[

@@ -1,11 +1,11 @@
-import { ISSUE_STATES, type WorkItem, type WorkItemsResponse } from "@foreman/shared";
+import { ISSUE_STATES, SET_LABELS, type WorkItem, type WorkItemsResponse } from "@foreman/shared";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWorkItems, fetchWorkRepos } from "../api.ts";
 import { usePagedList } from "../list/index.ts";
 import { ScopedLink, useScope } from "../scope/index.ts";
 import { WorkFilters } from "./WorkFilters.tsx";
 import { WorkTable } from "./WorkTable.tsx";
-import { filterQuery, useUrlFilters } from "./url-state.ts";
+import { filterQuery, setQuery, useUrlFilters } from "./url-state.ts";
 
 /** The work view asks again each 60 seconds while the tab is visible. */
 export const WORK_REFRESH_MS = 60_000;
@@ -27,8 +27,12 @@ export function WorkPage() {
     repos.data !== undefined &&
     !scopedRepos.some((repo) => repo.id === parsed.filters.repo);
   const valid = parsed.valid && !repoUnknown;
+  const dashSet = parsed.valid ? parsed.dashSet : null;
   const request = parsed.valid
-    ? { ...filterQuery(parsed.filters), ...(scope === null ? {} : { client: scope }) }
+    ? {
+        ...(dashSet === null ? filterQuery(parsed.filters) : setQuery(dashSet)),
+        ...(scope === null ? {} : { client: scope }),
+      }
     : {};
 
   const list = usePagedList<WorkItem, WorkItemsResponse>({
@@ -53,6 +57,12 @@ export function WorkPage() {
       {!valid && (parsed.valid ? repos.isSuccess : true) ? (
         <p role="alert" className="note note-warn">
           This link has a filter value that is not valid.{" "}
+          <ScopedLink to="/work">Show all work</ScopedLink>
+        </p>
+      ) : null}
+      {valid && dashSet !== null ? (
+        <p className="note">
+          <span>Dash list: {SET_LABELS[dashSet.set]}</span>{" "}
           <ScopedLink to="/work">Show all work</ScopedLink>
         </p>
       ) : null}
@@ -93,9 +103,14 @@ export function WorkPage() {
             repos={scopedRepos}
             setFilter={setFilter}
             states={ISSUE_STATES}
+            disabled={dashSet !== null}
           />
           {list.rows.length === 0 ? (
-            <p className="muted">No issues or pull requests match these filters.</p>
+            <p className="muted">
+              {dashSet === null
+                ? "No issues or pull requests match these filters."
+                : "This dash list has no items."}
+            </p>
           ) : (
             <WorkTable list={list} />
           )}

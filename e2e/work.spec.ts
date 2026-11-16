@@ -190,10 +190,32 @@ test("the page does not scroll sideways at 375 px, and the table region does", a
   expect(scrolls).toBe(true);
 });
 
+test("a dash list shows its heading, disables the filters and Show all work leaves it", async ({
+  page,
+}) => {
+  await useFixture("work");
+  await page.goto("/work?client=acme&set=stage_in_review");
+  await expect(page.getByText("Dash list: IN REVIEW")).toBeVisible();
+  await expect(rowOf(page, "#12")).toBeVisible();
+  const selects = page.getByRole("combobox");
+  await expect(selects).toHaveCount(4);
+  for (const select of await selects.all()) await expect(select).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^All \d+$/ })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Show all work" })).toHaveAttribute(
+    "href",
+    "/work?client=acme",
+  );
+  await page.getByRole("link", { name: "Show all work" }).click();
+  await expect(page).toHaveURL(/\/work\?client=acme$/);
+  await expect(page.getByRole("combobox").first()).toBeEnabled();
+  await expect(page.getByText(/Dash list:/)).toHaveCount(0);
+});
+
 const AXE_CASES: { name: FixtureName; path: string }[] = [
   { name: "work", path: "/work" },
   { name: "work", path: "/work?client=acme&issue_state=BLOCKED" },
   { name: "work", path: "/work?issue_state=DOING" },
+  { name: "work", path: "/work?client=acme&set=stage_in_review" },
   { name: "work-many", path: "/work" },
   { name: "not-connected", path: "/work" },
 ];

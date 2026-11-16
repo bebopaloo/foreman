@@ -58,3 +58,7 @@ export const itemKey = (item: WorkItem): string =>
   item.issue
     ? `${item.repoId ?? item.fullName}:i:${item.issue.number.toString()}`
     : `${item.repoId ?? item.fullName}:p:${(item.pullRequest?.number ?? 0).toString()}`;
+
+/** A row with no repo in the repo list, or with no issue and no pull request, is not in the Work cache. It has no links. */
+export const notInWorkCache = (item: WorkItem): boolean =>
+  item.repoId === null || (item.issue === null && item.pullRequest === null);
