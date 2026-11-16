@@ -28,11 +28,13 @@ export async function installAdapters(claudeDir: string, roles: Role[] = ["track
       path.join(folder, ".claude-plugin", "plugin.json"),
       JSON.stringify({
         name: PLUGIN[role],
-        factory_adapter: {
-          role,
-          command: "scenario_adapter.py",
-          token_env: "SYNTH_TOKEN",
-          token_prefix: "github_pat_",
+        metadata: {
+          factory_adapter: {
+            role,
+            command: "scenario_adapter.py",
+            token_env: "SYNTH_TOKEN",
+            token_prefix: "github_pat_",
+          },
         },
       }),
     );
