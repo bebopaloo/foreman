@@ -27,7 +27,11 @@ const installedPluginsSchema = z.object({
   ),
 });
 
-const manifestSchema = z.object({ factory_adapter: z.unknown().optional() }).loose();
+// The key sits in `metadata`, because `claude plugin validate --strict` refuses an
+// unknown top-level field of plugin.json.
+const manifestSchema = z
+  .object({ metadata: z.object({ factory_adapter: z.unknown().optional() }).loose().optional() })
+  .loose();
 
 const adapterKeySchema = z
   .object({
@@ -67,7 +71,7 @@ function mountInstallPath(pluginsDir: string, installPath: string): string | und
 
 /**
  * Finds the installed plugin that a repo list entry names, and reads the
- * `factory_adapter` key of its `plugin.json`. It starts no subprocess.
+ * `metadata.factory_adapter` key of its `plugin.json`. It starts no subprocess.
  */
 export async function resolveAdapter(
   claudeDir: string,
@@ -112,9 +116,9 @@ export async function resolveAdapter(
     const manifest = manifestSchema.parse(
       await readJson(path.join(pluginDir, ".claude-plugin", "plugin.json")),
     );
-    key = adapterKeySchema.parse(manifest.factory_adapter);
+    key = adapterKeySchema.parse(manifest.metadata?.factory_adapter);
   } catch {
-    return refuse("plugin.json has no valid factory_adapter key");
+    return refuse("plugin.json has no valid metadata.factory_adapter key");
   }
 
   if (key.role !== role) return refuse(`adapter role is ${key.role}, not ${role}`);

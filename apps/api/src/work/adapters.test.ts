@@ -28,7 +28,7 @@ async function installPlugin(key: string, options: PluginOptions = {}): Promise<
   await mkdir(path.join(folder, "scripts"), { recursive: true });
   await writeFile(path.join(folder, "scripts", "run.py"), "print('synthetic')\n");
   const manifest: Record<string, unknown> = { name };
-  if (options.adapter !== undefined) manifest.factory_adapter = options.adapter;
+  if (options.adapter !== undefined) manifest.metadata = { factory_adapter: options.adapter };
   await writeFile(path.join(folder, ".claude-plugin", "plugin.json"), JSON.stringify(manifest));
 
   const file = path.join(claudeDir, "plugins", "installed_plugins.json");
@@ -97,7 +97,7 @@ describe("resolveAdapter", () => {
     expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
   });
 
-  it("is not readable when the plugin has no factory_adapter key", async () => {
+  it("is not readable when the plugin has no metadata.factory_adapter key", async () => {
     await installPlugin("factory-github@a");
 
     const result = await resolveAdapter(claudeDir, "factory-github", "forge");
@@ -105,7 +105,20 @@ describe("resolveAdapter", () => {
     expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
   });
 
-  it("is not readable when the factory_adapter key is invalid", async () => {
+  it("does not read a factory_adapter key at the top level of plugin.json", async () => {
+    await installPlugin("factory-github@a");
+    const folder = path.join(claudeDir, "plugins", "cache", "a", "factory-github", "1.0.0");
+    await writeFile(
+      path.join(folder, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ name: "factory-github", factory_adapter: forgeAdapter }),
+    );
+
+    const result = await resolveAdapter(claudeDir, "factory-github", "forge");
+
+    expect(result).toMatchObject({ ok: false, state: NOT_READABLE_STATE });
+  });
+
+  it("is not readable when the metadata.factory_adapter key is invalid", async () => {
     await installPlugin("factory-github@a", { adapter: { role: "forge" } });
 
     const result = await resolveAdapter(claudeDir, "factory-github", "forge");
@@ -150,7 +163,7 @@ describe("resolveAdapter", () => {
       await writeFile(path.join(outside, "scripts", "run.py"), "");
       await writeFile(
         path.join(outside, ".claude-plugin", "plugin.json"),
-        JSON.stringify({ factory_adapter: forgeAdapter }),
+        JSON.stringify({ metadata: { factory_adapter: forgeAdapter } }),
       );
       await installPlugin("factory-github@a", {
         adapter: forgeAdapter,
@@ -173,7 +186,7 @@ describe("resolveAdapter", () => {
       await writeFile(path.join(outside, "scripts", "run.py"), "");
       await writeFile(
         path.join(outside, ".claude-plugin", "plugin.json"),
-        JSON.stringify({ factory_adapter: forgeAdapter }),
+        JSON.stringify({ metadata: { factory_adapter: forgeAdapter } }),
       );
       const link = path.join(claudeDir, "plugins", "cache", "a", "factory-github", "1.0.0");
       await mkdir(path.dirname(link), { recursive: true });

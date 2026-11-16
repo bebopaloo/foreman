@@ -86,7 +86,7 @@ Fixtures are synthetic. The tests use a synthetic adapter: a small command line 
 
 ### The adapter from its plugin
 
-- **Given** an installed adapter plugin whose `plugin.json` declares its command line in the `factory_adapter` key, and an `installed_plugins.json` key `factory-github@bebopaloo-factory` with a user-scope entry
+- **Given** an installed adapter plugin whose `plugin.json` declares its command line in the `metadata.factory_adapter` key, and an `installed_plugins.json` key `factory-github@bebopaloo-factory` with a user-scope entry
 - **When** a fetch runs for a repo whose `forge` is `factory-github`
 - **Then** Foreman runs that command line, from the install folder that the entry names.
 
@@ -99,20 +99,20 @@ Fixtures are synthetic. The tests use a synthetic adapter: a small command line 
 
 ### A plugin with no adapter key
 
-- **Given** a repo whose `forge` names an installed plugin with no `factory_adapter` key
+- **Given** a repo whose `forge` names an installed plugin with no `metadata.factory_adapter` key
 - **When** a fetch runs
 - **Then** no subprocess starts for that adapter
 - **And** the repo's state is "adapter not readable by Foreman".
 
 ### An adapter command outside its plugin
 
-- **Given** a `factory_adapter` key whose command is `../other/run.py` or an absolute path, or an install folder that resolves outside `<FOREMAN_CLAUDE_DIR>/plugins/`
+- **Given** a `metadata.factory_adapter` key whose command is `../other/run.py` or an absolute path, or an install folder that resolves outside `<FOREMAN_CLAUDE_DIR>/plugins/`
 - **When** a fetch runs
 - **Then** Foreman refuses the adapter, and no subprocess starts.
 
 ### An adapter of the wrong role
 
-- **Given** a repo whose `forge` field names a plugin whose `factory_adapter` role is `tracker`
+- **Given** a repo whose `forge` field names a plugin whose `metadata.factory_adapter` role is `tracker`
 - **When** a fetch runs
 - **Then** Foreman refuses the adapter, and no subprocess starts.
 
@@ -401,14 +401,16 @@ The factory changes these, in its own work items. This Spec only uses them.
 
 - **The repo list fields.** `context-init register` writes `repo` (`owner/name`), `host` (default `github.com`) and `client` into each entry of `factory/repos.json`, and can fill them in an existing entry.
 - **The contract rule.** ADR 0012 adds the rule that a change to the output shape of a command on Foreman's allow-list needs a Foreman change first.
-- **The adapter key.** Each adapter plugin's `plugin.json` has a `factory_adapter` key, and ADR 0012 adds the rule:
+- **The adapter key.** Each adapter plugin's `plugin.json` has a `factory_adapter` key inside its `metadata` object, and ADR 0012 adds the rule. The key is not at the top level, because `claude plugin validate --strict` refuses an unknown top-level field. Foreman does not read a top-level `factory_adapter` key.
 
   ```json
-  "factory_adapter": {
-    "role": "forge",
-    "command": "scripts/forge_github.py",
-    "token_env": "GH_TOKEN",
-    "token_prefix": "github_pat_"
+  "metadata": {
+    "factory_adapter": {
+      "role": "forge",
+      "command": "scripts/forge_github.py",
+      "token_env": "GH_TOKEN",
+      "token_prefix": "github_pat_"
+    }
   }
   ```
 
@@ -441,7 +443,7 @@ Foreman's tests use synthetic repo lists and plugins, so they do not wait for th
 
 - `<FOREMAN_CLAUDE_DIR>/plugins/installed_plugins.json` names the install folder of each plugin. Its keys are `<plugin>@<marketplace>`. Foreman uses the keys whose part before `@` equals the plugin name in the repo list and that have an entry with the user scope. No match, or more than one match, makes the repo "adapter not readable by Foreman".
 - Foreman maps the install folder to the mounted config folder by the part of the path below `plugins/`. The result must resolve inside `<FOREMAN_CLAUDE_DIR>/plugins/`.
-- Foreman reads `.claude-plugin/plugin.json` in that folder, and validates the `factory_adapter` key. The `role` must match the repo list field that names the plugin. The `command` must resolve to a file inside the plugin folder.
+- Foreman reads `.claude-plugin/plugin.json` in that folder, and validates the `metadata.factory_adapter` key. The `role` must match the repo list field that names the plugin. The `command` must resolve to a file inside the plugin folder.
 - A missing plugin, a missing key or an invalid key makes the repo "adapter not readable by Foreman".
 
 ### Tokens
@@ -596,7 +598,7 @@ Order: issues and pull requests sort by repo ID, then by number from high to low
 - The **Foreman dash** and every other view of the work data (step 3).
 - The Controls data: Waivers, the Risk map, the Control register, the Threat model, Release record assets, the `factory/machine-gate` status, and the contract commands that they need (step 4).
 - The session timeline (step 5).
-- The repo list fields and the `factory_adapter` key. They are factory work items.
+- The repo list fields and the `metadata.factory_adapter` key. They are factory work items.
 - Every write to the forge, the tracker, the repos or the factory.
 - Bodies of issues, pull requests, comments, review threads and reviews.
 - A tracker on another host than the forge, for example Jira.

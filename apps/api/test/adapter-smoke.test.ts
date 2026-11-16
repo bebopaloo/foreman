@@ -24,11 +24,13 @@ beforeEach(async () => {
     path.join(plugin, ".claude-plugin", "plugin.json"),
     JSON.stringify({
       name: "synthetic-forge",
-      factory_adapter: {
-        role: "forge",
-        command: "synthetic_adapter.py",
-        token_env: "SYNTH_TOKEN",
-        token_prefix: "github_pat_",
+      metadata: {
+        factory_adapter: {
+          role: "forge",
+          command: "synthetic_adapter.py",
+          token_env: "SYNTH_TOKEN",
+          token_prefix: "github_pat_",
+        },
       },
     }),
   );

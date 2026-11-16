@@ -154,11 +154,13 @@ export function adapterFiles(data: AdapterData): Record<string, string> {
     const folder = pluginFolder(role);
     files[`${folder}/.claude-plugin/plugin.json`] = JSON.stringify({
       name: ADAPTER_PLUGINS[role],
-      factory_adapter: {
-        role,
-        command: "e2e_adapter.py",
-        token_env: "SYNTHETIC_TOKEN",
-        token_prefix: TOKEN_PREFIX,
+      metadata: {
+        factory_adapter: {
+          role,
+          command: "e2e_adapter.py",
+          token_env: "SYNTHETIC_TOKEN",
+          token_prefix: TOKEN_PREFIX,
+        },
       },
     });
     files[`${folder}/e2e_adapter.py`] = SCRIPT;
