@@ -31,6 +31,14 @@ describe("the pull request shape", () => {
     },
   );
 
+  it("accepts a pull request with a body", () => {
+    expect(contractSchemas.prList.safeParse([{ ...pull, body: "Some text" }]).success).toBe(true);
+  });
+
+  it("rejects a body that is not text", () => {
+    expect(contractSchemas.prList.safeParse([{ ...pull, body: null }]).success).toBe(false);
+  });
+
   it("still rejects any other unknown key", () => {
     expect(contractSchemas.prList.safeParse([{ ...pull, extra: 1 }]).success).toBe(false);
   });

@@ -88,6 +88,7 @@ function repoScenario(repo: string, data: AdapterRepo): Record<string, Answer> {
     author: "synthetic-author",
     checks: "success",
     labels: [],
+    body: "",
   }));
   const scenario: Record<string, Answer> = {
     "issue list --state all": { ok: issues },

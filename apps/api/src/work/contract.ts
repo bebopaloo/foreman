@@ -36,6 +36,8 @@ const pullRequestSchema = z
     checks: z.enum(["none", "pending", "success", "failure"]),
     labels: z.array(z.string()),
     head_sha: z.string().regex(SHA_PATTERN).optional(),
+    // The adapter sends the body for the factory's own skills. The fetch never stores it.
+    body: z.string().optional(),
   })
   .strict();
 

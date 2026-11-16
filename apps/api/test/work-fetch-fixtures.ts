@@ -113,6 +113,7 @@ export function pull(number: number, over: Record<string, unknown> = {}) {
     author: "synth-author",
     checks: "success",
     labels: [],
+    body: BODY_TEXT,
     ...over,
   };
 }

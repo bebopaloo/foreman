@@ -204,7 +204,7 @@ Fixtures are synthetic. The tests use a synthetic adapter: a small command line 
 - **When** the first fetch runs
 - **Then** the adapter gets `issue list --state all`, `issue list --state open`, `pr list --state all`, `pr list --state open` and `release list --state all` once each
 - **And** `issue relations` for each of the 3 issues, `pr reviews` for each of the 2 pull requests, and `release view` for the released Release
-- **And** the cache holds no issue body and no review body.
+- **And** the cache holds no issue body, no pull request body and no review body.
 
 ### Later fetch
 
