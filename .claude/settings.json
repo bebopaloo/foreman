@@ -19,7 +19,6 @@
       "Bash(git push origin HEAD:main*)",
       "Bash(git push * --delete *)",
       "Bash(git push * -d *)",
-      "Bash(gh pr merge *)",
       "Bash(gh secret *)",
       "Bash(gh variable *)",
       "Bash(gh ruleset *)",
