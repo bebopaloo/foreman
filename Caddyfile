@@ -8,8 +8,25 @@
 	}
 
 	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
+		# A route block keeps the directives in the order written. Caddy would put the header
+		# without a matcher after the one with a matcher and let it override that one.
+		route {
+			root * /srv
+
+			# index.html and every route that falls back to it name the current hashed files, so the
+			# browser asks again on each load. The next header line overrides it for hashed files.
+			header Cache-Control "no-cache"
+
+			# A hashed file never changes under its name. The file matcher keeps a missing file, which
+			# falls back to no-cache, out of the year-long cache.
+			@hashed {
+				path /assets/*
+				file
+			}
+			header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }
