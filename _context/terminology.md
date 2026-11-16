@@ -84,6 +84,12 @@ The Foreman view that lists every cached issue with its **Linked pull request**,
 _Refs:_ **Work cache**, **Client scope**\
 _Avoid_: issue list, backlog, board
 
+### List panel
+The right-hand column of the **Foreman dash** that lists the items behind one number of the dash. It uses the rows of the **Work view**.\
+_Parent:_ **Foreman dash**\
+_Refs:_ **Work view**\
+_Avoid_: list view, drawer, side sheet, flyout, drill-down
+
 ### Linked pull request
 The pull request of an issue: a pull request in the same repo whose branch name starts with the issue number and a hyphen, as the factory names its branches. When an issue has more than one, the open one with the highest number counts, else the one with the highest number.\
 _Refs:_ **Work view**\
