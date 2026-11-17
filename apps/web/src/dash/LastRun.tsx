@@ -1,4 +1,6 @@
 import type { DashResponse } from "@foreman/shared";
+import { runReportPath } from "../runs/index.ts";
+import { ScopedLink } from "../scope/index.ts";
 import { GanttBar } from "./GanttBar.tsx";
 import {
   axisTicks,
@@ -29,6 +31,7 @@ export function LastRun({ dash }: { dash: DashResponse | undefined }) {
           run {run.runId} · {dayAndClock(run.start)} to {clock(run.end)}
         </span>
         {run.running ? <strong>Run in progress</strong> : null}
+        <ScopedLink to={runReportPath(run.runId)}>Run report</ScopedLink>
         <span>{plural(run.builds.length, "build", "builds")}</span>
         <span>{plural(run.skips, "skip", "skips")}</span>
         <span>{run.blockedAtSelection.toString()} blocked at selection</span>
