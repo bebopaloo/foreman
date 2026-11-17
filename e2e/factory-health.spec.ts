@@ -237,3 +237,20 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+test("a run links to its report page with the slot use", async ({ page }) => {
+  await useFixture("health");
+  await page.goto("/health");
+  await loaded(page);
+  await runsTable(page)
+    .getByRole("link", { name: /report of run run-health-a/ })
+    .click();
+  await expect(page).toHaveURL(/\/runs\/run-health-a$/);
+  await expect(page.getByRole("heading", { name: "Run report", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Slot use", level: 2 })).toBeVisible();
+  await expect(page.getByText(/Average busy slots/)).toContainText("of 5");
+  await expect(page.getByRole("table", { name: "Merges of the run" })).toContainText("#71");
+  await expect(page.getByRole("list", { name: "Skips by blocker" })).toContainText("#3");
+  const results = await new AxeBuilder({ page }).withTags(WCAG_22_AA).analyze();
+  expect(results.violations).toEqual([]);
+});

@@ -1,0 +1,27 @@
+.run-report {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.run-report .card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.run-report .card h2,
+.run-report .card p,
+.run-report .card ul {
+  margin: 0;
+}
+
+.run-summary-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}

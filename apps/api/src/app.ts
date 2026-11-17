@@ -12,6 +12,7 @@ import { loggerOptions } from "./log.ts";
 import { registerHostCheck } from "./host-check.ts";
 import { controlsRoutes } from "./routes/controls.ts";
 import { dashRoutes } from "./routes/dash.ts";
+import { runReportRoutes } from "./routes/run-report.ts";
 import { factoryHealthRoutes } from "./routes/factory-health.ts";
 import { ledgerRoutes } from "./routes/ledger.ts";
 import { healthRoutes } from "./routes/health.ts";
@@ -157,6 +158,11 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     factoryLogins: config.FOREMAN_FACTORY_LOGINS,
+    ...(now === undefined ? {} : { now }),
+  });
+  await app.register(runReportRoutes, {
+    prefix: "/api",
+    claudeDir: config.FOREMAN_CLAUDE_DIR,
     ...(now === undefined ? {} : { now }),
   });
   await app.register(reviewsRoutes, {

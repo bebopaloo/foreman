@@ -15,6 +15,7 @@ import {
   ReviewsPullRequestsResponse,
   ReviewsResponse,
   RuleDriftResponse,
+  RunReportResponse,
   SessionResponse,
   SessionsResponse,
   SeriesResponse,
@@ -305,6 +306,10 @@ export const fetchLedger = (
   const text = params.toString();
   return getJson(`/api/ledger${text === "" ? "" : `?${text}`}`, LedgerResponse, signal);
 };
+
+/** The report of one run. */
+export const fetchRunReport = (runId: string, signal?: AbortSignal): Promise<RunReportResponse> =>
+  getJson(`/api/runs/${encodeURIComponent(runId)}/report`, RunReportResponse, signal);
 
 /** The blockers of the scope, the largest first. `limit` is optional: with none, all blockers return. */
 export const fetchWorkBlockers = (
