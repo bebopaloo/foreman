@@ -52,7 +52,7 @@ test("the night run shows its spans, the You lane and the table for screen reade
   await expect(page.locator(".you-mark")).toHaveCount(2);
   await expect(page.getByText("Metadata only.")).toBeVisible();
   await expect(
-    page.getByText("Not connected. Add the Foreman token to the Keychain"),
+    page.getByText("Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON"),
   ).toBeVisible();
   const table = page.getByRole("table");
   await expect(table.getByRole("row")).toHaveCount((await spanRows(page).count()) + 1);
@@ -164,7 +164,7 @@ test("with no token the spans show with numbers only and the page says Not conne
   await expect(workItem(page, "acme/app #11")).not.toContainText("Add the export");
   await expect(workItem(page, "acme/app #11").getByRole("link")).toHaveCount(0);
   await expect(
-    page.getByText("Not connected. Add the Foreman token to the Keychain"),
+    page.getByText("Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON"),
   ).toBeVisible();
   await expect(page.getByText("Data is not complete")).toHaveCount(0);
 });

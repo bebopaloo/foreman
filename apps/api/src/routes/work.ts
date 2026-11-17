@@ -2,6 +2,8 @@ import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import {
+  WorkBlockersQuery,
+  WorkBlockersResponse,
   WorkClientsResponse,
   WorkIssuesQuery,
   WorkIssuesResponse,
@@ -22,13 +24,14 @@ import { originGuard } from "../host-check.ts";
 import { selectSet } from "../work/sets/index.ts";
 import { buildGateSignals } from "../work/gate-signals.ts";
 import { listWorkItems, type ItemsRepo } from "../work/items.ts";
+import { listBlockers } from "../work/blockers.ts";
 import { listClients } from "../work/clients.ts";
 import { listIssues, listPullRequests, listReleases } from "../work/lists.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
 import type { FetchSchedule } from "../work/schedule.ts";
 import { readWorkStatus } from "../work/status.ts";
-import { readTokens } from "../work/tokens.ts";
+import { readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -37,7 +40,7 @@ export interface WorkOptions {
   claudeDir: string;
   schedule: FetchSchedule;
   /** The tokens file. A repo of an owner with no token returns no data. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
   /** Tests pass a fixed clock for the 30-day window of the Control events. */
@@ -51,7 +54,7 @@ async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
 
 export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   app,
-  { db, claudeDir, schedule, tokensFile, allowedOrigins, now = () => new Date() },
+  { db, claudeDir, schedule, tokenSource, allowedOrigins, now = () => new Date() },
   done,
 ) => {
   app.get(
@@ -98,7 +101,7 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   async function scopeOf(client: string | undefined, repo: string | undefined) {
     const list = await readRepoList(claudeDir);
     const entries = list.status === "ok" ? list.repos : [];
-    return resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
+    return resolveWorkScope(entries, await readTokens(tokenSource), client, repo);
   }
 
   app.get(
@@ -185,6 +188,30 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
         ...result,
         skipped: { controlEvents: controls.skippedLines, files: controls.skippedFiles },
       };
+    },
+  );
+
+  app.get(
+    "/work/blockers",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkBlockersQuery,
+        response: { 200: WorkBlockersResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, limit } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      const names = new Map(scope.inScope.map((entry) => [entry.id, entry]));
+      const repos = scope.repos.flatMap((scoped) => {
+        const entry = names.get(scoped.id);
+        return entry?.owner == null || entry.name == null
+          ? []
+          : [{ ...scoped, fullName: `${entry.owner}/${entry.name}` }];
+      });
+      return listBlockers(db, repos, limit);
     },
   );
 

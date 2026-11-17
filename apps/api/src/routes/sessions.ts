@@ -13,7 +13,7 @@ import { querySessions } from "../sessions/sessions.ts";
 import { clientProjectKeys } from "../work/clients.ts";
 import { readRepoList } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
-import { readTokens } from "../work/tokens.ts";
+import { readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -22,13 +22,13 @@ export interface SessionsOptions {
   /** The folder of the repo list, which names the client of each Project. */
   claudeDir: string;
   /** The tokens file. A repo of an owner with no token shows no title and no link. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
 }
 
 // Foreman has no sign-in: the loopback bind and the Host check are its access control.
 export const sessionsRoutes: FastifyPluginCallbackZod<SessionsOptions> = (
   app,
-  { db, claudeDir, tokensFile },
+  { db, claudeDir, tokenSource },
   done,
 ) => {
   app.get(
@@ -83,7 +83,7 @@ export const sessionsRoutes: FastifyPluginCallbackZod<SessionsOptions> = (
           return reply.status(400).send({ error: "Unknown client", requestId: request.id });
         }
       }
-      const scope = resolveWorkScope(entries, await readTokens(tokensFile), client, undefined);
+      const scope = resolveWorkScope(entries, await readTokens(tokenSource), client, undefined);
       const response = await querySession(db, {
         sessionId,
         day,

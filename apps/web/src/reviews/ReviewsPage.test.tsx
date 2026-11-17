@@ -530,7 +530,7 @@ describe("the Reviews page", () => {
     renderApp();
     await screen.findByRole("list", { name: "Signals" });
     expect(
-      screen.getAllByText(/Not connected\. Add the Foreman token to the Keychain/),
+      screen.getAllByText(/Not connected\. Add the Foreman token to FOREMAN_TOKENS_JSON/),
     ).toHaveLength(2);
     expect(screen.getByText("Pull requests reviewed")).toBeInTheDocument();
     expect(screen.getByText("70%")).toBeInTheDocument();

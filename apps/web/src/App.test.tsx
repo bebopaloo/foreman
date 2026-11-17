@@ -15,7 +15,14 @@ describe("App", () => {
     const sections = screen
       .getAllByRole("heading", { level: 2 })
       .map((heading) => heading.textContent);
-    expect(sections).toEqual(["Now", "Waits for you", "Last run", "Review health", "Repos"]);
+    expect(sections).toEqual([
+      "Now",
+      "Waits for you",
+      "Unblock first",
+      "Last run",
+      "Review health",
+      "Repos",
+    ]);
   });
 
   it("shows a page that does not exist as not found", () => {

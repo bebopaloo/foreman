@@ -52,6 +52,7 @@ export interface AppOptions {
 export async function buildApp({ config, db, logger, refresher, fetcher, now }: AppOptions) {
   // The API stops here when the price table is invalid. Estimates use it as it was at start-up.
   const priceTable = await loadPriceTable(config.FOREMAN_PRICE_TABLE);
+  const tokenSource = config.FOREMAN_TOKENS_JSON ?? config.FOREMAN_TOKENS_FILE;
   const app = Fastify({
     logger: logger ?? loggerOptions(config.LOG_LEVEL),
   }).withTypeProvider<ZodTypeProvider>();
@@ -82,7 +83,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     createFetchSchedule({
       db,
       claudeDir: config.FOREMAN_CLAUDE_DIR,
-      tokensFile: config.FOREMAN_TOKENS_FILE,
+      tokenSource,
       allowedHosts: config.FOREMAN_ALLOWED_HOSTS,
       timeoutMs: config.FOREMAN_ADAPTER_TIMEOUT_SECONDS * 1000,
       intervalMs: config.FOREMAN_FETCH_MINUTES * 60_000,
@@ -132,7 +133,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api/factory-health",
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     marketplaceDir: config.FOREMAN_MARKETPLACE_DIR,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource,
     db,
     ...(now === undefined ? {} : { now }),
   });
@@ -141,7 +142,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
     schedule: activeFetcher,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource,
     allowedOrigins: config.CORS_ORIGINS,
     ...(now === undefined ? {} : { now }),
   });
@@ -149,7 +150,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource,
     ...(now === undefined ? {} : { now }),
   });
   await app.register(dashRoutes, {
@@ -168,7 +169,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource,
     factoryLogins: config.FOREMAN_FACTORY_LOGINS,
     usageDataAsOf: async () => (await activeRefresher.status()).dataAsOf,
     ...(now === undefined ? {} : { now }),
@@ -197,7 +198,7 @@ export async function buildApp({ config, db, logger, refresher, fetcher, now }: 
     prefix: "/api/sessions",
     db,
     claudeDir: config.FOREMAN_CLAUDE_DIR,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource,
   });
 
   return app;

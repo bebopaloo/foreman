@@ -77,13 +77,34 @@ describe("loadConfig", () => {
     );
   });
 
-  it("reads the tokens file from the Compose secret by default and from a variable", () => {
-    expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_FILE).toBe("/run/secrets/foreman_tokens");
+  it("has no tokens file by default and reads one from a variable", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_FILE).toBeUndefined();
     expect(
       loadConfig({ DATABASE_URL, FOREMAN_TOKENS_FILE: "/synthetic/tokens.json" })
         .FOREMAN_TOKENS_FILE,
     ).toBe("/synthetic/tokens.json");
   });
+
+  it("has no tokens by default and reads them from FOREMAN_TOKENS_JSON, in lower case", () => {
+    expect(loadConfig({ DATABASE_URL }).FOREMAN_TOKENS_JSON).toBeUndefined();
+    expect(loadConfig({ DATABASE_URL, FOREMAN_TOKENS_JSON: "" }).FOREMAN_TOKENS_JSON).toBe(
+      undefined,
+    );
+    const tokens = loadConfig({
+      DATABASE_URL,
+      FOREMAN_TOKENS_JSON: '{"GitHub.com/Acme":"synthetic-token"}',
+    }).FOREMAN_TOKENS_JSON;
+    expect(tokens?.get("github.com/acme")).toBe("synthetic-token");
+  });
+
+  it.each(["not json", '["github.com/acme"]', '{"acme":"x"}', '{"github.com/acme":""}'])(
+    "rejects %s as FOREMAN_TOKENS_JSON",
+    (value) => {
+      expect(() => loadConfig({ DATABASE_URL, FOREMAN_TOKENS_JSON: value })).toThrow(
+        "Invalid configuration: FOREMAN_TOKENS_JSON",
+      );
+    },
+  );
 
   it("has no Marketplace folder by default and reads an absolute one", () => {
     expect(loadConfig({ DATABASE_URL }).FOREMAN_MARKETPLACE_DIR).toBeUndefined();

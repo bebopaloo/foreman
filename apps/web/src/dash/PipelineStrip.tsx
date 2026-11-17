@@ -80,7 +80,7 @@ const STAGES: Stage[] = [
 ];
 
 export const NOT_CONNECTED_TEXT =
-  "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.";
+  "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.";
 
 /** The note of a forge section when a repo in scope has no cache rows. Null when the data is complete. */
 export function incompleteNote(complete: DashResponse["complete"]): string | null {
@@ -90,12 +90,7 @@ export function incompleteNote(complete: DashResponse["complete"]): string | nul
 }
 
 export function NotConnected() {
-  return (
-    <p className="muted">
-      Not connected. Add the Foreman token to the Keychain, then run{" "}
-      <span className="mono">pnpm local:up</span>.
-    </p>
-  );
+  return <p className="muted">{NOT_CONNECTED_TEXT}</p>;
 }
 
 export function PipelineStrip({ dash }: { dash: DashResponse }) {
