@@ -2,6 +2,8 @@ import path from "node:path";
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
 import {
+  WorkBlockersQuery,
+  WorkBlockersResponse,
   WorkClientsResponse,
   WorkIssuesQuery,
   WorkIssuesResponse,
@@ -22,6 +24,7 @@ import { originGuard } from "../host-check.ts";
 import { selectSet } from "../work/sets/index.ts";
 import { buildGateSignals } from "../work/gate-signals.ts";
 import { listWorkItems, type ItemsRepo } from "../work/items.ts";
+import { listBlockers } from "../work/blockers.ts";
 import { listClients } from "../work/clients.ts";
 import { listIssues, listPullRequests, listReleases } from "../work/lists.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
@@ -185,6 +188,30 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
         ...result,
         skipped: { controlEvents: controls.skippedLines, files: controls.skippedFiles },
       };
+    },
+  );
+
+  app.get(
+    "/work/blockers",
+    {
+      config: { public: true },
+      schema: {
+        querystring: WorkBlockersQuery,
+        response: { 200: WorkBlockersResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const { client, repo, limit } = request.query;
+      const scope = await scopeOf(client, repo);
+      if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
+      const names = new Map(scope.inScope.map((entry) => [entry.id, entry]));
+      const repos = scope.repos.flatMap((scoped) => {
+        const entry = names.get(scoped.id);
+        return entry?.owner == null || entry.name == null
+          ? []
+          : [{ ...scoped, fullName: `${entry.owner}/${entry.name}` }];
+      });
+      return listBlockers(db, repos, limit);
     },
   );
 
