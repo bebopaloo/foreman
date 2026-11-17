@@ -8,6 +8,7 @@ import { PanelProvider, type PanelControl } from "./panel-context.tsx";
 import { useUrlPanel } from "./panel-url.ts";
 import { LastRun } from "./LastRun.tsx";
 import { plural } from "./last-run.ts";
+import { BlockersSection } from "../work/BlockersSection.tsx";
 import { PipelineStrip } from "./PipelineStrip.tsx";
 import { Repos } from "./Repos.tsx";
 import { ReviewHealth } from "./ReviewHealth.tsx";
@@ -101,6 +102,7 @@ export function DashPage() {
           </section>
           {dash.data === undefined ? null : <PipelineStrip dash={dash.data} />}
           <WaitsForYou dash={dash.data} />
+          <BlockersSection />
           <section className="card" aria-labelledby="dash-last-run">
             <h2 id="dash-last-run">Last run</h2>
             <LastRun dash={dash.data} />

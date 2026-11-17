@@ -1,4 +1,4 @@
-import type { DashResponse } from "@foreman/shared";
+import type { DashResponse, WorkBlockersResponse } from "@foreman/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -22,6 +22,8 @@ export interface FakeApi {
   reason?: string | null;
   /** Parts of the dash response. */
   dash?: Partial<DashResponse>;
+  /** The blockers response. The default has no blocker. */
+  blockers?: WorkBlockersResponse;
 }
 
 /** Each request for the dash since the last `fakeApi` call, as path and query. */
@@ -80,6 +82,9 @@ export function fakeApi(api: FakeApi = {}): string[] {
       dashRequests.push(`${url.pathname}${url.search}`);
       return HttpResponse.json({ ...quietDash, ...api.dash });
     }),
+    http.get("*/api/work/blockers", () =>
+      HttpResponse.json(api.blockers ?? { total: 0, items: [] }),
+    ),
     http.get("*/api/work/clients", () =>
       HttpResponse.json({
         clients: api.clients ?? [
