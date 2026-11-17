@@ -1,11 +1,14 @@
-import type { Database } from "@foreman/db";
+import { schema, type Database } from "@foreman/db";
 import {
+  FindingsQuery,
+  FindingsResponse,
   ReviewsPullRequestsQuery,
   ReviewsPullRequestsResponse,
   ReviewsQuery,
   ReviewsResponse,
 } from "@foreman/shared";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
+import { and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { paginate } from "../paging.ts";
 import {
@@ -16,6 +19,13 @@ import {
   reviewRows,
   type ReviewsData,
 } from "../reviews/reviews.ts";
+import {
+  buildFindings,
+  compareFindingKeys,
+  findingKey,
+  readFindingsLedger,
+} from "../reviews/findings-ledger.ts";
+import { linkFor } from "../work/lists.ts";
 import { readRepoList } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
 import { readTokens, type TokenSource } from "../work/tokens.ts";
@@ -133,6 +143,97 @@ export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
         keyOf: reviewRowKey,
         compare: compareReviewRows,
       });
+    },
+  );
+
+  app.get(
+    "/reviews/findings",
+    {
+      config: { public: true },
+      schema: {
+        querystring: FindingsQuery,
+        response: { 200: FindingsResponse, 400: RejectedResponse },
+      },
+    },
+    async (request, reply) => {
+      const at = now();
+      const { client, limit, cursor, ...filter } = request.query;
+      const list = await readRepoList(claudeDir);
+      const entries = list.status === "ok" ? list.repos : [];
+      const scope = resolveWorkScope(entries, await readTokens(tokenSource), client, undefined);
+      if (!scope.ok) {
+        return reply.status(400).send({ error: scope.error, requestId: request.id });
+      }
+      const ledger = await readFindingsLedger(claudeDir, at);
+      for (const { file, lines } of ledger.reports) {
+        request.log.warn(
+          { folder: "findings", file, skippedLines: lines },
+          lines === 0 ? "findings skipped a file" : "findings skipped lines",
+        );
+      }
+      // With no client, the scope is all lines, the repos that are not in the repo list too.
+      const repoNames =
+        client === undefined
+          ? null
+          : new Set(
+              scope.inScope.flatMap((entry) =>
+                entry.owner === null || entry.name === null
+                  ? []
+                  : [`${entry.owner}/${entry.name}`.toLowerCase()],
+              ),
+            );
+      const built = buildFindings(ledger.findings, { repoNames, filter });
+      const page = paginate(built.rows, {
+        limit,
+        cursor,
+        query: { client, ...filter },
+        keyOf: findingKey,
+        compare: compareFindingKeys,
+      });
+
+      const byId = new Map(scope.repos.map((repoScope) => [repoScope.id, repoScope]));
+      const idOfName = new Map(
+        scope.inScope.flatMap((entry) =>
+          entry.owner === null || entry.name === null
+            ? []
+            : [[`${entry.owner}/${entry.name}`.toLowerCase(), entry.id] as const],
+        ),
+      );
+      const numbers = [...new Set(page.items.map((row) => row.pr))];
+      const pulls =
+        byId.size === 0 || numbers.length === 0
+          ? []
+          : await db
+              .select({
+                repoId: schema.workPullRequests.repoId,
+                number: schema.workPullRequests.number,
+                link: schema.workPullRequests.link,
+              })
+              .from(schema.workPullRequests)
+              .where(
+                and(
+                  inArray(schema.workPullRequests.repoId, [...byId.keys()]),
+                  inArray(schema.workPullRequests.number, numbers),
+                ),
+              );
+      const links = new Map(
+        pulls.map((row) => [`${row.repoId}#${row.number.toString()}`, row.link]),
+      );
+      return {
+        folder: ledger.folder,
+        skippedLines: ledger.skippedLines,
+        skippedFiles: ledger.skippedFiles,
+        security: built.security,
+        repos: built.repos,
+        passes: built.passes,
+        total: built.rows.length,
+        items: page.items.map((row) => {
+          const id = idOfName.get(row.repo.toLowerCase());
+          const link = id === undefined ? null : (links.get(`${id}#${row.pr.toString()}`) ?? null);
+          return { ...row, link: linkFor(link, id === undefined ? undefined : byId.get(id)) };
+        }),
+        nextCursor: page.nextCursor,
+      };
     },
   );
 

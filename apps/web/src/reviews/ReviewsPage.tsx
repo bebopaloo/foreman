@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { fetchReviews, fetchReviewsPullRequests } from "../api.ts";
 import { usePagedList } from "../list/index.ts";
 import { useScope } from "../scope/index.ts";
+import { FindingsSection } from "./FindingsSection.tsx";
 import { EventsOff } from "./EventsOff.tsx";
 import { RiskTierResults, isEmptyTierResults } from "./RiskTierResults.tsx";
 import { ReviewTime } from "./ReviewTime.tsx";
@@ -80,6 +81,7 @@ export function ReviewsPage() {
             mode={mode}
             onMode={setMode}
           />
+          <FindingsSection refreshMs={REVIEWS_REFRESH_MS} />
           <ReviewTime data={data} list={list} onDataChanged={reload} />
         </div>
       )}

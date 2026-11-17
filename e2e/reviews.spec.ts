@@ -31,7 +31,7 @@ test("the nav links Reviews in the scope and marks it", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Reviews", level: 1 })).toBeVisible();
 });
 
-test("the tiles and the four sections show in order", async ({ page }) => {
+test("the tiles and the five sections show in order", async ({ page }) => {
   await useFixture("reviews");
   await page.goto("/reviews");
   await expect(tile(page, "Pull requests reviewed")).toContainText("5");
@@ -45,6 +45,7 @@ test("the tiles and the four sections show in order", async ({ page }) => {
     "Risk tier results",
     "Rounds to settle, by final tier",
     "Security findings",
+    "Findings ledger",
     "Review time against build time",
   ]);
 });

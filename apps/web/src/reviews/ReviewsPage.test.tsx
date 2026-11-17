@@ -169,6 +169,19 @@ function serve({ document = reviews(), pages = [[row()]] }: Served = {}) {
         findings: { ...document.findings, mode: url.searchParams.get("mode") ?? "round1" },
       });
     }),
+    http.get("*/api/reviews/findings", () =>
+      HttpResponse.json({
+        folder: "missing",
+        skippedLines: 0,
+        skippedFiles: 0,
+        security: { bySeverity: {} },
+        repos: [],
+        passes: [],
+        total: 0,
+        items: [],
+        nextCursor: null,
+      }),
+    ),
     http.get("*/api/reviews/pull-requests", ({ request }) => {
       const url = new URL(request.url);
       requests.push(`${url.pathname}${url.search}`);
@@ -194,7 +207,7 @@ function open(path = "/reviews") {
 }
 
 describe("the Reviews page", () => {
-  it("shows the four tiles, then the four sections in order", async () => {
+  it("shows the four tiles, then the five sections in order", async () => {
     open();
     serve();
     renderApp();
@@ -209,6 +222,7 @@ describe("the Reviews page", () => {
       "Risk tier results",
       "Rounds to settle, by final tier",
       "Security findings",
+      "Findings ledger",
       "Review time against build time",
     ]);
     expect(screen.getByRole("link", { name: "Reviews" })).toHaveAttribute("aria-current", "page");
