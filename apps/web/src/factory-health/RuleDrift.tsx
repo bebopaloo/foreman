@@ -77,7 +77,8 @@ export function RuleDrift({ list }: { list: DriftList }) {
       {list.isPending && !list.isError ? <p role="status">Reading the Repo rules.</p> : null}
       {first?.state === "not_connected" ? (
         <p className="note">
-          Not connected. Add the Foreman token to the Keychain, then run <code>pnpm local:up</code>.
+          Not connected. Add the Foreman token to <code>FOREMAN_TOKENS_JSON</code> in the{" "}
+          <code>.env</code> file, then restart <code>pnpm dev</code>.
         </p>
       ) : null}
       {first?.state === "ok" && first.complete.incompleteRepos > 0 ? (

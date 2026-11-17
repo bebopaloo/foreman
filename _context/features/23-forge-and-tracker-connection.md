@@ -349,12 +349,11 @@ Fixtures are synthetic. The tests use a synthetic adapter: a small command line 
 
 ### Local runtime with the token
 
-- **Given** a Keychain item for Foreman for the account `github.com/acme`, and a repo of `acme` in the repo list
-- **When** the Operator runs `pnpm local:up`
-- **Then** the API container gets the token as a Compose secret, and the status shows "connected" for `github.com/acme`
-- **And** the smoke test in the container runs the installed forge adapter and gets valid output
-- **And** with no Keychain item, the stack starts and the status shows "not connected: no token"
-- **And** the token is not in any file in the repo, in `docker inspect` environment values or in the container logs.
+- **Given** `FOREMAN_TOKENS_JSON` in the dotenv file with a token for `github.com/acme`, and a repo of `acme` in the repo list
+- **When** the Operator runs `pnpm dev`
+- **Then** the status shows "connected" for `github.com/acme`
+- **And** with no `FOREMAN_TOKENS_JSON`, the API starts and the status shows "not connected: no token"
+- **And** the token is not in any file that Git tracks, or in the logs.
 
 The Operator checks this scenario by hand. All other scenarios are automated tests.
 
@@ -379,9 +378,7 @@ The Operator checks this scenario by hand. All other scenarios are automated tes
 | `apps/web/src/scope` | The scope selector, the URL value, the stored last scope and the header label |
 | `apps/web/src/connection` | The connection state, the "data as of" time and the refresh button in the header |
 | `Dockerfile` | The API image gains Python 3.12 or later, `uv`, `gh` and `git`, at pinned versions |
-| `compose.local.yaml` | The secret `foreman_tokens` and the new variables of the API service |
 | `Caddyfile` | The content security policy of the web app |
-| `scripts/local-up.ts` | `pnpm local:up` reads the Keychain items and passes the tokens as a Compose secret |
 | `scripts/adapter-smoke.ts` | Runs one allow-listed read command through the installed forge adapter in the container |
 
 ### Configuration
@@ -389,7 +386,7 @@ The Operator checks this scenario by hand. All other scenarios are automated tes
 | Variable | Default | Use |
 |---|---|---|
 | `FOREMAN_ALLOWED_HOSTS` | `github.com` | The hosts that an adapter may call. A comma-separated list. |
-| `FOREMAN_TOKENS_FILE` | `/run/secrets/foreman_tokens` | The file with the tokens. With no file, every owner is "not connected: no token". |
+| `FOREMAN_TOKENS_JSON` | none | The tokens: a JSON object that maps `<host>/<owner>` to a token. With no value, every owner is "not connected: no token". |
 | `FOREMAN_FETCH_MINUTES` | `15` | The time between two fetches |
 | `FOREMAN_ADAPTER_TIMEOUT_SECONDS` | `60` | The timeout of one adapter call |
 
@@ -452,7 +449,6 @@ Foreman's tests use synthetic repo lists and plugins, so they do not wait for th
 - The tokens file is a JSON object with one token for each `<host>/<owner>`, for example `{"github.com/acme": "…", "github.com/bebopaloo": "…"}`. A repo uses the token of its host and owner. With no token, the repo is "not connected: no token", and the work routes return no data for it.
 - Foreman applies the `token_prefix` of each adapter to the token. A token with another prefix is "token refused: not a fine-grained token" for that adapter, and no subprocess of that adapter runs for that owner.
 - The token is in memory only in the runner. It never goes into a log, a response, the database or an error message. The logger redacts the key `token` and every key that ends in `_token`, with a custom serializer, because a Pino `redact` path cannot match a key suffix.
-- `pnpm local:up` reads one Keychain item for each distinct `<host>/<owner>` in the repo list, with the service `foreman` and `<host>/<owner>` as the account (`security find-generic-password -s foreman -a github.com/acme -w`). It gives the JSON object to Compose in an environment variable of the Compose process only, and Compose mounts it as the secret `foreman_tokens`. A missing item is a missing host in the object.
 - The README gives the setup steps: create a fine-grained token with the read permissions Metadata, Contents, Issues, Pull requests, Commit statuses, Checks and Actions, with the owner of the repos and only those repos, with an expiry date, and store it with `security add-generic-password -s foreman -a github.com/<owner> -w`. Repeat for each owner.
 
 ### The runner
@@ -581,9 +577,9 @@ Order: issues and pull requests sort by repo ID, then by number from high to low
 
 ## Gating and rollout
 
-- **Gating:** not required. The feature adds new routes, new tables and a header. The new `client` value on the usage routes is optional, and a request with no value gets the same result as before. The token is the switch: with no Keychain item, no adapter runs and nothing goes out.
-- **Rollout:** the issues of this Spec are blocked by the Usage ingest issues for the usage routes, `pnpm reindex` and the local runtime stack. They merge into the main branch one by one (Incremental). The runner, the allow-lists and the token rules merge before the first fetch. Real data shows after the factory work items exist and the Operator stores the tokens. A schema change needs no data migration: `pnpm reindex` empties the cache, and the next full fetch fills it again.
-- **Undo:** delete the Keychain items, run `pnpm local:reindex` to empty the work cache, and restart the stack; the views then show "not connected". To undo the code, revert the merged pull requests.
+- **Gating:** not required. The feature adds new routes, new tables and a header. The new `client` value on the usage routes is optional, and a request with no value gets the same result as before. The token is the switch: with no token, no adapter runs and nothing goes out.
+- **Rollout:** the issues of this Spec are blocked by the Usage ingest issues for the usage routes, `pnpm reindex`. They merge into the main branch one by one (Incremental). The runner, the allow-lists and the token rules merge before the first fetch. Real data shows after the factory work items exist and the Operator stores the tokens. A schema change needs no data migration: `pnpm reindex` empties the cache, and the next full fetch fills it again.
+- **Undo:** delete `FOREMAN_TOKENS_JSON`, run `pnpm reindex` to empty the work cache, and restart `pnpm dev`; the views then show "not connected". To undo the code, revert the merged pull requests.
 - **Dev and CI:** the runner calls `uv run`, so the synthetic adapter is a Python script, and dev and CI need `uv` and Python 3.12 or later. The CI workflow gains that setup step.
 
 ## Data and compliance
@@ -591,7 +587,7 @@ Order: issues and pull requests sort by repo ID, then by number from high to low
 - `.claude/factory.json` names no compliance regime.
 - The cache holds issue and pull request titles, labels, branch names and the forge logins of authors and reviewers. Logins of client staff and of strangers are personal data. Titles can hold client-confidential words.
 - All data stays on this Mac. The **Client scope** keeps one client's data off the screen in a screen share of another client.
-- The token is a credential. It stays in the Keychain, the Compose secret and the runner's memory.
+- The token is a credential. It stays in the gitignored dotenv file and the runner's memory.
 
 ## Out of scope
 

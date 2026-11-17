@@ -36,7 +36,7 @@ import { paginate } from "../paging.ts";
 import { workCompleteness } from "../sessions/work-items.ts";
 import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
 import { resolveWorkScope, type ScopedRepo, type WorkScope } from "../work/scope.ts";
-import { readTokens } from "../work/tokens.ts";
+import { readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -44,7 +44,7 @@ export interface ControlsOptions {
   db: Database;
   claudeDir: string;
   /** The tokens file. A repo of an owner with no token returns no cached data. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   /** Tests pass a fixed clock for the 30-day window of the Control events and the Waiver expiry. */
   now?: () => Date;
 }
@@ -55,13 +55,13 @@ function fullNameOf(entry: RepoEntry): string | null {
 
 export const controlsRoutes: FastifyPluginCallbackZod<ControlsOptions> = (
   app,
-  { db, claudeDir, tokensFile, now = () => new Date() },
+  { db, claudeDir, tokenSource, now = () => new Date() },
   done,
 ) => {
   async function scopeOf(client: string | undefined, repo: string | undefined) {
     const list = await readRepoList(claudeDir);
     const entries = list.status === "ok" ? list.repos : [];
-    return resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
+    return resolveWorkScope(entries, await readTokens(tokenSource), client, repo);
   }
 
   /** The repos of the scope by ID, with their `owner/name`. Only repos with a forge name. */

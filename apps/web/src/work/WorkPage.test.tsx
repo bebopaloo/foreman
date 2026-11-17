@@ -374,7 +374,7 @@ describe("notes and states", () => {
     fakeItems(() => response({ state: "not_connected", items: [], complete: 3 }));
     renderApp();
     expect(await screen.findByText(/^Not connected\. Add the Foreman token/)).toBeInTheDocument();
-    expect(screen.getByText("pnpm local:up")).toBeInTheDocument();
+    expect(screen.getByText("FOREMAN_TOKENS_JSON")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

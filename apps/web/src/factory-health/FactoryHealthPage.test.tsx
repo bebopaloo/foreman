@@ -521,7 +521,7 @@ describe("Rule drift", () => {
   it("shows Not connected, and the other sections still show", async () => {
     await show({ drift: drift([], { state: "not_connected" }) });
     expect(screen.getByText(/Not connected\./)).toHaveTextContent(
-      "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.",
+      "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.",
     );
     expect(screen.getByRole("table", { name: "Plugin versions" })).toBeInTheDocument();
     expect(

@@ -641,6 +641,29 @@ describe("GET /api/work/items scope and Control events", () => {
     expect(some.complete).toBe(3);
   });
 
+  it("reads the tokens of FOREMAN_TOKENS_JSON, with no tokens file", async () => {
+    const claudeDir = await makeClaudeDir({ repos: [entry("acme/app", "acme")] });
+    await database.db.insert(schema.workIssues).values(issue(APP, 1));
+    const withTokens = await buildApp({
+      config: {
+        ...testConfig,
+        FOREMAN_CLAUDE_DIR: claudeDir,
+        FOREMAN_TOKENS_JSON: new Map([["github.com/acme", "t"]]),
+      },
+      db: database.db,
+      logger: false,
+      now: () => NOW,
+    });
+    expect((await items(withTokens)).state).toBe("ok");
+    const withoutTokens = await buildApp({
+      config: { ...testConfig, FOREMAN_CLAUDE_DIR: claudeDir },
+      db: database.db,
+      logger: false,
+      now: () => NOW,
+    });
+    expect((await items(withoutTokens)).state).toBe("not_connected");
+  });
+
   it("counts a repo with a fetch error as incomplete", async () => {
     const app = await appFor({ repos: [entry("acme/app", "acme")] });
     await database.db.insert(schema.workIssues).values(issue(APP, 1));
