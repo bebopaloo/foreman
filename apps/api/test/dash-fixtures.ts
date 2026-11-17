@@ -54,7 +54,7 @@ export function gateEvent(over: Record<string, unknown> = {}): Record<string, un
 /** Writes lines to `factory/<folder>/<date>.jsonl`. Text lines go in as they are. */
 export async function writeJsonl(
   factory: string,
-  folder: "runs" | "controls",
+  folder: "runs" | "controls" | "findings",
   date: string,
   lines: (Record<string, unknown> | string)[],
   options: { lineEnd?: boolean } = {},

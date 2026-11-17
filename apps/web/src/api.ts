@@ -22,6 +22,7 @@ import {
   WorkItemsResponse,
   WorkReposResponse,
   WorkStatusResponse,
+  FindingsResponse,
 } from "@foreman/shared";
 
 function apiUrl(path: string): URL {
@@ -217,6 +218,20 @@ export const fetchReviewsPullRequests = (
     ReviewsPullRequestsResponse,
     signal,
   );
+};
+
+/** One page of the findings ledger. `filters` holds the values that are set. */
+export const fetchFindings = (
+  client: string | null,
+  filters: Readonly<Record<string, string>>,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<FindingsResponse> => {
+  const params = new URLSearchParams(filters);
+  if (client !== null) params.set("client", client);
+  if (cursor !== null) params.set("cursor", cursor);
+  const text = params.toString();
+  return getJson(`/api/reviews/findings${text === "" ? "" : `?${text}`}`, FindingsResponse, signal);
 };
 
 const scopedPath = (path: string, client: string | null, cursor: string | null = null): string => {
