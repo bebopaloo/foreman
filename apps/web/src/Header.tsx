@@ -1,3 +1,4 @@
+import { useStalledTitle } from "./dash/stalled-title.ts";
 import { ConnectionBar } from "./connection/index.ts";
 import { Nav } from "./nav/index.ts";
 import { ThemeButton } from "./theme/index.ts";
@@ -5,6 +6,7 @@ import { ScopedLink, ScopeSelector, useScope } from "./scope/index.ts";
 
 export function Header() {
   const { unknownClient } = useScope();
+  useStalledTitle();
   return (
     <header className="app-header">
       <div className="app-header-top">

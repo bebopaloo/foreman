@@ -172,6 +172,49 @@ export const DashRepo = z
   .strict();
 export type DashRepo = z.infer<typeof DashRepo>;
 
+export const RUN_STATES = [
+  "running",
+  "stalled",
+  "ended",
+  "ended-without-summary",
+  /** No lock and no run in the night log. */
+  "none",
+  /** Foreman cannot read the run lock. */
+  "unreadable",
+] as const;
+export const RunState = z.enum(RUN_STATES);
+export type RunState = z.infer<typeof RunState>;
+
+/** The state of the newest run, with the facts that decide it. */
+export const RunStatus = z
+  .object({
+    state: RunState,
+    /** The run of the lock, or the newest run of the night log. Null with no run. */
+    runId: z.string().nullable(),
+    /** True when the lock is held but its heartbeat is stale (the run died). */
+    lockStale: z.boolean(),
+    /** Why a run is stalled: the loop session ended its turn, or nothing moved for too long. */
+    stalledBy: z.enum(["end-turn", "quiet"]).nullable(),
+    /** The heartbeat of a held lock. */
+    heartbeatAt: z.iso.datetime().nullable(),
+    /** The newest night log line of the run. */
+    lastLineAt: z.iso.datetime().nullable(),
+    /** The newest write to the transcript of the loop session, or null when Foreman found none. */
+    loopActivityAt: z.iso.datetime().nullable(),
+    /** The time when the loop session ended its turn, or null. */
+    loopEndedTurnAt: z.iso.datetime().nullable(),
+    /** The background agents in flight in the loop session, or null when Foreman found no session. */
+    agentsInFlight: z.number().int().min(0).nullable(),
+    /** Whole seconds since the newest of the three activity times, for a held lock. */
+    quietSeconds: z.number().int().min(0).nullable(),
+    /** The seconds of quiet after which a held run is stalled. */
+    stallAfterSeconds: z.number().int().positive(),
+    /** True when a summary file exists for an ended run. Null while the run is held. */
+    hasSummary: z.boolean().nullable(),
+  })
+  .strict();
+export type RunStatus = z.infer<typeof RunStatus>;
+
 export const DashResponse = z
   .object({
     run: z
@@ -183,6 +226,16 @@ export const DashResponse = z
         heartbeatAt: z.iso.datetime().nullable(),
         /** Whole seconds, never below 0: a heartbeat in the future counts as now. */
         heartbeatAgeSeconds: z.number().int().min(0).nullable(),
+      })
+      .strict(),
+    /** The state of the newest run in all scopes, with its evidence. */
+    runStatus: RunStatus,
+    /** The night log lines of the window that name no repo of the repo list. */
+    unmapped: z
+      .object({
+        lines: z.number().int().min(0),
+        /** The repo values of those lines, sorted, at most 10. */
+        repos: z.array(z.string()),
       })
       .strict(),
     /** The newest run in scope, or null with no run in the last 30 days. */

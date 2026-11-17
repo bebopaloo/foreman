@@ -1,9 +1,10 @@
-import { chmod } from "node:fs/promises";
+import { chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { openTestDatabase, testConfig } from "./database.ts";
+import { entry } from "./repo-list-fixtures.ts";
 import {
   gateEvent,
   isoSeconds,
@@ -76,6 +77,21 @@ describe("GET /api/dash", () => {
     expect(response.statusCode).toBe(200);
     expect(body).toEqual({
       run: { state: "none", stale: false, heartbeatAt: null, heartbeatAgeSeconds: null },
+      runStatus: {
+        state: "none",
+        runId: null,
+        lockStale: false,
+        stalledBy: null,
+        heartbeatAt: null,
+        lastLineAt: null,
+        loopActivityAt: null,
+        loopEndedTurnAt: null,
+        agentsInFlight: null,
+        quietSeconds: null,
+        stallAfterSeconds: 1200,
+        hasSummary: null,
+      },
+      unmapped: { lines: 0, repos: [] },
       lastRun: null,
       reviewHealth: {
         firstRound: { rate: null, passed: 0, total: 0, tiers: [] },
@@ -144,6 +160,32 @@ describe("GET /api/dash", () => {
     } finally {
       await chmod(path.join(factory, "runs"), 0o755);
     }
+  });
+
+  it("shows a stalled run and counts a night log line that maps to no repo", async () => {
+    const { body } = await dash(async (factory) => {
+      await writeJsonl(factory, "runs", TODAY, [
+        nightLine({ time: isoSeconds(minutesAgo(40)) }),
+        nightLine({ repo: "mystery", issue: 7, time: isoSeconds(minutesAgo(30)) }),
+        nightLine({ repo: "app", issue: 8, time: isoSeconds(minutesAgo(30)) }),
+        nightLine({ repo: "acme/app", issue: 9, time: isoSeconds(minutesAgo(30)) }),
+      ]);
+      await writeFile(
+        path.join(factory, "repos.json"),
+        JSON.stringify({ repos: [{ ...entry("acme/app", "acme"), path: "/synthetic/acme/app" }] }),
+      );
+      await writeLock(factory, {
+        run_id: "run-1",
+        heartbeat: minutesAgo(25).getTime() / 1000,
+      });
+    });
+    expect(body.runStatus).toMatchObject({
+      state: "stalled",
+      runId: "run-1",
+      stalledBy: "quiet",
+    });
+    // The lines "app" and "acme/app" map to the repo. The line "mystery" maps to none.
+    expect(body.unmapped).toEqual({ lines: 1, repos: ["mystery"] });
   });
 
   it("shows a heartbeat in the future as now", async () => {
