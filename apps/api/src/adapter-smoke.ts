@@ -2,11 +2,11 @@ import { loadConfig } from "./config.ts";
 import { resolveAdapter } from "./work/adapters.ts";
 import { readRepoList } from "./work/repo-list.ts";
 import { runAdapterCommand } from "./work/runner.ts";
-import { NO_TOKEN_STATE, readTokens, resolveToken } from "./work/tokens.ts";
+import { NO_TOKEN_STATE, readTokens, resolveToken, type TokenSource } from "./work/tokens.ts";
 
 export interface SmokeOptions {
   claudeDir: string;
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   allowedHosts: readonly string[];
   timeoutMs: number;
 }
@@ -25,7 +25,7 @@ export interface SmokeResult {
 export async function runAdapterSmoke(options: SmokeOptions): Promise<SmokeResult> {
   const list = await readRepoList(options.claudeDir);
   if (list.status !== "ok") return { ok: true, lines: ["no repo list: nothing to check"] };
-  const tokens = await readTokens(options.tokensFile);
+  const tokens = await readTokens(options.tokenSource);
 
   const first = new Map<string, { host: string; repo: string; forge: string | null }>();
   for (const repo of list.repos) {
@@ -82,7 +82,7 @@ if (import.meta.main) {
   const config = loadConfig();
   const result = await runAdapterSmoke({
     claudeDir: config.FOREMAN_CLAUDE_DIR,
-    tokensFile: config.FOREMAN_TOKENS_FILE,
+    tokenSource: config.FOREMAN_TOKENS_JSON ?? config.FOREMAN_TOKENS_FILE,
     allowedHosts: config.FOREMAN_ALLOWED_HOSTS,
     timeoutMs: config.FOREMAN_ADAPTER_TIMEOUT_SECONDS * 1000,
   });

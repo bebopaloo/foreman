@@ -3,7 +3,7 @@ import { desc, eq, notInArray } from "drizzle-orm";
 import { fetchRepo, type RoleOutcome } from "./fetch-repo.ts";
 import { readRepoList, type RepoListProblem } from "./repo-list.ts";
 import { DEFAULT_TIMEOUT_MS } from "./runner.ts";
-import { readTokens } from "./tokens.ts";
+import { readTokens, type TokenSource } from "./tokens.ts";
 
 const FULL_FETCH_AFTER_MS = 24 * 60 * 60 * 1000;
 
@@ -19,7 +19,7 @@ export interface FetchOptions {
   db: Database;
   claudeDir: string;
   /** The tokens file. With no file, every repo is "not connected: no token". */
-  tokensFile?: string;
+  tokenSource?: TokenSource;
   /** The hosts that an adapter may call, in lower case. */
   allowedHosts?: readonly string[];
   timeoutMs?: number;
@@ -98,7 +98,7 @@ export async function runFetch(options: FetchOptions): Promise<FetchResult> {
       startedAt.getTime() - lastFull.startedAt.getTime() > FULL_FETCH_AFTER_MS;
     kind = full ? "full" : "incremental";
 
-    const tokens = await readTokens(options.tokensFile);
+    const tokens = await readTokens(options.tokenSource);
     const runner = {
       allowedHosts: options.allowedHosts ?? [],
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,

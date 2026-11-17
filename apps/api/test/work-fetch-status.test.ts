@@ -54,7 +54,7 @@ async function setup() {
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       now: () => now,
-      tokensFile,
+      tokenSource: tokensFile,
     });
   /** Sets the forge scenario: the lists and the status answers. */
   async function forge(all: unknown[], open: unknown[], statuses: Scenario = {}) {

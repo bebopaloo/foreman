@@ -19,7 +19,7 @@ import { paginate } from "../paging.ts";
 import { workCompleteness } from "../sessions/work-items.ts";
 import { readRepoList } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
-import { NO_TOKEN_STATE, readTokens } from "../work/tokens.ts";
+import { NO_TOKEN_STATE, readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -28,7 +28,7 @@ export interface FactoryHealthOptions {
   /** The folder of the one `directory` Marketplace that Foreman may read. */
   marketplaceDir: string | undefined;
   /** The tokens file. A repo of an owner with no token returns no cached data. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   db: Database;
   /** Tests pass a fixed clock. */
   now?: () => Date;
@@ -36,7 +36,7 @@ export interface FactoryHealthOptions {
 
 export const factoryHealthRoutes: FastifyPluginCallbackZod<FactoryHealthOptions> = (
   app,
-  { claudeDir, marketplaceDir, tokensFile, db, now = () => new Date() },
+  { claudeDir, marketplaceDir, tokenSource, db, now = () => new Date() },
   done,
 ) => {
   app.get(
@@ -86,7 +86,7 @@ export const factoryHealthRoutes: FastifyPluginCallbackZod<FactoryHealthOptions>
       const { client, repo, limit, cursor } = request.query;
       const list = await readRepoList(claudeDir);
       const entries = list.status === "ok" ? list.repos : [];
-      const tokens = await readTokens(tokensFile);
+      const tokens = await readTokens(tokenSource);
       const scope = resolveWorkScope(entries, tokens, client, repo);
       if (!scope.ok) return reply.status(400).send({ error: scope.error, requestId: request.id });
 

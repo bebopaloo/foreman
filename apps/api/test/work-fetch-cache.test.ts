@@ -68,7 +68,7 @@ async function setup(
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       now: () => now,
-      ...(tokensFile === undefined ? {} : { tokensFile }),
+      ...(tokensFile === undefined ? {} : { tokenSource: tokensFile }),
     });
   return { claudeDir, adapters, fetchAt };
 }
@@ -528,7 +528,7 @@ describe("a role that cannot run", () => {
     await runFetch({
       db: database.db,
       claudeDir,
-      tokensFile,
+      tokenSource: tokensFile,
       allowedHosts: ["github.com"],
       now: () => T0,
     });
@@ -544,7 +544,7 @@ describe("a role that cannot run", () => {
     await runFetch({
       db: database.db,
       claudeDir: env.claudeDir,
-      tokensFile: await writeTokens(env.claudeDir, { "github.com/acme": TOKEN }),
+      tokenSource: await writeTokens(env.claudeDir, { "github.com/acme": TOKEN }),
       allowedHosts: ["other.example"],
       now: () => T0,
     });

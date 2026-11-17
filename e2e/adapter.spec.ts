@@ -52,7 +52,7 @@ test("a set with no token is not connected and the adapter is never called", asy
   await useFixture("fetch-not-connected");
   await page.goto("/work");
   await expect(
-    page.getByText(/Not connected\. Add the Foreman token to the Keychain/),
+    page.getByText(/Not connected\. Add the Foreman token to FOREMAN_TOKENS_JSON/),
   ).toBeVisible();
   await expect(table(page)).toHaveCount(0);
   expect(await adapterCalls(LIVE_CLAUDE_DIR, "tracker")).toEqual([]);

@@ -7,8 +7,9 @@
     "./repo-list": "./src/work/repo-list.ts"
   },
   "scripts": {
-    "dev": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node --watch src/server.ts",
+    "dev": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node --env-file-if-exists=../../.env --watch src/server.ts",
     "start": "node src/server.ts",
+    "adapter-smoke": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node --env-file-if-exists=../../.env src/adapter-smoke.ts",
     "reindex": "DATABASE_URL=${DATABASE_URL:-postgres://app@127.0.0.1:55432/app} node src/reindex.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run"
