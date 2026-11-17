@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-11-14. Amends factory [ADR 0007](https://github.com/bebopaloo/factory/blob/main/_context/adr/0007-foreman-admin-ui.md) (scope, data sources and security).
+Accepted, 2026-11-14. The paragraph "The token storage" is superseded by [ADR 0005](0005-tokens-in-a-gitignored-dotenv-file.md). Amends factory [ADR 0007](https://github.com/bebopaloo/factory/blob/main/_context/adr/0007-foreman-admin-ui.md) (scope, data sources and security).
 
 ## Context
 
@@ -25,7 +25,7 @@ A Python backend that imports the adapter modules was also rejected. The adapter
 - **A command allow-list.** One list in the code names the read commands that Foreman may run. Foreman refuses any other command before a subprocess starts.
 - **The hosts.** Foreman's own code calls no host. The adapter subprocess gets only the forge and tracker hosts that the repo config names. Foreman sends no telemetry.
 - **The credential.** A fine-grained personal access token, for Foreman alone, with read permissions only: Metadata, Contents, Issues, Pull requests, Commit statuses, Checks and Actions. A fine-grained token has one resource owner, so Foreman has one token for each forge host and owner, and each token covers only that owner's repos in the factory's repo list. Each token has an expiry date. A future tracker adapter gets its own read-only token by the same rule. Foreman accepts only the token type that the adapter declares (fine-grained). GitHub has no API that lists the permissions of a fine-grained token, so Foreman cannot warn about a write permission; the command allow-list keeps Foreman from writing.
-- **The token storage.** The tokens are in the macOS Keychain, one item for each host and owner. `pnpm local:up` reads them on the host and gives them to the API container as a Compose secret. The API puts each token only into the environment of an adapter subprocess, in the variable that the adapter declares. The token never goes into the repo, an env file, a log, an API response or the database. With no token, Foreman starts, and the forge and tracker views show "not connected".
+- **The token storage.** Superseded by [ADR 0005](0005-tokens-in-a-gitignored-dotenv-file.md). Old text: the tokens are in the macOS Keychain, one item for each host and owner. `pnpm local:up` reads them on the host and gives them to the API container as a Compose secret. The API puts each token only into the environment of an adapter subprocess, in the variable that the adapter declares. The token never goes into the repo, an env file, a log, an API response or the database. With no token, Foreman starts, and the forge and tracker views show "not connected".
 - **The cache.** Foreman fetches on start, each 15 minutes while it runs, and on a refresh request. The contract has no "updated" time, so each fetch reads the full lists, and reads the details only of open items and of items whose state or labels changed; a full fetch runs once a day and on `pnpm reindex`. The results go into Postgres, in the **Work cache**. A reindex restores the open items and the newest closed items, but not the older closed items. The forge and the tracker stay the record. The views read only the cache and show the "data as of" time. When a fetch fails, the views keep the last data and show its age and a short reason.
 - **Security artefacts.** Foreman reads the Waivers, the Risk map, the Control register, the Threat model and the Release records from the forge, at the main branch of the repo (its `main_branch` in `.claude/factory.json`, else its default branch), never from a local checkout. It parses the Release record of each release tag from the one JSON file that `perform-release` attaches; that record covers the state in production.
 - **Untrusted text.** Foreman shows structured fields and titles only, as plain text, with no Markdown. It shows no body of an issue, a comment, a review thread or a pull request. Foreman takes each link from the `url` field of the adapter output, only when it uses `https`, has the repo's host and has no user name, password or port. It never shows a link that it takes from text. The page loads no image or script from another host.
@@ -35,7 +35,7 @@ A Python backend that imports the adapter modules was also rejected. The adapter
 ## Consequences
 
 - The refresh button gets new data, and Jira or Linear work with no Foreman change, through their adapters.
-- Three tests prove that Foreman runs no write command: the token type check, the command allow-list and the host allow-list. To undo the connection, the Operator deletes the Keychain items and empties the Work cache.
+- Three tests prove that Foreman runs no write command: the token type check, the command allow-list and the host allow-list. To undo the connection, the Operator deletes the tokens (see ADR 0005) and empties the Work cache.
 - The API image needs `uv`, Python and `gh`. The config folder mount already holds the installed adapters.
 - The Forge contract (factory ADR 0012) needs two read commands: `file get <path> --ref <branch|tag>` and `release asset <tag> <name>`.
 - The factory-Foreman source contract grows: the repo list gets a `client` field, which `context-init` writes. Foreman never writes the repo list.

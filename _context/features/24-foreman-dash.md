@@ -232,7 +232,7 @@ Fixtures are synthetic: a synthetic repo list, night log, run lock, Control even
 - **Given** no token for any repo in scope
 - **When** the dash loads
 - **Then** Now, Last run and Review health show the local data from the night log, the lock and the Control events
-- **And** the pipeline strip, Waits for you and the Factory identity counts show "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`."
+- **And** the pipeline strip, Waits for you and the Factory identity counts show "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev."
 
 ### Titles stay plain text
 

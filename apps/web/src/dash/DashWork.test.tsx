@@ -173,7 +173,7 @@ describe("The pipeline now", () => {
     renderApp();
     const region = await screen.findByRole("region", { name: "The pipeline now" });
     expect(region).toHaveTextContent(
-      "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.",
+      "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.",
     );
     expect(within(region).queryByRole("list", { name: "Pipeline stages" })).toBeNull();
   });

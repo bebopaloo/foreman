@@ -31,7 +31,7 @@ import { readRepoList, type RepoEntry } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
 import type { FetchSchedule } from "../work/schedule.ts";
 import { readWorkStatus } from "../work/status.ts";
-import { readTokens } from "../work/tokens.ts";
+import { readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -40,7 +40,7 @@ export interface WorkOptions {
   claudeDir: string;
   schedule: FetchSchedule;
   /** The tokens file. A repo of an owner with no token returns no data. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   /** The origins that may send a refresh request. */
   allowedOrigins: readonly string[];
   /** Tests pass a fixed clock for the 30-day window of the Control events. */
@@ -54,7 +54,7 @@ async function currentRepos(claudeDir: string): Promise<RepoEntry[]> {
 
 export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   app,
-  { db, claudeDir, schedule, tokensFile, allowedOrigins, now = () => new Date() },
+  { db, claudeDir, schedule, tokenSource, allowedOrigins, now = () => new Date() },
   done,
 ) => {
   app.get(
@@ -101,7 +101,7 @@ export const workRoutes: FastifyPluginCallbackZod<WorkOptions> = (
   async function scopeOf(client: string | undefined, repo: string | undefined) {
     const list = await readRepoList(claudeDir);
     const entries = list.status === "ok" ? list.repos : [];
-    return resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
+    return resolveWorkScope(entries, await readTokens(tokenSource), client, repo);
   }
 
   app.get(

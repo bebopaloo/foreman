@@ -206,7 +206,7 @@ Fixtures are synthetic: a synthetic repo list, night log, Control events, Work c
 - **Given** no token for any repo in scope
 - **When** the view loads
 - **Then** the tiles and every section show the data from the Control events, the night log and the Usage index, with no links
-- **And** the signal list and the pull request list show "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`."
+- **And** the signal list and the pull request list show "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev."
 
 ### Malformed events
 

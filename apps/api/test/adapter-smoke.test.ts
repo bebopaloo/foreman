@@ -61,7 +61,12 @@ async function adapterOutput(stdout: string, exit = 0) {
 }
 
 const run = () =>
-  runAdapterSmoke({ claudeDir, tokensFile, allowedHosts: ["github.com"], timeoutMs: 20_000 });
+  runAdapterSmoke({
+    claudeDir,
+    tokenSource: tokensFile,
+    allowedHosts: ["github.com"],
+    timeoutMs: 20_000,
+  });
 
 describe("runAdapterSmoke", () => {
   it("reports connected when the forge adapter gives valid output", async () => {

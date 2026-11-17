@@ -10,7 +10,8 @@ export function DataNotes({ state, complete }: Pick<ReviewsResponse, "state" | "
   if (state === "not_connected") {
     return (
       <p className="note">
-        Not connected. Add the Foreman token to the Keychain, then run <code>pnpm local:up</code>.
+        Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart
+        pnpm dev.
       </p>
     );
   }

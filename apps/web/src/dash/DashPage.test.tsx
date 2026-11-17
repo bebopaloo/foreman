@@ -2,6 +2,21 @@ import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dashRequests, fakeApi, renderApp } from "../test-render.tsx";
 
+const status = {
+  state: "stalled" as const,
+  runId: "run-42",
+  lockStale: false,
+  stalledBy: "quiet" as const,
+  heartbeatAt: "2026-11-15T11:20:00.000Z",
+  lastLineAt: "2026-11-15T11:21:00.000Z",
+  loopActivityAt: "2026-11-15T11:22:00.000Z",
+  loopEndedTurnAt: null,
+  agentsInFlight: 0,
+  quietSeconds: 1680,
+  stallAfterSeconds: 1200,
+  hasSummary: null,
+};
+
 const inProgress = {
   run: {
     state: "in_progress" as const,
@@ -10,6 +25,80 @@ const inProgress = {
     heartbeatAgeSeconds: 240,
   },
 };
+
+describe("Now run states", () => {
+  beforeEach(() => {
+    document.title = "foreman";
+  });
+
+  it("shows a stalled run with its evidence and puts a prefix on the tab title", async () => {
+    fakeApi({ dash: { ...inProgress, runStatus: status } });
+    renderApp();
+    expect(await screen.findByText("Run stalled")).toBeInTheDocument();
+    expect(screen.getByText(/no activity for 28 minutes/)).toBeInTheDocument();
+    expect(screen.getByText("Heartbeat at 11:20Z.")).toBeInTheDocument();
+    expect(screen.getByText("Last night log line at 11:21Z.")).toBeInTheDocument();
+    expect(screen.getByText("Loop session transcript last written at 11:22Z.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.title).toBe("Stalled · foreman");
+    });
+  });
+
+  it("shows a loop session that ended its turn", async () => {
+    fakeApi({
+      dash: {
+        ...inProgress,
+        runStatus: {
+          ...status,
+          stalledBy: "end-turn",
+          loopEndedTurnAt: "2026-11-15T11:55:00.000Z",
+        },
+      },
+    });
+    renderApp();
+    expect(
+      await screen.findByText(
+        "The loop session ended its turn at 11:55Z, and no background agent runs.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the tab title plain for a run that is not stalled", async () => {
+    fakeApi({
+      dash: { ...inProgress, runStatus: { ...status, state: "running", stalledBy: null } },
+    });
+    renderApp();
+    expect(await screen.findByText("Run in progress")).toBeInTheDocument();
+    expect(document.title).not.toContain("Stalled");
+  });
+
+  it("shows an ended run with no summary file", async () => {
+    fakeApi({
+      dash: {
+        runStatus: {
+          ...status,
+          state: "ended-without-summary",
+          stalledBy: null,
+          quietSeconds: null,
+          hasSummary: false,
+        },
+      },
+    });
+    renderApp();
+    expect(await screen.findByText("No run in progress")).toBeInTheDocument();
+    expect(screen.getByText("Run run-42 ended and has no summary file.")).toBeInTheDocument();
+  });
+
+  it("shows the night log lines that name no repo", async () => {
+    fakeApi({ dash: { unmapped: { lines: 3, repos: ["foreman"] } } });
+    renderApp();
+    expect(
+      await screen.findByText(
+        /3 night log lines name a repo that is not in the repo list: foreman/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
 
 describe("Now", () => {
   it("shows a run in progress with the heartbeat age", async () => {

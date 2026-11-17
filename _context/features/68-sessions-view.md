@@ -216,7 +216,7 @@ Fixtures are synthetic: synthetic transcripts in the public transcript format, a
 - **Given** no token for any repo in scope
 - **When** the page loads
 - **Then** the sessions and the spans still show, from the **Usage index**
-- **And** the work items show their numbers only, and the timeline shows "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`."
+- **And** the work items show their numbers only, and the timeline shows "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev."
 
 ### Metadata only
 
@@ -317,7 +317,7 @@ All data comes from the **Usage index** of the Usage ingest Spec, with the addit
 - `turns` gains the column `worktree_name` (text, or none). The ingest takes it from the raw working folder of the record, before the Project rules map the folder to a Project key. It is the folder name directly below a part `<folder>.worktrees/`, `.worktrees/` or `.claude/worktrees/`. For `/synthetic/acme/app.worktrees/212-add-refunds/src` it is `212-add-refunds`. A working folder with no such part has none.
 - The path rules of the Usage ingest Spec gain one rule: a path with a part `<repo folder>.worktrees/<name>`, where `<repo folder>` is a folder name that is not empty, maps to `<repo folder>`. This Spec replaces the Usage ingest sentence "a path with a `.claude/worktrees/<name>` or `.worktrees/<name>` part maps to the path before that part" with: "a path with a `.claude/worktrees/<name>` or `.worktrees/<name>` part maps to the path before that part, and a path with a `<repo folder>.worktrees/<name>` part maps to `<repo folder>`". Factory ADR 0016 puts each build worktree at `<repo folder>.worktrees/<branch>`, next to the repo folder. Today the path rules match only `.worktrees/<name>` below the repo folder, so in the local runtime a factory worktree becomes a Project of its own, and its Turns fall out of the Client scope.
 - `user_messages` already has an index on the session ID and on the time (issue #15). This Spec adds no index.
-- The migration adds a column that can be empty. Old Turns get their worktree name after `pnpm reindex`. The rollout runs `pnpm local:reindex` once.
+- The migration adds a column that can be empty. Old Turns get their worktree name after `pnpm reindex`. The rollout runs `pnpm reindex` once.
 
 ### Refresh schedule
 
@@ -450,7 +450,7 @@ The list query reads the Turns of the day with the index on the Turn time. The n
 ## Gating and rollout
 
 - **Gating:** not required. The view adds a page, two routes and one column. The path rule change moves the Turns of sibling worktrees to their repo's Project, which is the behaviour that git already gives when the folder exists. No other component reads the new column. The shorter refresh interval has its own variable: `FOREMAN_USAGE_REFRESH_MINUTES=1440` gives the old daily schedule back with no code change.
-- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". The Usage index change merges first. After it reaches the local runtime, the Operator runs `pnpm local:reindex` once, so that old Turns get their worktree name and their Project. To undo, revert the change; the view stores nothing, and `pnpm reindex` rebuilds the index.
+- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". The Usage index change merges first. After it reaches the local runtime, the Operator runs `pnpm reindex` once, so that old Turns get their worktree name and their Project. To undo, revert the change; the view stores nothing, and `pnpm reindex` rebuilds the index.
 
 ## Data and compliance
 

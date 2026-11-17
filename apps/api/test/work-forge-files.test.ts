@@ -101,7 +101,7 @@ async function setup(repos: string[] = ["acme/app"], forgeExtra: Scenario = {}) 
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       now: () => now,
-      tokensFile,
+      tokenSource: tokensFile,
       refresh,
     });
   return { claudeDir, adapters, setForge, fetchAt };
@@ -974,7 +974,7 @@ describe("the rule files", () => {
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       now: () => T0,
-      tokensFile: await writeTokens(claudeDir, { "github.com/acme": TOKEN }),
+      tokenSource: await writeTokens(claudeDir, { "github.com/acme": TOKEN }),
       log: { info: (line) => lines.push(line), warn: (line) => lines.push(line) },
     });
     const text = lines.join("\n");

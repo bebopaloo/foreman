@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -72,4 +72,63 @@ export async function writeLock(factory: string, lock: unknown): Promise<void> {
     path.join(factory, "run.lock"),
     typeof lock === "string" ? lock : JSON.stringify(lock),
   );
+}
+
+/** The text that marks the session of an unattended run. */
+const LOOP_PROMPT = "<scheduled-task>\n[factory:unattended]\nRun the loop.\n</scheduled-task>";
+
+export function transcriptUser(at: Date, text: string = LOOP_PROMPT): Record<string, unknown> {
+  return {
+    type: "user",
+    timestamp: at.toISOString(),
+    message: { role: "user", content: [{ type: "text", text }] },
+  };
+}
+
+export function transcriptAssistant(
+  at: Date,
+  stopReason: "end_turn" | "tool_use",
+  blocks: Record<string, unknown>[] = [{ type: "text", text: "Done." }],
+): Record<string, unknown> {
+  return {
+    type: "assistant",
+    timestamp: at.toISOString(),
+    message: { role: "assistant", stop_reason: stopReason, content: blocks },
+  };
+}
+
+export function backgroundAgent(): Record<string, unknown> {
+  return {
+    type: "tool_use",
+    id: "toolu_1",
+    name: "Agent",
+    input: { prompt: "build", run_in_background: true },
+  };
+}
+
+/** Writes a session transcript to `projects/<project>/<name>.jsonl` and sets its write time. */
+export async function writeTranscript(
+  claudeDir: string,
+  options: {
+    project?: string;
+    name: string;
+    lines: (Record<string, unknown> | string)[];
+    mtime: Date;
+  },
+): Promise<string> {
+  const folder = path.join(claudeDir, "projects", options.project ?? "-synthetic");
+  await mkdir(folder, { recursive: true });
+  const file = path.join(folder, `${options.name}.jsonl`);
+  const text = options.lines.map((line) =>
+    typeof line === "string" ? line : JSON.stringify(line),
+  );
+  await writeFile(file, `${text.join("\n")}\n`);
+  await utimes(file, options.mtime, options.mtime);
+  return file;
+}
+
+/** Writes the run summary `runs/<date>-<run id>.md`. */
+export async function writeSummary(factory: string, date: string, runId: string): Promise<void> {
+  await mkdir(path.join(factory, "runs"), { recursive: true });
+  await writeFile(path.join(factory, "runs", `${date}-${runId}.md`), "# Summary\n");
 }
