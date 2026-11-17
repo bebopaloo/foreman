@@ -76,7 +76,7 @@ export async function readNightLog(claudeDir: string, now: Date): Promise<NightL
 }
 
 /** A lock with a heartbeat older than this is stale, as in `factory_run.py`. */
-export const STALE_LOCK_SECONDS = 10_800;
+export const STALE_LOCK_SECONDS = 2_700;
 const RETRY_MS = 100;
 
 const RunLockFile = z.object({

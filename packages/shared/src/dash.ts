@@ -221,7 +221,7 @@ export const DashResponse = z
       .object({
         /** `none` is no lock, a stale lock or a lock that Foreman cannot read. */
         state: z.enum(["in_progress", "none", "unreadable"]),
-        /** True when a stopped run left a lock with a heartbeat more than 3 hours ago. */
+        /** True when a stopped run left a lock with a heartbeat more than 45 minutes ago. */
         stale: z.boolean(),
         heartbeatAt: z.iso.datetime().nullable(),
         /** Whole seconds, never below 0: a heartbeat in the future counts as now. */

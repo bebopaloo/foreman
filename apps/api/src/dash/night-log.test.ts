@@ -128,11 +128,11 @@ describe("readRunLock", () => {
     expect(lock).toMatchObject({ state: "held", runId: "run-1", stale: false, ageSeconds: 239 });
   });
 
-  it("marks a heartbeat more than 10,800 seconds ago as stale, and only then", async () => {
+  it("marks a heartbeat more than 2,700 seconds ago as stale, and only then", async () => {
     const { claudeDir, factory } = await makeFactoryDir();
-    await writeLock(factory, { run_id: "run-1", heartbeat: NOW.getTime() / 1000 - 10_800 });
+    await writeLock(factory, { run_id: "run-1", heartbeat: NOW.getTime() / 1000 - 2_700 });
     expect(await readRunLock(claudeDir, NOW)).toMatchObject({ stale: false });
-    await writeLock(factory, { run_id: "run-1", heartbeat: NOW.getTime() / 1000 - 10_801 });
+    await writeLock(factory, { run_id: "run-1", heartbeat: NOW.getTime() / 1000 - 2_701 });
     expect(await readRunLock(claudeDir, NOW)).toMatchObject({ stale: true });
   });
 

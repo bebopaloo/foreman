@@ -65,9 +65,9 @@ describe("GET /api/dash", () => {
     });
   });
 
-  it("shows no run and a stale flag for a heartbeat more than 3 hours ago", async () => {
+  it("shows no run and a stale flag for a heartbeat more than 45 minutes ago", async () => {
     const { body } = await dash((factory) =>
-      writeLock(factory, { run_id: "run-1", heartbeat: minutesAgo(181).getTime() / 1000 }),
+      writeLock(factory, { run_id: "run-1", heartbeat: minutesAgo(46).getTime() / 1000 }),
     );
     expect(body.run).toMatchObject({ state: "none", stale: true });
   });
