@@ -10,7 +10,7 @@ import {
   writeJsonl,
   writeLock,
 } from "../../test/dash-fixtures.ts";
-import { readNightLog, readRunLock } from "./night-log.ts";
+import { createRepoMatcher, readNightLog, readRunLock } from "./night-log.ts";
 
 const TODAY = "2026-11-15";
 
@@ -166,5 +166,47 @@ describe("readRunLock", () => {
     const { claudeDir, factory } = await makeFactoryDir();
     await writeLock(factory, { run_id: "run-1", heartbeat: "soon" });
     expect(await readRunLock(claudeDir, NOW, 1)).toEqual({ state: "unreadable" });
+  });
+});
+
+describe("createRepoMatcher", () => {
+  const match = createRepoMatcher([
+    { id: "r-foreman", path: "/x/foreman", owner: "bebopaloo", name: "foreman" },
+    { id: "r-app", path: "/x/acme/app", owner: "acme", name: "app" },
+    { id: "r-app2", path: "/x/globex/app", owner: "globex", name: "app" },
+    { id: "r-bare", path: "/x/bare", owner: null, name: null },
+  ]);
+
+  it("maps a line by the folder path", () => {
+    expect(match("/x/foreman")).toBe("r-foreman");
+    expect(match("/x/foreman/")).toBe("r-foreman");
+  });
+
+  it("maps a line by the folder name or by owner/name", () => {
+    expect(match("foreman")).toBe("r-foreman");
+    expect(match("bebopaloo/foreman")).toBe("r-foreman");
+    expect(match("Bebopaloo/Foreman")).toBe("r-foreman");
+    expect(match("bare")).toBe("r-bare");
+  });
+
+  it("maps a name that two repos share to no repo, but a path or owner/name still maps", () => {
+    expect(match("app")).toBeNull();
+    expect(match("acme/app")).toBe("r-app");
+    expect(match("/x/globex/app")).toBe("r-app2");
+  });
+
+  it("maps an unknown repo to null", () => {
+    expect(match("unknown")).toBeNull();
+    expect(match("/x/unknown")).toBeNull();
+  });
+});
+
+describe("readNightLog pr", () => {
+  it("reads the optional pr key", async () => {
+    const { claudeDir, factory } = await makeFactoryDir();
+    await writeJsonl(factory, "runs", TODAY, [nightLine({ issue: 1, pr: 59 }), nightLine()]);
+    const read = await readNightLog(claudeDir, NOW);
+    expect(read.entries.map((entry) => entry.pr).sort()).toEqual([59, null]);
+    expect(read.skippedLines).toBe(0);
   });
 });
