@@ -34,6 +34,8 @@ export interface RunBuild {
   result: BuildResult;
   /** The build has a line with `to` IN PROGRESS in its run. Otherwise `start` is the start of the run. */
   started: boolean;
+  /** The time of the first line that says a pull request opened, or null. It ends the build stage. */
+  prOpenedAt: Date | null;
   /** The reasons of the lines of the build, oldest first. */
   reasons: string[];
   lane: number;
@@ -72,6 +74,11 @@ function endResult(entry: NightLogEntry): BuildResult | null {
   if (entry.to === "CANCELLED") return "cancelled";
   return null;
 }
+
+/** A Spec issue settles when every child issue is DONE. It is not a build. */
+const SPEC_SETTLED = /^every child issue is DONE/i;
+/** `opened #59` or `PR #21 opened`: the build opened its pull request. */
+const PR_OPENED = /^(opened #\d+|PR #\d+ opened)/i;
 
 const isSkip = (entry: NightLogEntry): boolean => entry.from === "READY" && entry.to === "READY";
 
@@ -116,8 +123,14 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
   const end = running ? input.now : last.entry.time;
 
   const byIssue = new Map<string, ScopedLine[]>();
+  const specIssues = new Set(
+    lines
+      .filter((line) => SPEC_SETTLED.test(line.entry.reason))
+      .map((line) => `${line.repo.key}#${line.entry.issue.toString()}`),
+  );
   let skips = 0;
   for (const line of lines) {
+    if (specIssues.has(`${line.repo.key}#${line.entry.issue.toString()}`)) continue;
     if (isSkip(line.entry)) {
       skips += 1;
     } else if (!input.isParent(line.repo, line.entry.issue)) {
@@ -155,6 +168,8 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
     const buildStart = started?.entry.time ?? start;
     const fromStart =
       started === undefined ? issueLines : issueLines.slice(issueLines.indexOf(started));
+    const prOpenedAt =
+      fromStart.find((line) => PR_OPENED.test(line.entry.reason))?.entry.time ?? null;
     const ending = fromStart.find((line) => endResult(line.entry) !== null);
     if (ending !== undefined) {
       builds.push({
@@ -164,6 +179,7 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
         end: ending.entry.time,
         result: endResult(ending.entry) ?? "stopped at run end",
         started: started !== undefined,
+        prOpenedAt,
         reasons: issueLines.map((line) => line.entry.reason),
       });
       continue;
@@ -175,6 +191,7 @@ function buildRun(runId: string, lines: ScopedLine[], input: RunsInput): Run {
       start: buildStart,
       end,
       started: started !== undefined,
+      prOpenedAt,
       reasons: issueLines.map((line) => line.entry.reason),
       result: running
         ? "running"

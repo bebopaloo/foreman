@@ -1,11 +1,17 @@
 import type { Database } from "@foreman/db";
 import { schema } from "@foreman/db";
-import type { DashRepo, DashResponse } from "@foreman/shared";
+import type { DashRepo, DashResponse, RunStatus } from "@foreman/shared";
 import { eq, inArray, sql } from "drizzle-orm";
 import { readRepoList, type RepoListResult } from "../work/repo-list.ts";
 import { readControlEvents, type ControlEventsRead } from "./control-events.ts";
 import type { SkippedFile } from "./jsonl-window.ts";
-import { readNightLog, readRunLock, type NightLogRead, type RunLockRead } from "./night-log.ts";
+import {
+  createRepoMatcher,
+  readNightLog,
+  readRunLock,
+  type NightLogRead,
+  type RunLockRead,
+} from "./night-log.ts";
 import {
   BUILD_SLOTS,
   CONNECTED_STATES,
@@ -18,11 +24,17 @@ import {
 import { PARTIAL_STATE } from "../work/fetch-repo.ts";
 import { waitsOf } from "./waits.ts";
 import { reviewHealth, type ConnectedRepo } from "./review-health.ts";
+import { readRunStatus } from "./run-status.ts";
 import { folderLabel, runsInWindow, type Run, type RunRepo, type RunScope } from "./runs.ts";
+
+/** The most names of unmapped repos that the dash response lists. */
+const UNMAPPED_NAMES_SHOWN = 10;
 
 export interface DashSources {
   nightLog: NightLogRead;
   lock: RunLockRead;
+  /** The state of the newest run, with its evidence. */
+  runStatus: RunStatus;
   controls: ControlEventsRead;
   repoList: RepoListResult;
   /** The issues that have children in the Work cache, as `<repo ID>#<number>`. */
@@ -169,28 +181,68 @@ export async function readDashSources(
     readConnected(db, logins),
     readWorkCache(db),
   ]);
-  return { nightLog, lock, controls, repoList, parents, factoryLogins: logins, connected, work };
+  const runStatus = await readRunStatus(claudeDir, lock, nightLog.entries, now);
+  return {
+    nightLog,
+    lock,
+    runStatus,
+    controls,
+    repoList,
+    parents,
+    factoryLogins: logins,
+    connected,
+    work,
+  };
 }
 
-/** The repo of a night log line: the repo list entry whose `path` is the line's `repo`. */
+/**
+ * The repo of a night log line: the repo list entry that the line names by folder path, by folder
+ * name or by `owner/name`. A line that names no entry gets a repo with no ID.
+ */
 export function repoResolver(repoList: RepoListResult): (folder: string) => RunRepo {
-  const byPath = new Map<string, RunRepo>();
-  if (repoList.status === "ok") {
-    for (const entry of repoList.repos) {
-      if (byPath.has(entry.path)) continue;
-      byPath.set(entry.path, {
-        key: entry.id,
-        id: entry.id,
-        label:
-          entry.owner === null || entry.name === null
-            ? folderLabel(entry.path)
-            : `${entry.owner}/${entry.name}`,
-        client: entry.client,
-      });
-    }
+  const byId = new Map<string, RunRepo>();
+  const entries = repoList.status === "ok" ? repoList.repos : [];
+  for (const entry of entries) {
+    if (byId.has(entry.id)) continue;
+    byId.set(entry.id, {
+      key: entry.id,
+      id: entry.id,
+      label:
+        entry.owner === null || entry.name === null
+          ? folderLabel(entry.path)
+          : `${entry.owner}/${entry.name}`,
+      client: entry.client,
+    });
   }
-  return (folder) =>
-    byPath.get(folder) ?? { key: folder, id: null, label: folderLabel(folder), client: null };
+  const match = createRepoMatcher(entries);
+  return (folder) => {
+    const id = match(folder);
+    return (
+      (id === null ? undefined : byId.get(id)) ?? {
+        key: folder,
+        id: null,
+        label: folderLabel(folder),
+        client: null,
+      }
+    );
+  };
+}
+
+/** The night log lines of the window that name no repo of the repo list, and the names they use. */
+export function unmappedOf({ nightLog, repoList }: DashSources): {
+  lines: number;
+  repos: string[];
+} {
+  if (repoList.status !== "ok") return { lines: 0, repos: [] };
+  const repoOf = repoResolver(repoList);
+  const names = new Set<string>();
+  let lines = 0;
+  for (const entry of nightLog.entries) {
+    if (repoOf(entry.repo).id !== null) continue;
+    lines += 1;
+    names.add(entry.repo);
+  }
+  return { lines, repos: [...names].sort().slice(0, UNMAPPED_NAMES_SHOWN) };
 }
 
 function cachedIssue(
@@ -434,6 +486,8 @@ export function buildDash(
   return {
     response: {
       run,
+      runStatus: sources.runStatus,
+      unmapped: unmappedOf(sources),
       lastRun,
       reviewHealth: reviewHealthOf(sources, scope),
       tiles: {

@@ -72,12 +72,36 @@ const FindingOverdueEvent = z
   })
   .strict();
 
+const DeferredEvent = z
+  .object({
+    kind: z.literal("deferred"),
+    ...base,
+    pr,
+    issue: issue.nullable(),
+    tier: tier.nullable(),
+    /** The numbers of the Deferred finding issues. */
+    findings: z.array(issue),
+  })
+  .strict();
+
+const DeferralClearedEvent = z
+  .object({
+    kind: z.literal("deferral_cleared"),
+    ...base,
+    issue,
+    by: z.string().min(1),
+    waiver: z.string().min(1).nullable(),
+  })
+  .strict();
+
 const ControlEventLine = z.discriminatedUnion("kind", [
   GateEvent,
   EscalatedEvent,
   WaiverUsedEvent,
   MergedEvent,
   FindingOverdueEvent,
+  DeferredEvent,
+  DeferralClearedEvent,
 ]);
 
 export type ControlEvent = z.output<typeof ControlEventLine> & {
@@ -85,8 +109,12 @@ export type ControlEvent = z.output<typeof ControlEventLine> & {
   at: Date;
 };
 
+export type ControlEventKind = ControlEvent["kind"];
+
 export interface ControlEventsRead extends Omit<WindowRead<ControlEvent>, "items"> {
   events: ControlEvent[];
+  /** The count of valid events of each kind. */
+  counts: Record<ControlEventKind, number>;
 }
 
 export function controlEventsFolder(claudeDir: string): string {
@@ -104,5 +132,15 @@ export async function readControlEvents(claudeDir: string, now: Date): Promise<C
   const events = items
     .map(({ item, time }): ControlEvent => ({ ...item, at: time }))
     .sort((a, b) => a.at.getTime() - b.at.getTime());
-  return { ...rest, events };
+  const counts: Record<ControlEventKind, number> = {
+    gate: 0,
+    escalated: 0,
+    waiver_used: 0,
+    merged: 0,
+    finding_overdue: 0,
+    deferred: 0,
+    deferral_cleared: 0,
+  };
+  for (const event of events) counts[event.kind] += 1;
+  return { ...rest, events, counts };
 }

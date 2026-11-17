@@ -90,9 +90,27 @@ export function DashPage() {
             {now === null ? (
               <p className="muted">No data yet.</p>
             ) : (
-              <p>
-                <strong>{now.headline}</strong>
-                {now.detail === null ? null : <span className="muted">: {now.detail}</span>}
+              <>
+                <p
+                  role={now.stalled ? "alert" : undefined}
+                  className={now.stalled ? "note note-warn" : undefined}
+                >
+                  <strong>{now.headline}</strong>
+                  {now.detail === null ? null : <span className="muted">: {now.detail}</span>}
+                </p>
+                {now.evidence.length === 0 ? null : (
+                  <ul className="muted" aria-label="Run evidence">
+                    {now.evidence.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {dash.data === undefined || dash.data.unmapped.lines === 0 ? null : (
+              <p className="note note-warn">
+                {plural(dash.data.unmapped.lines, "night log line names", "night log lines name")} a
+                repo that is not in the repo list: {dash.data.unmapped.repos.join(", ")}.
               </p>
             )}
             {dash.data === undefined || dash.data.running === null ? null : (

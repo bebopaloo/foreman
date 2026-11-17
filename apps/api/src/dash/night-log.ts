@@ -25,6 +25,8 @@ const NightLogLine = z
     to: IssueState,
     reason: z.string().max(500),
     time: z.string().regex(LINE_TIME),
+    /** The pull request number. The factory writes it on some lines. */
+    pr: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -38,6 +40,8 @@ export interface NightLogEntry {
   reason: string;
   /** A time in the future counts as now. */
   time: Date;
+  /** The pull request number of the line, or null. */
+  pr: number | null;
 }
 
 export interface NightLogRead extends Omit<WindowRead<NightLogEntry>, "items"> {
@@ -65,13 +69,14 @@ export async function readNightLog(claudeDir: string, now: Date): Promise<NightL
       to: item.to,
       reason: item.reason,
       time,
+      pr: item.pr ?? null,
     }))
     .sort((a, b) => a.time.getTime() - b.time.getTime());
   return { ...rest, entries };
 }
 
 /** A lock with a heartbeat older than this is stale, as in `factory_run.py`. */
-export const STALE_LOCK_SECONDS = 10_800;
+export const STALE_LOCK_SECONDS = 2_700;
 const RETRY_MS = 100;
 
 const RunLockFile = z.object({
@@ -142,5 +147,50 @@ export async function readRunLock(
     heartbeatAt: new Date(heartbeatMs),
     ageSeconds,
     stale: (now.getTime() - attempt.heartbeat * 1000) / 1000 > STALE_LOCK_SECONDS,
+  };
+}
+
+/** The fields of a repo list entry that decide which night log lines belong to it. */
+export interface RepoMatchEntry {
+  id: string;
+  path: string;
+  owner: string | null;
+  name: string | null;
+}
+
+function folderName(folder: string): string {
+  const parts = folder.split("/").filter((part) => part.length > 0);
+  return parts[parts.length - 1] ?? folder;
+}
+
+const trimSlash = (value: string): string => value.replace(/\/+$/, "");
+
+/**
+ * Finds the repo of a night log line. The factory writes the absolute folder path, and an older or
+ * a hand-written line can hold the repo name or `owner/name`. The path wins. A name that two repos
+ * share maps to no repo, because the line cannot say which one it means.
+ */
+export function createRepoMatcher(
+  entries: readonly RepoMatchEntry[],
+): (repo: string) => string | null {
+  const byPath = new Map<string, string>();
+  const byName = new Map<string, Set<string>>();
+  const addName = (name: string, id: string): void => {
+    const key = name.toLowerCase();
+    byName.set(key, (byName.get(key) ?? new Set<string>()).add(id));
+  };
+  for (const entry of entries) {
+    const folder = trimSlash(entry.path);
+    if (!byPath.has(folder)) byPath.set(folder, entry.id);
+    addName(folderName(folder), entry.id);
+    if (entry.name !== null) addName(entry.name, entry.id);
+    if (entry.owner !== null && entry.name !== null)
+      addName(`${entry.owner}/${entry.name}`, entry.id);
+  }
+  return (repo) => {
+    const byFolder = byPath.get(trimSlash(repo));
+    if (byFolder !== undefined) return byFolder;
+    const ids = byName.get(trimSlash(repo).toLowerCase());
+    return ids?.size === 1 ? ([...ids][0] ?? null) : null;
   };
 }
