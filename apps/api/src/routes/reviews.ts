@@ -28,7 +28,7 @@ import {
 import { linkFor } from "../work/lists.ts";
 import { readRepoList } from "../work/repo-list.ts";
 import { resolveWorkScope } from "../work/scope.ts";
-import { readTokens } from "../work/tokens.ts";
+import { readTokens, type TokenSource } from "../work/tokens.ts";
 
 const RejectedResponse = z.object({ error: z.string(), requestId: z.string() }).strict();
 
@@ -36,7 +36,7 @@ export interface ReviewsOptions {
   db: Database;
   claudeDir: string;
   /** The tokens file. A repo of an owner with no token has no cache rows in scope. */
-  tokensFile: string | undefined;
+  tokenSource: TokenSource;
   /** The Factory identity logins of the config. */
   factoryLogins?: readonly string[];
   /** The "data as of" time of the Usage index, as an ISO time, or null before the first refresh. */
@@ -50,7 +50,7 @@ export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
   {
     db,
     claudeDir,
-    tokensFile,
+    tokenSource,
     factoryLogins = [],
     usageDataAsOf = () => Promise.resolve(null),
     now = () => new Date(),
@@ -60,7 +60,7 @@ export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
   async function load(client: string | undefined, repo: string | undefined, at: Date) {
     const list = await readRepoList(claudeDir);
     const entries = list.status === "ok" ? list.repos : [];
-    const scope = resolveWorkScope(entries, await readTokens(tokensFile), client, repo);
+    const scope = resolveWorkScope(entries, await readTokens(tokenSource), client, repo);
     if (!scope.ok) return scope;
     const asOf = await usageDataAsOf();
     const data = await readReviewsData(
@@ -160,7 +160,7 @@ export const reviewsRoutes: FastifyPluginCallbackZod<ReviewsOptions> = (
       const { client, limit, cursor, ...filter } = request.query;
       const list = await readRepoList(claudeDir);
       const entries = list.status === "ok" ? list.repos : [];
-      const scope = resolveWorkScope(entries, await readTokens(tokensFile), client, undefined);
+      const scope = resolveWorkScope(entries, await readTokens(tokenSource), client, undefined);
       if (!scope.ok) {
         return reply.status(400).send({ error: scope.error, requestId: request.id });
       }

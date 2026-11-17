@@ -1,6 +1,7 @@
 import type { Database } from "@foreman/db";
 import { runFetch, type FetchOptions } from "./fetch.ts";
 import { withFetchLock } from "./lock.ts";
+import type { TokenSource } from "./tokens.ts";
 
 export interface FetchState {
   state: "idle" | "running" | "failed";
@@ -11,7 +12,7 @@ export interface FetchState {
 export interface FetchScheduleOptions {
   db: Database;
   claudeDir: string;
-  tokensFile?: string;
+  tokenSource?: TokenSource;
   allowedHosts?: readonly string[];
   timeoutMs?: number;
   intervalMs: number;
@@ -56,7 +57,7 @@ export function createFetchSchedule(options: FetchScheduleOptions): FetchSchedul
           claudeDir,
           log,
           refresh,
-          ...(options.tokensFile === undefined ? {} : { tokensFile: options.tokensFile }),
+          ...(options.tokenSource === undefined ? {} : { tokenSource: options.tokenSource }),
           ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
           ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
         }),

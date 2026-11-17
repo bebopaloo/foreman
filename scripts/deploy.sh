@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy Foreman to one environment: dev or production (factory ADR 0015).
 #
-# Foreman runs only on the Operator's Mac (`pnpm local:up`), so no host gets a
+# Foreman runs only on the Operator's Mac (`pnpm dev`), so no host gets a
 # deploy. This script records the commit that the environment now holds, and
 # the release tag when the commit has one. On production, the Operator runs
 # that tag locally.

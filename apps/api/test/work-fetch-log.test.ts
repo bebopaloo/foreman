@@ -51,7 +51,7 @@ async function fetchAndCollectLog(forge: Scenario, trackerOver: Scenario = {}) {
   await runFetch({
     db: database.db,
     claudeDir,
-    tokensFile,
+    tokenSource: tokensFile,
     allowedHosts: ["github.com"],
     timeoutMs: 20_000,
     log: {

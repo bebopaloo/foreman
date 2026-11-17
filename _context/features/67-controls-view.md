@@ -228,7 +228,7 @@ Fixtures are synthetic: a synthetic repo list, Control events, Work cache and sy
 - **When** the view loads
 - **Then** Escalations shows the data from the Control events
 - **And** Waivers shows each Waiver ID from the `waiver_used` events with its uses and "register not read"
-- **And** Control modules, Releases and Security artefacts show "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`."
+- **And** Control modules, Releases and Security artefacts show "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev."
 
 ### Text stays plain text
 
@@ -432,7 +432,7 @@ All times are UTC, in ISO 8601, and dates are `YYYY-MM-DD`. The responses hold n
 ## Gating and rollout
 
 - **Gating:** not required. The view adds a page, routes, cache tables and three read commands. It changes no existing flow.
-- **Rollout:** after the step 2 Spec is built. The issues merge one by one into the Integration branch `feature/foreman-v1` (Integrated), in the order of "Build order"; the final pull request of that branch merges into the main branch. The runner change and the contract shapes merge first, with synthetic adapter output. Real data shows after the Operator installs a forge adapter with bebopaloo/factory#120: until then, the installed adapter has no `file get` or `release asset`, and the sections show "adapter error". A schema change needs no data migration: `pnpm reindex` empties the cache, and the next fetch fills it again. To undo, revert the change and run `pnpm local:reindex`.
+- **Rollout:** after the step 2 Spec is built. The issues merge one by one into the Integration branch `feature/foreman-v1` (Integrated), in the order of "Build order"; the final pull request of that branch merges into the main branch. The runner change and the contract shapes merge first, with synthetic adapter output. Real data shows after the Operator installs a forge adapter with bebopaloo/factory#120: until then, the installed adapter has no `file get` or `release asset`, and the sections show "adapter error". A schema change needs no data migration: `pnpm reindex` empties the cache, and the next fetch fills it again. To undo, revert the change and run `pnpm reindex`.
 
 ## Data and compliance
 

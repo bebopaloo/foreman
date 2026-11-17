@@ -229,7 +229,7 @@ Fixtures are synthetic: a synthetic config folder with `installed_plugins.json`,
 
 - **Given** no token for any repo in scope
 - **When** the view loads
-- **Then** Rule drift shows "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`."
+- **Then** Rule drift shows "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev."
 - **And** Plugin versions and Unattended runs show the local data.
 
 ### A failed fetch
@@ -359,7 +359,6 @@ Fixtures are synthetic: a synthetic config folder with `installed_plugins.json`,
 | `packages/shared` | The Zod schemas of the Factory health routes |
 | `apps/web/src/factory-health` | The page: Plugin versions, Rule drift, Unattended runs |
 | `apps/web/src/nav` (Spec 24) | Gains the link "Factory health" to `/health` |
-| `compose.local.yaml`, `scripts/local-up.ts` | The read-only mount of `FOREMAN_MARKETPLACE_DIR` |
 | `e2e/factory-health.spec.ts` | The end-to-end tests with the axe scan |
 
 The page uses the `format` and `theme` modules of the Usage view Spec, and the list conventions of the Work view Spec. This Spec adds no table: the rule files go into `work_forge_files` of the Controls view Spec.
@@ -368,7 +367,7 @@ The page uses the `format` and `theme` modules of the Usage view Spec, and the l
 
 | Variable | Default | Use |
 |---|---|---|
-| `FOREMAN_MARKETPLACE_DIR` | none | The folder of one **Marketplace** whose source kind is `directory`, for example the Operator's checkout of the factory repo. When it is set, `pnpm local:up` mounts it read-only at the same path in the API container. With no value, a `directory` Marketplace is "not readable by Foreman". The API stops at start-up when the value is not an absolute path. |
+| `FOREMAN_MARKETPLACE_DIR` | none | The folder of one **Marketplace** whose source kind is `directory`, for example the Operator's checkout of the factory repo. `pnpm dev` reads the folder directly. With no value, a `directory` Marketplace is "not readable by Foreman". The API stops at start-up when the value is not an absolute path. |
 
 The variables of Specs 5, 23 and 24 do not change.
 
@@ -506,7 +505,7 @@ This Spec adds one path pattern: `.claude/rules/<name>.md`, where `<name>` match
 ## Gating and rollout
 
 - **Gating:** not required. The view adds a page and three routes, and adds rows to a cache table of the Controls view Spec. It changes no existing flow. The rule files fail with "adapter error" until the installed forge adapter has `file get`, and the other fetch steps still run, by the Spec 23 rule that each role and repo fails alone.
-- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". Plugin versions and Unattended runs work with no token. Rule drift shows real data after factory PR #120 merges and the Operator updates the factory plugins. After the rule file slice reaches the local runtime, the Operator runs `pnpm local:reindex` once, so that the next full fetch parses each `.claude/factory.json` again with the new keys. To undo, revert the change; `pnpm reindex` empties the rule rows with the rest of the Work cache.
+- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". Plugin versions and Unattended runs work with no token. Rule drift shows real data after factory PR #120 merges and the Operator updates the factory plugins. After the rule file slice reaches the local runtime, the Operator runs `pnpm reindex` once, so that the next full fetch parses each `.claude/factory.json` again with the new keys. To undo, revert the change; `pnpm reindex` empties the rule rows with the rest of the Work cache.
 
 ## Data and compliance
 
@@ -540,7 +539,7 @@ This Spec adds one path pattern: `.claude/rules/<name>.md`, where `<name>` match
 
 Each slice is one PR-sized issue. A slice of another Spec that it needs is named with its Spec number or issue.
 
-1. **71-1 Plugin versions.** `apps/api/src/factory-health/plugins`, `apps/api/src/routes/factory-health.ts` (`GET /plugins`), `packages/shared`, `apps/api/src/config.ts` (`FOREMAN_MARKETPLACE_DIR`), `compose.local.yaml`, `scripts/local-up.ts`. The Plugin versions scenarios. Needs: Spec 23 issue #28 (the adapter install folders, done).
+1. **71-1 Plugin versions.** `apps/api/src/factory-health/plugins`, `apps/api/src/routes/factory-health.ts` (`GET /plugins`), `packages/shared`, `apps/api/src/config.ts` (`FOREMAN_MARKETPLACE_DIR`). The Plugin versions scenarios. Needs: Spec 23 issue #28 (the adapter install folders, done).
 2. **71-2 Unattended runs.** `apps/api/src/dash/runs` (the export `runsInWindow`), `apps/api/src/factory-health/runs`, `apps/api/src/routes/factory-health.ts` (`GET /runs`), `packages/shared`. The run scenarios. Needs: Spec 24 issues #40 and #41 (the night log reader and the run rules); Spec 66 uses the same export, so the first of the two slices adds it.
 3. **71-3 Rule files in the forge file step.** `apps/api/src/controls/files`, `apps/api/src/work/fetch`, `apps/api/src/work/runner`, with their tests. The scenarios of the fetch, the repo config, the paths and the file states. Needs: the Controls view slice for the forge file step and `work_forge_files` (Spec 67).
 4. **71-4 Rule templates and Rule drift.** `apps/api/src/factory-health/templates`, `apps/api/src/factory-health/rule-drift`, `apps/api/src/routes/factory-health.ts` (`GET /rule-drift`), `packages/shared`. The drift state scenarios, the scope and the connection states. Needs: 71-3.

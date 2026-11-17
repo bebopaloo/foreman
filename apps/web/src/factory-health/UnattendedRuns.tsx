@@ -1,5 +1,7 @@
 import type { FactoryRunRow, FactoryRunsResponse, StoppedItem } from "@foreman/shared";
 import { MISSING, formatTime } from "../format/index.ts";
+import { ScopedLink } from "../scope/index.ts";
+import { runReportPath } from "../runs/index.ts";
 import type { PagedList } from "../list/index.ts";
 import { ShowMore } from "./ShowMore.tsx";
 import { buildsText, nightOf, peakText, plural, safeLink } from "./labels.ts";
@@ -38,7 +40,10 @@ function Row({ run }: { run: FactoryRunRow }) {
   return (
     <tr>
       <th scope="row" className="mono">
-        {nightOf(run.start)}
+        <ScopedLink to={runReportPath(run.runId)}>
+          {nightOf(run.start)}
+          <span className="sr-only"> report of run {run.runId}</span>
+        </ScopedLink>
       </th>
       <td className="mono">
         {formatTime(run.start)}–{run.running ? "now" : formatTime(run.end)}

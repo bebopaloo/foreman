@@ -327,7 +327,7 @@ test("the strip says that nothing is connected, and the local sections still sho
   await useFixture("not-connected");
   await page.goto("/");
   await expect(strip(page)).toContainText(
-    "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.",
+    "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.",
   );
   await expect(strip(page).getByRole("list", { name: "Pipeline stages" })).toHaveCount(0);
   await expect(now(page)).toContainText("No run in progress");
@@ -448,7 +448,7 @@ test("each result in the timeline and each stage in the strip has a text label",
 const reposSection = (page: Page) => page.getByRole("region", { name: "Repos", exact: true });
 const NOT_COMPLETE = "Data is not complete: 1 repo not connected. See Repos.";
 const NOT_CONNECTED =
-  "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.";
+  "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.";
 
 test("Repos shows each repo with its client and connection state", async ({ page }) => {
   await useFixture("pipeline-incomplete");

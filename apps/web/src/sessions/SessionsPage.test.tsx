@@ -571,9 +571,9 @@ describe("the state of the Work cache", () => {
     serve({ complete: { incompleteRepos: 2, notConnected: true } });
     openPage("/sessions?day=2026-11-14");
     expect(
-      await screen.findByText(/Not connected\. Add the Foreman token to the Keychain, then run/),
+      await screen.findByText(/Not connected\. Add the Foreman token to FOREMAN_TOKENS_JSON/),
     ).toHaveTextContent(
-      "Not connected. Add the Foreman token to the Keychain, then run pnpm local:up.",
+      "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev.",
     );
     expect(screen.queryByText(/Data is not complete/)).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Spans of the session" })).toBeVisible();

@@ -10,6 +10,7 @@ import { ReviewsPage } from "./reviews/index.ts";
 import { FactoryHealthPage } from "./factory-health/index.ts";
 import { ControlsPage } from "./controls/index.ts";
 import { LedgerPage } from "./ledger/index.ts";
+import { RunReportPage, runIdOf } from "./runs/index.ts";
 
 export function App() {
   const { unknownClient, clientsSettled } = useScope();
@@ -42,6 +43,8 @@ export function App() {
           <ControlsPage />
         ) : window.location.pathname === "/ledger" ? (
           <LedgerPage />
+        ) : runIdOf(window.location.pathname) !== null ? (
+          <RunReportPage runId={runIdOf(window.location.pathname) ?? ""} />
         ) : (
           <>
             <h1>Page not found</h1>

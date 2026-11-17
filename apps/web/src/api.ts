@@ -15,9 +15,11 @@ import {
   ReviewsPullRequestsResponse,
   ReviewsResponse,
   RuleDriftResponse,
+  RunReportResponse,
   SessionResponse,
   SessionsResponse,
   SeriesResponse,
+  WorkBlockersResponse,
   WorkClientsResponse,
   WorkItemsResponse,
   WorkReposResponse,
@@ -318,4 +320,25 @@ export const fetchLedger = (
   if (cursor !== null) params.set("cursor", cursor);
   const text = params.toString();
   return getJson(`/api/ledger${text === "" ? "" : `?${text}`}`, LedgerResponse, signal);
+};
+
+/** The report of one run. */
+export const fetchRunReport = (runId: string, signal?: AbortSignal): Promise<RunReportResponse> =>
+  getJson(`/api/runs/${encodeURIComponent(runId)}/report`, RunReportResponse, signal);
+
+/** The blockers of the scope, the largest first. `limit` is optional: with none, all blockers return. */
+export const fetchWorkBlockers = (
+  client: string | null,
+  limit: number | null,
+  signal?: AbortSignal,
+): Promise<WorkBlockersResponse> => {
+  const params = new URLSearchParams();
+  if (client !== null) params.set("client", client);
+  if (limit !== null) params.set("limit", limit.toString());
+  const text = params.toString();
+  return getJson(
+    `/api/work/blockers${text === "" ? "" : `?${text}`}`,
+    WorkBlockersResponse,
+    signal,
+  );
 };

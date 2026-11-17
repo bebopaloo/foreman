@@ -235,12 +235,7 @@ Fixtures are synthetic and use only the public transcript format. No real transc
 
 ### Local runtime
 
-- **When** the Operator runs `pnpm local:up`
-- **Then** the stack builds and starts the web app and the API on `http://127.0.0.1:47100`, with Postgres on a named volume and no published database port
-- **And** the config folder and the Foreman data folder are mounted read-only
-- **And** when the Foreman data folder does not exist, the command creates it with mode `0700` first.
-
-The Operator checks this scenario by hand. All other scenarios are automated tests.
+Replaced by ADR 0005: `pnpm dev` is the only way to run Foreman by hand. The stack in `compose.local.yaml` is removed.
 
 ### Scheduled price check
 
@@ -269,7 +264,6 @@ The Operator checks this scenario by hand. All other scenarios are automated tes
 | `packages/shared` | The Zod schemas of the usage API |
 | `data/price-table.json` | The price table |
 | `scripts/price-check.ts` and `.github/workflows/price-check.yml` | The scheduled price check |
-| `compose.local.yaml` | The local runtime stack |
 
 ### Configuration
 
@@ -421,8 +415,6 @@ The Usage view derives the activity calendar, the cache efficiency and the month
 | Command | Does |
 |---|---|
 | `pnpm reindex` | Deletes the **Usage index** data and reads all sources again, against `DATABASE_URL` |
-| `pnpm local:up` | Builds the local runtime stack and starts it again |
-| `pnpm local:reindex` | Runs the reindex in the local runtime stack |
 
 | Use | Port |
 |---|---|
@@ -436,11 +428,7 @@ The README, `vite.config.ts`, `config.ts`, `compose.preview.yaml` and the e2e co
 
 ### Local runtime stack
 
-`compose.local.yaml` with the project name `foreman` runs Postgres, a migrate step, the API and the web server (Caddy), with `restart: unless-stopped`. A named volume holds the database, and the database port is not published. The stack mounts `FOREMAN_CLAUDE_DIR` and `FOREMAN_DATA_DIR` read-only. Only the web port 47100 is published, on `127.0.0.1`.
-
-- `pnpm local:up` creates `FOREMAN_DATA_DIR` with mode `0700` when it does not exist, before Docker starts. Without this step, Docker creates the folder with the wrong mode.
-- The stack sets `CORS_ORIGINS` to `http://127.0.0.1:47100` and `http://localhost:47100`.
-- The API container must read archive files of mode `0600` through the mount. The runtime issue tests this on the Operator's Mac with a synthetic archive file.
+Removed by ADR 0005. The Operator runs `pnpm dev` against the database container in `compose.yaml`.
 
 ### Scheduled price check
 
@@ -454,7 +442,7 @@ The README, `vite.config.ts`, `config.ts`, `compose.preview.yaml` and the e2e co
 ## Gating and rollout
 
 - **Gating:** not required. Foreman has no users other than the Operator yet, the Usage index and the usage API are new, and no other component reads them. The port change affects only the Operator's local development.
-- **Rollout:** each issue merges to the main branch on its own (Incremental). The Usage view (Spec B) builds on the API after it merges. The Operator runs `pnpm local:up` when the runtime stack issue merges, and real data shows after F2 and F3 exist. To undo, stop the stack and revert the change. `pnpm reindex` rebuilds the index at any time, so a schema change needs no data migration.
+- **Rollout:** each issue merges to the main branch on its own (Incremental). The Usage view (Spec B) builds on the API after it merges. Real data shows after F2 and F3 exist. To undo, revert the change. `pnpm reindex` rebuilds the index at any time, so a schema change needs no data migration.
 - **Field check:** before the Operator merges the parser PR at G3, the Operator compares the fields in its synthetic fixture with one of the Operator's own transcripts, on this machine. No real transcript goes into the repo or the PR.
 
 ## Data and compliance

@@ -51,7 +51,7 @@ async function setup(repos: string[] = ["acme/app"], tokens: Record<string, stri
     runFetch({
       db: database.db,
       claudeDir,
-      tokensFile,
+      tokenSource: tokensFile,
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       log: { warn: (message) => warnings.push(message) },
@@ -130,7 +130,7 @@ describe("no token for an owner with cached data", () => {
     await runFetch({
       db: database.db,
       claudeDir: withoutToken.claudeDir,
-      tokensFile: await writeTokens(withoutToken.claudeDir, {}),
+      tokenSource: await writeTokens(withoutToken.claudeDir, {}),
       allowedHosts: ["github.com"],
       now: () => later(15),
     });
@@ -152,7 +152,7 @@ describe("a repo list entry with no forge name", () => {
     const result = await runFetch({
       db: database.db,
       claudeDir,
-      tokensFile: await writeTokens(claudeDir, { "github.com/acme": TOKEN }),
+      tokenSource: await writeTokens(claudeDir, { "github.com/acme": TOKEN }),
       allowedHosts: ["github.com"],
     });
     expect(result.repos).toBe(1);

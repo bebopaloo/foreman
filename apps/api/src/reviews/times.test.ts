@@ -23,6 +23,7 @@ function line(over: Partial<NightLogEntry> & { clock: string }): NightLogEntry {
     to: "IN PROGRESS",
     reason: "build started",
     time: at(clock),
+    pr: null,
     ...rest,
   };
 }

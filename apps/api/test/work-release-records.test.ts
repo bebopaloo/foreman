@@ -70,7 +70,7 @@ async function setup(
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       now: () => now,
-      tokensFile,
+      tokenSource: tokensFile,
     });
   return { claudeDir, adapters, fetchAt, forge };
 }

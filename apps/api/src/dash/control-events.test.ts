@@ -31,9 +31,21 @@ describe("readControlEvents", () => {
       { kind: "waiver_used", repo: "acme/app", time, pr: 40, waiver: "W-1", finding: "f" },
       { kind: "merged", repo: "acme/app", time, pr: 40, issue: 12, base: "main", tier: null },
       { kind: "finding_overdue", repo: "acme/app", time, issue: 12, due: null, source: null },
+      {
+        kind: "deferred",
+        repo: "acme/app",
+        time,
+        pr: 40,
+        issue: 12,
+        tier: "general",
+        findings: [71],
+      },
+      { kind: "deferral_cleared", repo: "acme/app", time, issue: 71, by: "op", waiver: null },
     ]);
     const read = await readControlEvents(claudeDir, NOW);
     expect(read.events.map((event) => event.kind).sort()).toEqual([
+      "deferral_cleared",
+      "deferred",
       "escalated",
       "finding_overdue",
       "gate",
@@ -41,6 +53,7 @@ describe("readControlEvents", () => {
       "waiver_used",
     ]);
     expect(read.skippedLines).toBe(0);
+    expect(read.counts).toMatchObject({ deferred: 1, deferral_cleared: 1, gate: 1, merged: 1 });
   });
 
   it("skips and counts an event of an unknown kind or with an unknown key", async () => {

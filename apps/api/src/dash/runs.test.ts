@@ -28,6 +28,7 @@ function line(over: Partial<NightLogEntry> & { clock: string; day?: string }): N
     to: "IN PROGRESS",
     reason: "build started",
     time: at(clock, day),
+    pr: null,
     ...rest,
   };
 }
@@ -294,6 +295,52 @@ describe("runsInWindow", () => {
       { scope: { kind: "client", client: "acme" } },
     );
     expect(run?.peak).toBe(2);
+  });
+
+  it("makes no build for a Spec issue that settles with every child issue DONE", () => {
+    const [run] = runs([
+      line({ issue: 1, clock: "01:00" }),
+      line({
+        issue: 24,
+        clock: "01:30",
+        from: "IN PROGRESS",
+        to: "DONE",
+        reason: "every child issue is DONE",
+      }),
+      line({ issue: 1, clock: "02:00", from: "IN REVIEW", to: "DONE", reason: "merged #40" }),
+    ]);
+    expect(run?.builds.map((build) => build.issue)).toEqual([1]);
+    expect(run?.skips).toBe(0);
+  });
+
+  it("marks the end of the build stage with an opened line", () => {
+    const [run] = runs([
+      line({ issue: 1, clock: "01:00" }),
+      line({ issue: 2, clock: "01:00" }),
+      line({ issue: 3, clock: "01:00" }),
+      line({
+        issue: 1,
+        clock: "01:40",
+        from: "IN PROGRESS",
+        to: "IN REVIEW",
+        reason: "opened #59",
+      }),
+      line({
+        issue: 2,
+        clock: "01:50",
+        from: "IN PROGRESS",
+        to: "IN REVIEW",
+        reason: "PR #21 opened",
+      }),
+    ]);
+    const opened = Object.fromEntries(
+      (run?.builds ?? []).map((build) => [build.issue, build.prOpenedAt?.toISOString() ?? null]),
+    );
+    expect(opened).toEqual({
+      1: "2026-11-14T01:40:00.000Z",
+      2: "2026-11-14T01:50:00.000Z",
+      3: null,
+    });
   });
 
   it("returns no run for no line", () => {

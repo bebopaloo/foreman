@@ -99,7 +99,9 @@ describe("Waits for you", () => {
 
   it("says that nothing is connected", async () => {
     const section = await show({ waits: null, pipeline: null });
-    expect(section).toHaveTextContent("Not connected. Add the Foreman token to the Keychain");
+    expect(section).toHaveTextContent(
+      "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON",
+    );
   });
 
   it("says that the data is not complete when a repo is not connected", async () => {

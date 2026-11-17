@@ -70,6 +70,15 @@ describe("reading the tokens file", () => {
     });
   });
 
+  it("takes a token store as it is", async () => {
+    const store = new Map([["github.com/acme", ACME_TOKEN]]);
+    const tokens = await readTokens(store);
+    expect(resolveToken(tokens, "github.com", "acme", { tokenPrefix: PREFIX })).toEqual({
+      ok: true,
+      token: ACME_TOKEN,
+    });
+  });
+
   it("gives no token when no file is configured", async () => {
     expect((await readTokens(undefined)).size).toBe(0);
   });

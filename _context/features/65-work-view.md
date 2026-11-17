@@ -233,7 +233,7 @@ Fixtures are synthetic: a synthetic repo list, synthetic Control event files, a 
 
 - **Given** no repo in scope with cache rows
 - **When** the Operator opens `/work`
-- **Then** the page shows "Not connected. Add the Foreman token to the Keychain, then run `pnpm local:up`." and no table.
+- **Then** the page shows "Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart pnpm dev." and no table.
 
 ### Malformed Control events
 
