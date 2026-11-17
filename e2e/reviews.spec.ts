@@ -190,9 +190,9 @@ test("some repos not connected shows Data is not complete and no link for its ro
 test("not connected shows the text and keeps the numbers, with no link", async ({ page }) => {
   await useFixture("reviews-not-connected");
   await page.goto("/reviews");
-  await expect(page.getByText(/Not connected\. Add the Foreman token to the Keychain/)).toHaveCount(
-    2,
-  );
+  await expect(
+    page.getByText(/Not connected\. Add the Foreman token to FOREMAN_TOKENS_JSON/),
+  ).toHaveCount(2);
   await expect(tile(page, "Pull requests reviewed")).toContainText("5");
   await expect(prRow(page, "#40")).toBeVisible();
   await expect(pullRequests(page).getByRole("link")).toHaveCount(0);

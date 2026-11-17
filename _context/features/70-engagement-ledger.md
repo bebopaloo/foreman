@@ -346,7 +346,7 @@ The API reads the messages from the start of the range back to the message befor
 ## Gating and rollout
 
 - **Gating:** not required. The ledger adds a route and a page, and reads data that the Usage index already holds.
-- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". The ledger shows correct real data only after issue #15 and the worktree path rule of the Sessions view Spec (slice 68-1) reach the local runtime and the Operator runs `pnpm local:reindex` once: an index from before issue #15 has no message times, and an index from before slice 68-1 puts the messages of a sibling worktree in a Project of its own, outside the Client scope.
+- **Rollout:** the issues merge into the Integration branch `feature/foreman-v1` (Integrated), in the order of the section "Build order". The ledger shows correct real data only after issue #15 and the worktree path rule of the Sessions view Spec (slice 68-1) reach the local runtime and the Operator runs `pnpm reindex` once: an index from before issue #15 has no message times, and an index from before slice 68-1 puts the messages of a sibling worktree in a Project of its own, outside the Client scope.
 - **Undo:** revert the change. The ledger stores nothing.
 
 ## Data and compliance

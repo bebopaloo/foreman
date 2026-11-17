@@ -20,15 +20,27 @@ function tokenKey(host: string, owner: string): string {
   return `${host}/${owner}`.toLowerCase();
 }
 
+/** Validates a parsed JSON object of tokens. Gives `undefined` when the shape is wrong. */
+export function parseTokens(json: unknown): TokenStore | undefined {
+  const parsed = tokensFileSchema.safeParse(json);
+  if (!parsed.success) return undefined;
+  return new Map(Object.entries(parsed.data).map(([key, token]) => [key.toLowerCase(), token]));
+}
+
+/** Where the tokens come from: a file path, tokens that are already read, or nothing. */
+export type TokenSource = string | TokenStore | undefined;
+
 /**
- * Reads the tokens file: a JSON object with one token for each `<host>/<owner>`.
- * A missing or invalid file gives an empty store, so every owner is "not connected".
+ * Reads the tokens: a JSON object with one token for each `<host>/<owner>`.
+ * A source that is a path to a missing or invalid file gives an empty store,
+ * so every owner is "not connected".
  */
-export async function readTokens(file: string | undefined): Promise<TokenStore> {
-  if (file === undefined) return new Map();
+export async function readTokens(source: TokenSource): Promise<TokenStore> {
+  if (source === undefined) return new Map();
+  if (typeof source !== "string") return source;
   let text: string;
   try {
-    text = await readFile(file, "utf8");
+    text = await readFile(source, "utf8");
   } catch {
     return new Map();
   }
@@ -38,9 +50,7 @@ export async function readTokens(file: string | undefined): Promise<TokenStore> 
   } catch {
     return new Map();
   }
-  const parsed = tokensFileSchema.safeParse(json);
-  if (!parsed.success) return new Map();
-  return new Map(Object.entries(parsed.data).map(([key, token]) => [key.toLowerCase(), token]));
+  return parseTokens(json) ?? new Map();
 }
 
 /**

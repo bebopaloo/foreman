@@ -148,7 +148,7 @@ describe("GET /api/work/status", () => {
     const schedule = createFetchSchedule({
       db: database.db,
       claudeDir,
-      tokensFile,
+      tokenSource: tokensFile,
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       intervalMs: 60_000,
@@ -197,7 +197,7 @@ describe("GET /api/work/status", () => {
     const schedule = createFetchSchedule({
       db: database.db,
       claudeDir,
-      tokensFile,
+      tokenSource: tokensFile,
       allowedHosts: ["github.com"],
       timeoutMs: 20_000,
       intervalMs: 60_000,

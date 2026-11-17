@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { parseTokens } from "./work/tokens.ts";
 
 const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
 
@@ -82,7 +83,26 @@ function createConfigSchema(home: string) {
           .filter((login) => login.length > 0),
       )
       .refine((logins) => logins.every((login) => FACTORY_LOGIN.test(login))),
-    FOREMAN_TOKENS_FILE: z.string().min(1).default("/run/secrets/foreman_tokens"),
+    FOREMAN_TOKENS_FILE: z.string().min(1).optional(),
+    FOREMAN_TOKENS_JSON: z
+      .string()
+      .optional()
+      .transform((value, context) => {
+        if (value === undefined || value.trim() === "") return undefined;
+        let json: unknown;
+        try {
+          json = JSON.parse(value);
+        } catch {
+          context.addIssue({ code: "custom", message: "not JSON" });
+          return z.NEVER;
+        }
+        const tokens = parseTokens(json);
+        if (tokens === undefined) {
+          context.addIssue({ code: "custom", message: "wrong shape" });
+          return z.NEVER;
+        }
+        return tokens;
+      }),
     FOREMAN_ADAPTER_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(600).default(60),
     FOREMAN_USAGE_REFRESH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
     FOREMAN_FETCH_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),

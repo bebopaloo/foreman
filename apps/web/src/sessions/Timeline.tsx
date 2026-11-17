@@ -81,7 +81,8 @@ function CompleteNote({ complete }: { complete: SessionResponse["complete"] }) {
   if (complete.notConnected) {
     return (
       <p role="status" className="note note-warn">
-        Not connected. Add the Foreman token to the Keychain, then run <code>pnpm local:up</code>.
+        Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON in the .env file, then restart
+        pnpm dev.
       </p>
     );
   }

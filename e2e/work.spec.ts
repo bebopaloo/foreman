@@ -139,7 +139,7 @@ test("not connected shows the text and no table", async ({ page }) => {
   await useFixture("not-connected");
   await page.goto("/work");
   await expect(
-    page.getByText(/Not connected\. Add the Foreman token to the Keychain/),
+    page.getByText(/Not connected\. Add the Foreman token to FOREMAN_TOKENS_JSON/),
   ).toBeVisible();
   await expect(table(page)).toHaveCount(0);
 });

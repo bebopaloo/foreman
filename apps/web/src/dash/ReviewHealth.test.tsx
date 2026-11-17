@@ -96,7 +96,7 @@ describe("Review health", () => {
     renderApp();
     const view = await section();
     expect(
-      await view.findByText(/Not connected. Add the Foreman token to the Keychain/),
+      await view.findByText(/Not connected. Add the Foreman token to FOREMAN_TOKENS_JSON/),
     ).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Control health" })).toBeInTheDocument();
   });

@@ -118,7 +118,7 @@ test("a folder with no plugin file, no token and no run shows the empty states",
   await expect(page.getByText(/No plugin data:/)).toContainText(
     "installed_plugins.json is missing or not readable",
   );
-  await expect(page.getByText(/^Not connected\./)).toContainText("pnpm local:up");
+  await expect(page.getByText(/^Not connected\./)).toContainText("FOREMAN_TOKENS_JSON");
   await expect(page.getByText("No run in the last 30 days")).toBeVisible();
 });
 
