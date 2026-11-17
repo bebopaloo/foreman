@@ -11,6 +11,7 @@ test("Foreman opens at the Foreman dash with its sections in order", async ({ pa
   await expect(page.getByRole("heading", { level: 2 })).toHaveText([
     "Now",
     "Waits for you",
+    "Unblock first",
     "Last run",
     "Review health",
     "Repos",
