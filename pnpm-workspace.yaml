@@ -13,3 +13,11 @@ engineStrict: true
 allowBuilds:
   esbuild: false
   msw: false
+
+# GHSA-fc5q-39xc-vjpf (picomatch ReDoS, high) has no patched version. It
+# reaches only dev tools (typescript-eslint, vitest); `pnpm audit --prod` is
+# clean. The Operator approved this waiver on 2026-11-18. Review it by
+# 2026-12-18, and remove it as soon as a patched version is published.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
