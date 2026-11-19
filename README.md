@@ -29,7 +29,7 @@ pnpm dev
 
 The web app runs at http://127.0.0.1:47173 and calls the API at http://127.0.0.1:47130 through the Vite proxy.
 
-The local database listens on `127.0.0.1:55432`. Set `DB_PORT` before `docker compose up` to use another port, and set the same `DB_PORT` when you run the tests. It accepts local connections without a password; never use these settings for a shared database.
+The local database listens on `127.0.0.1:55432`. Set `DB_PORT` before `docker compose up` to use another port, and set the same `DB_PORT` when you run the tests. The container restarts after a Docker restart, unless you stop it yourself. Restart `pnpm dev` after you restart the database. It accepts local connections without a password; never use these settings for a shared database.
 
 ## Parallel worktrees
 

@@ -4,6 +4,7 @@
 services:
   db:
     image: postgres:18-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: app
       POSTGRES_HOST_AUTH_METHOD: trust
